@@ -1,14 +1,59 @@
-PictureSharp.Jxl 0.1.0
+PictureSharp.Jxl 0.2.0
 
-The scaffold contains no ported JPEG XL codec implementation and no bundled native libraries.
-JPEG XL signature constants follow the format description:
-https://github.com/libjxl/libjxl/blob/v0.12.0/doc/format_overview.md
+No native libraries are bundled. PictureSharp is a NuGet dependency distributed
+separately under MIT. Project scaffolding and test patterns are adapted from
+PictureSharp.Heif and PictureSharp.Tiff, Copyright (c) 2026 Artur Pelzak, MIT (see LICENSE).
 
-PictureSharp is a NuGet dependency distributed separately under MIT.
-Project scaffolding and test patterns are adapted from PictureSharp.Heif and
-PictureSharp.Tiff, Copyright (c) 2026 Artur Pelzak, MIT (see LICENSE).
-Future ports must retain their original notices and applicable license grants.
+------------------------------------------------------------------------------
+libjxl v0.12.0 (commit a7a9c787341cf703dede03c2009fa460cae5e5df)
+https://github.com/libjxl/libjxl
 
-Development reference: libjxl v0.12.0 (BSD-3-Clause with upstream PATENTS grant),
-commit a7a9c787341cf703dede03c2009fa460cae5e5df. Downloaded sources retain their
-LICENSE and PATENTS files locally; they are not redistributed in this package.
+The following parts are scalar C# ports of libjxl sources and keep their origin
+in source comments:
+- src/PictureSharp.Jxl/Codestream/JxlBitReader.cs: lib/jxl/dec_bit_reader.h
+- src/PictureSharp.Jxl/Codestream/JxlFields.cs: lib/jxl/fields.cc, fields.h,
+  frame_header.h (U32, U64, F16, Enum, extensions, name strings)
+- src/PictureSharp.Jxl/Codestream/JxlSizeHeader.cs: lib/jxl/headers.cc
+- src/PictureSharp.Jxl/Codestream/JxlImageMetadata.cs and
+  JxlCustomTransformData.cs: lib/jxl/image_metadata.cc
+- src/PictureSharp.Jxl/Codestream/JxlColorEncoding.cs:
+  lib/jxl/color_encoding_internal.cc, lib/jxl/cms/color_encoding_cms.h
+- src/PictureSharp.Jxl/Codestream/JxlHeaders.cs and Container/JxlContainer.cs:
+  header order, box rules and jxlp ordering of lib/jxl/decode.cc
+
+libjxl is distributed under the following license:
+
+Copyright (c) the JPEG XL Project Authors.
+All rights reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+1. Redistributions of source code must retain the above copyright notice, this
+   list of conditions and the following disclaimer.
+
+2. Redistributions in binary form must reproduce the above copyright notice,
+   this list of conditions and the following disclaimer in the documentation
+   and/or other materials provided with the distribution.
+
+3. Neither the name of the copyright holder nor the names of its
+   contributors may be used to endorse or promote products derived from
+   this software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+libjxl also ships an "Additional IP Rights Grant (Patents)" for the JPEG XL
+project's own implementation:
+https://github.com/libjxl/libjxl/blob/v0.12.0/PATENTS
+That grant is not reproduced here and is not extended to this port by this notice.
+The downloaded reference sources (ignored by Git, not redistributed) retain their
+LICENSE and PATENTS files.

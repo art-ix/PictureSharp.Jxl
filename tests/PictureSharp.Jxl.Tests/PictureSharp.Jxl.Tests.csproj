@@ -2,5 +2,14 @@
   <PropertyGroup><IsPackable>false</IsPackable><NoWarn>$(NoWarn);CA1707;TUnit0046</NoWarn></PropertyGroup>
   <ItemGroup><PackageReference Include="TUnit" Version="1.72.16" /></ItemGroup>
   <ItemGroup><ProjectReference Include="../../src/PictureSharp.Jxl/PictureSharp.Jxl.csproj" /></ItemGroup>
-  <ItemGroup><None Include="../assets/PublicApi.approved.txt" Link="PublicApi.approved.txt" CopyToOutputDirectory="PreserveNewest" /></ItemGroup>
+  <ItemGroup>
+    <None Include="../assets/PublicApi.approved.txt" Link="PublicApi.approved.txt" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="../assets/corpus/**" Link="corpus/%(RecursiveDir)%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The parsers are self-contained; compiling them into the tests checks the internal header model without
+         InternalsVisibleTo on the plugin. -->
+    <Compile Include="../../src/PictureSharp.Jxl/JxlDescriptor.cs;../../src/PictureSharp.Jxl/Container/**/*.cs;../../src/PictureSharp.Jxl/Codestream/**/*.cs"
+             Link="Parsers/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
 </Project>

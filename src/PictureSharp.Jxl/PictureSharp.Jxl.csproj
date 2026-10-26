@@ -6,12 +6,12 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <PackageId>PictureSharp.Jxl</PackageId>
-    <Description>JPEG XL plugin scaffold for PictureSharp. Version 0.1.0 detects signatures only; decoding and encoding are not implemented.</Description>
+    <Description>Pure C# JPEG XL plugin for PictureSharp. Version 0.2.0 detects and identifies JPEG XL files (raw codestream and container); pixel decoding and encoding are not implemented yet.</Description>
     <PackageTags>picturesharp;image;jxl;jpegxl</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/art-ix/picturesharp.jxl</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageReleaseNotes>0.1.0: plugin registration and JPEG XL signature detection only. No pixel decoding, Identify, encoding or metadata support.</PackageReleaseNotes>
+    <PackageReleaseNotes>0.2.0: container (jxlc, jxlp including out-of-order parts) and codestream header parsing; Image.Identify reports dimensions, bit depth, alpha, orientation and animation. No pixel decoding, encoding or metadata support.</PackageReleaseNotes>
   </PropertyGroup>
   <ItemGroup><PackageReference Include="PictureSharp" Version="$(PictureSharpVersion)" /></ItemGroup>
   <ItemGroup>

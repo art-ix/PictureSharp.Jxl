@@ -35,7 +35,7 @@ public sealed class JxlFormatTests
     }
 
     [Test]
-    public async Task Registration_UsesSharedDescriptorAndPlaceholder()
+    public async Task Registration_UsesSharedDescriptor_IdentifiesButDoesNotDecode()
     {
         IImageFormatModule module = new JxlFormat();
         var configuration = ImageConfiguration.Default.ToBuilder().AddFormat(module).Build();
@@ -51,9 +51,11 @@ public sealed class JxlFormatTests
         await Assert.That(module.Encoder).IsNull();
         await Assert.That(module.MetadataCodec).IsNull();
         var options = new DecoderOptions { Configuration = configuration };
-        byte[] data = [0xFF, 0x0A];
+        byte[] data = JxlTestData.Minimal();
+        ImageInfo info = Image.Identify(data, options);
+        await Assert.That((info.Format, info.Width, info.Height, info.BitsPerChannel)).IsEqualTo((ImageFormat.Jxl, 8, 8, 8));
+        await Assert.That(() => Image.Identify(new byte[] { 0xFF, 0x0A }, options)).Throws<ImageFormatException>();
         await Assert.That(() => Image.Load(data, options)).Throws<NotSupportedException>();
-        await Assert.That(() => Image.Identify(data, options)).Throws<NotSupportedException>();
         await Assert.That(() => Image.ReadMetadata((ReadOnlyMemory<byte>)data, options)).Throws<NotSupportedException>();
         await Assert.That(() => Image.EditMetadata((ReadOnlyMemory<byte>)data, _ => { }, options)).Throws<NotSupportedException>();
     }

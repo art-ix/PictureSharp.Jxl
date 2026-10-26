@@ -35,4 +35,4 @@ jobs:
         run: |
           version="$(tr -d '[:space:]' < VERSION)"
           (cd artifacts && sha256sum *.nupkg *.snupkg > SHA256SUMS)
-          gh release create "$GITHUB_REF_NAME" --verify-tag --prerelease --title "PictureSharp.Jxl $version (scaffold)" --notes-file "docs/releases/release-$version.md" artifacts/*.nupkg artifacts/*.snupkg artifacts/SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" --verify-tag --prerelease --title "PictureSharp.Jxl $version" --notes-file "docs/releases/release-$version.md" artifacts/*.nupkg artifacts/*.snupkg artifacts/SHA256SUMS
