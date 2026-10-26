@@ -8,11 +8,7 @@ permissions:
   contents: read
 jobs:
   managed:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-24.04, windows-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -26,10 +22,8 @@ jobs:
           dotnet restore tests/AotConsumer
           dotnet run --project tests/AotConsumer -c Release --no-restore
       - name: Linux trimming and Native AOT
-        if: runner.os == 'Linux'
         run: bash scripts/verify-package-consumer.sh
       - uses: actions/upload-artifact@v4
-        if: runner.os == 'Linux'
         with:
           name: packages
           path: |

@@ -20,3 +20,5 @@ keep them local and do not force-add them. Update progress after significant wor
 - VERSION is the single source of package version. Documentation and identifiers use English.
 
 Reference baseline: libjxl v0.12.0, pinned in scripts/reference-lock.json. Treat downloaded sources as read-only. User authorized this source download on 2026-10-26.
+
+CI scope (user decision, 2026-10-26): Linux only for 0.1.0, including package consumer and Native AOT. Revisit platform coverage when implementing codecs and SIMD.
