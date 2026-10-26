@@ -22,9 +22,8 @@ jobs:
       - run: dotnet test -c Release --no-build
       - run: dotnet pack src/PictureSharp.Jxl -c Release --no-build -o artifacts
       - name: Package consumer (JIT)
-        shell: bash
         run: |
-          dotnet restore tests/AotConsumer --source "$PWD/artifacts" --source https://api.nuget.org/v3/index.json
+          dotnet restore tests/AotConsumer --source "${{ github.workspace }}/artifacts" --source https://api.nuget.org/v3/index.json
           dotnet run --project tests/AotConsumer -c Release --no-restore
       - name: Linux trimming and Native AOT
         if: runner.os == 'Linux'
