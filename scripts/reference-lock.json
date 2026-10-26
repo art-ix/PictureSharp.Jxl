@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/libjxl/libjxl",
+  "tag": "v0.12.0",
+  "commit": "a7a9c787341cf703dede03c2009fa460cae5e5df",
+  "archiveUrl": "https://codeload.github.com/libjxl/libjxl/tar.gz/a7a9c787341cf703dede03c2009fa460cae5e5df",
+  "sha256": "818398895831069902e3677d285054a7d1255b11b221e94c6aaa1cb83b0a3f29",
+  "sourceDirectory": "reference/libjxl-0.12.0",
+  "checkedOn": "2026-10-26",
+  "releaseUrl": "https://github.com/libjxl/libjxl/releases/tag/v0.12.0"
+}

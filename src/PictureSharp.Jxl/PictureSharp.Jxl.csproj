@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>PictureSharp.Formats.Jxl</RootNamespace>
+    <IsAotCompatible>true</IsAotCompatible>
+    <IsTrimmable>true</IsTrimmable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+    <PackageId>PictureSharp.Jxl</PackageId>
+    <Description>JPEG XL plugin scaffold for PictureSharp. Version 0.1.0 detects signatures only; decoding and encoding are not implemented.</Description>
+    <PackageTags>picturesharp;image;jxl;jpegxl</PackageTags>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageProjectUrl>https://github.com/art-ix/picturesharp.jxl</PackageProjectUrl>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageReleaseNotes>0.1.0: plugin registration and JPEG XL signature detection only. No pixel decoding, Identify, encoding or metadata support.</PackageReleaseNotes>
+  </PropertyGroup>
+  <ItemGroup><PackageReference Include="PictureSharp" Version="$(PictureSharpVersion)" /></ItemGroup>
+  <ItemGroup>
+    <None Include="../../LICENSE" Pack="true" PackagePath="" />
+    <None Include="../../THIRD-PARTY-NOTICES.txt" Pack="true" PackagePath="" />
+    <None Include="../../README.md" Pack="true" PackagePath="" />
+  </ItemGroup>
+</Project>

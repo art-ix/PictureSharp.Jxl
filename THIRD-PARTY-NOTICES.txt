@@ -1,0 +1,14 @@
+PictureSharp.Jxl 0.1.0
+
+The scaffold contains no ported JPEG XL codec implementation and no bundled native libraries.
+JPEG XL signature constants follow the format description:
+https://github.com/libjxl/libjxl/blob/v0.12.0/doc/format_overview.md
+
+PictureSharp is a NuGet dependency distributed separately under MIT.
+Project scaffolding and test patterns are adapted from PictureSharp.Heif and
+PictureSharp.Tiff, Copyright (c) 2026 Artur Pelzak, MIT (see LICENSE).
+Future ports must retain their original notices and applicable license grants.
+
+Development reference: libjxl v0.12.0 (BSD-3-Clause with upstream PATENTS grant),
+commit a7a9c787341cf703dede03c2009fa460cae5e5df. Downloaded sources retain their
+LICENSE and PATENTS files locally; they are not redistributed in this package.

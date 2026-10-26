@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType><IsPackable>false</IsPackable>
+    <InvariantGlobalization>true</InvariantGlobalization>
+    <RestorePackagesPath>$(MSBuildThisFileDirectory)../../artifacts/consumer-packages</RestorePackagesPath>
+  </PropertyGroup>
+  <ItemGroup><PackageReference Include="PictureSharp.Jxl" Version="$(Version)" /></ItemGroup>
+</Project>

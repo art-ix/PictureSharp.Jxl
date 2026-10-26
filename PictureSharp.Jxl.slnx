@@ -1,0 +1,4 @@
+<Solution>
+  <Folder Name="/src/"><Project Path="src/PictureSharp.Jxl/PictureSharp.Jxl.csproj" /></Folder>
+  <Folder Name="/tests/"><Project Path="tests/PictureSharp.Jxl.Tests/PictureSharp.Jxl.Tests.csproj" /></Folder>
+</Solution>

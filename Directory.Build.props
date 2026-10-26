@@ -1,0 +1,29 @@
+<Project>
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <LangVersion>14.0</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <Deterministic>true</Deterministic>
+    <Authors>Artur Pelzak</Authors>
+    <RepositoryUrl>https://github.com/art-ix/picturesharp.jxl</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <!-- Source Link (built into the SDK) plus a portable PDB shipped as .snupkg to nuget.org. -->
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <EmbedUntrackedSources>true</EmbedUntrackedSources>
+    <DebugType>portable</DebugType>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(GITHUB_ACTIONS)' == 'true'">
+    <!-- Normalizes source paths so CI builds are reproducible. -->
+    <ContinuousIntegrationBuild>true</ContinuousIntegrationBuild>
+  </PropertyGroup>
+  <PropertyGroup>
+    <!-- Single source of the version: the VERSION file in the repository root. -->
+    <Version>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)VERSION').Trim())</Version>
+    <!-- The minimum PictureSharp package the plugin is built and tested against; only its public API is used. -->
+    <PictureSharpVersion>0.8.2</PictureSharpVersion>
+  </PropertyGroup>
+</Project>

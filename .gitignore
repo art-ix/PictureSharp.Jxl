@@ -1,0 +1,11 @@
+bin/
+obj/
+artifacts/
+reference/
+progres.md
+plan.md
+tests/assets/external/
+samples/private/
+*.received.txt
+
+TestResults/

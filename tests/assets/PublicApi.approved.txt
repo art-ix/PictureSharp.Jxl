@@ -1,0 +1,11 @@
+PictureSharp.Formats.Jxl.JxlFormat
+  Boolean IsSupported(System.ReadOnlySpan`1[System.Byte])
+  Int32 HeaderSize
+  Int32 get_HeaderSize()
+  PictureSharp.Formats.IImageFormatDecoder Decoder
+  PictureSharp.Formats.IImageFormatDecoder get_Decoder()
+  PictureSharp.ImageFormat Format
+  PictureSharp.ImageFormat get_Format()
+  Void .ctor()
+PictureSharp.Formats.Jxl.JxlImageFormatExtensions
+  PictureSharp.ImageFormat get_Jxl()
