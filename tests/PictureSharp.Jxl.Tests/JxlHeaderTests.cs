@@ -10,7 +10,7 @@ public sealed class JxlHeaderTests
     /// An 8×8 codestream with non-default ImageMetadata (extra fields present); each part can be replaced. The
     /// defaults are: 8-bit integer samples, no extra channels, not XYB, default colour and tone mapping.
     /// </summary>
-    private static byte[] Codestream(
+    internal static byte[] Codestream(
         int orientation = 1,
         Action<BitWriter>? size = null,
         Action<BitWriter>? animation = null,
@@ -109,7 +109,7 @@ public sealed class JxlHeaderTests
     {
         await Assert.That(Read(Codestream(bitDepth: b => b.Bool(false).U32(3, 30, 6))).Metadata.BitDepth).IsEqualTo(new JxlBitDepth(false, 31, 0));
         await Assert.That(Read(Codestream(bitDepth: b => b.Bool(true).U32(1).Bits(4, 4))).Metadata.BitDepth).IsEqualTo(new JxlBitDepth(true, 16, 5));
-        await Assert.That(Image.Identify(Codestream(bitDepth: b => b.Bool(true).U32(0).Bits(7, 4)), Options()).BitsPerChannel).IsEqualTo(32);
+        await Assert.That(Image.Identify(Codestream(bitDepth: b => b.Bool(true).U32(0).Bits(7, 4)), Options()).Color.BitsPerSample).IsEqualTo(32);
         foreach (Action<BitWriter> invalid in new Action<BitWriter>[]
         {
             b => b.Bool(false).U32(3, 31, 6),  // 32-bit integers
@@ -143,7 +143,7 @@ public sealed class JxlHeaderTests
         await Assert.That((channels[2].Type, channels[2].CfaChannel)).IsEqualTo((JxlExtraChannelType.Cfa, 7u));
         await Assert.That((channels[3].Type, channels[3].DimShift)).IsEqualTo((JxlExtraChannelType.Depth, 3u));
         ImageInfo info = Image.Identify(data, Options());
-        await Assert.That(info.HasAlpha).IsTrue();
+        await Assert.That(info.Color.HasAlpha).IsTrue();
     }
 
     [Test]
@@ -246,7 +246,8 @@ public sealed class JxlHeaderTests
         await Assert.That(metadata.ToneMapping).IsEqualTo(new JxlToneMapping(1000, 0.5f, true, 0.25f));
         await Assert.That(metadata.Extensions).IsEqualTo(0b1000_0001UL);
         ImageInfo info = Image.Identify(data, Options());
-        await Assert.That((info.IsAnimated, info.FrameCount)).IsEqualTo((true, 0));
+        await Assert.That(info.IsAnimated).IsTrue();
+        await Assert.That(info.FrameCount).IsNull();
 
         foreach (Action<BitWriter> invalid in new Action<BitWriter>[]
         {

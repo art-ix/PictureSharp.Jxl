@@ -1,4 +1,4 @@
-PictureSharp.Jxl 0.2.0
+PictureSharp.Jxl 0.2.1
 
 No native libraries are bundled. PictureSharp is a NuGet dependency distributed
 separately under MIT. Project scaffolding and test patterns are adapted from

@@ -53,7 +53,7 @@ public sealed class JxlFormatTests
         var options = new DecoderOptions { Configuration = configuration };
         byte[] data = JxlTestData.Minimal();
         ImageInfo info = Image.Identify(data, options);
-        await Assert.That((info.Format, info.Width, info.Height, info.BitsPerChannel)).IsEqualTo((ImageFormat.Jxl, 8, 8, 8));
+        await Assert.That((info.Format, info.Width, info.Height, info.Color.BitsPerSample)).IsEqualTo((ImageFormat.Jxl, 8, 8, 8));
         await Assert.That(() => Image.Identify(new byte[] { 0xFF, 0x0A }, options)).Throws<ImageFormatException>();
         await Assert.That(() => Image.Load(data, options)).Throws<NotSupportedException>();
         await Assert.That(() => Image.ReadMetadata((ReadOnlyMemory<byte>)data, options)).Throws<NotSupportedException>();

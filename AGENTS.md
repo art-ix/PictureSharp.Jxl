@@ -8,7 +8,7 @@ keep it at most 600 lines by condensing the oldest entries.
 - Use public SPI only; no core project reference, copied internals, reflection,
   InternalsVisibleTo, native libraries, P/Invoke or unsafe code in the library.
 - Public API: PictureSharp.Formats.Jxl. Implementation types stay internal.
-- Keep 0.2.0 honest: Identify parses container and codestream headers; Decode throws
+- Keep 0.2.x honest: Identify parses container and codestream headers; Decode throws
   NotSupportedException until pixel decoding lands (0.3.0).
 - Preserve nullable, warnings as errors, XML docs, trimming and Native AOT compatibility.
 - Future decoders reserve pixels/metadata before allocation and honor cancellation.

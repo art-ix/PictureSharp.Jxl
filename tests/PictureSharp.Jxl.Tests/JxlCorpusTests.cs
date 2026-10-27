@@ -30,10 +30,10 @@ public sealed class JxlCorpusTests
         await Assert.That(info.Format).IsSameReferenceAs(ImageFormat.Jxl);
         await Assert.That(info.Width).IsEqualTo(expected.GetProperty("width").GetInt32());
         await Assert.That(info.Height).IsEqualTo(expected.GetProperty("height").GetInt32());
-        await Assert.That(info.BitsPerChannel).IsEqualTo(expected.GetProperty("bits").GetInt32());
-        await Assert.That(info.HasAlpha).IsEqualTo(expected.GetProperty("alpha").GetBoolean());
+        await Assert.That(info.Color.BitsPerSample).IsEqualTo(expected.GetProperty("bits").GetInt32());
+        await Assert.That(info.Color.HasAlpha).IsEqualTo(expected.GetProperty("alpha").GetBoolean());
         await Assert.That(info.IsAnimated).IsEqualTo(expected.GetProperty("animated").GetBoolean());
-        await Assert.That(info.FrameCount).IsEqualTo(info.IsAnimated ? 0 : 1);
+        await Assert.That(info.FrameCount).IsEqualTo(info.IsAnimated ? null : 1);
         await Assert.That(info.Orientation).IsEqualTo((ExifOrientation)expected.GetProperty("orientation").GetInt32());
         await Assert.That(Image.Identify(CorpusPath(name), Options()).Width).IsEqualTo(info.Width);
         using var stream = new MemoryStream(data);

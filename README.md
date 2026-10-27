@@ -2,23 +2,28 @@
 
 A pure C# JPEG XL format plugin for PictureSharp, targeting .NET 10 and C# 14.
 
-## Status: 0.2.0 — container, headers and Identify
+## Status: 0.2.1 — container, headers and Identify
 
 Available:
 
 - explicit plugin registration and the `.jxl` / `image/jxl` mapping;
 - detection of raw codestream and container signatures (detection does not validate a file);
-- `Image.Identify` for raw codestreams and ISO BMFF containers: dimensions, bit depth, alpha,
-  EXIF-style orientation and animation.
+- `Image.Identify` for raw codestreams and ISO BMFF containers: dimensions, colour and channel
+  layout, colour description, EXIF-style orientation and animation.
 
 | `ImageInfo` field | Value |
 | --- | --- |
 | `Width`, `Height` | Stored size from the codestream SizeHeader; orientation is reported, not applied |
-| `BitsPerChannel` | Declared colour bits per sample: 1–31 for integers, 5–32 for floats |
-| `HasAlpha` | An alpha extra channel is declared |
+| `Color.Model` | `Rgb` (also when XYB-encoded), `Gray`, `Cmyk` with a Black extra channel, `Other` for the XYB colour space |
+| `Color.ChannelCount` | Colour channels (1 or 3) plus every extra channel (alpha, depth, spot colours, black, …) |
+| `Color.BitsPerSample`, `Color.SampleFormat` | The widest channel, colour or extra: 1–31 for integers, 5–32 for floats; `Float` if any channel is float |
+| `Color.AlphaMode` | `Straight` or `Premultiplied` (`alpha_associated`) for an alpha extra channel, else `None` |
+| `Color.HasIccProfile` | The colour encoding declares an ICC profile (the profile is not read) |
+| `Color.Cicp` | The enumerated colour encoding as H.273 code points when it maps exactly; null with an ICC profile, custom primaries or white point, a gamma exponent or the XYB colour space |
+| `Compression` | `Lossy` for XYB-encoded images; otherwise `Unknown`, because the codestream headers do not say whether Modular coding is lossless |
 | `Orientation` | The codestream orientation 1–8 (an EXIF box is not consulted) |
-| `IsAnimated`, `FrameCount` | Animation header present; `FrameCount` is 0 for animations (frames are not counted yet), else 1 |
-| `HorizontalResolution`, `VerticalResolution` | 96 (resolution metadata is not read yet) |
+| `IsAnimated`, `FrameCount` | Animation header present; `FrameCount` is null for animations (frames are not counted yet), else 1 |
+| `Resolution` | null (resolution metadata is not read yet) |
 
 Identify reads the container, the codestream headers (SizeHeader, ImageMetadata including colour
 encoding, tone mapping and extra channels, transform data and the ICC size) and checks them like
@@ -42,7 +47,7 @@ using PictureSharp.Formats.Jxl;
 ImageConfiguration.Default = ImageConfiguration.Default.ToBuilder()
     .AddFormat(new JxlFormat()).Build();
 ImageInfo info = Image.Identify("photo.jxl");
-Console.WriteLine($"{info.Width}x{info.Height}, {info.BitsPerChannel}-bit, alpha: {info.HasAlpha}");
+Console.WriteLine($"{info.Width}x{info.Height}, {info.Color.Model} {info.Color.BitsPerSample}-bit, alpha: {info.Color.AlphaMode}");
 ```
 
 Corrupt or truncated headers throw `ImageFormatException`; recognized features that are not
@@ -50,10 +55,10 @@ supported throw `NotSupportedException`.
 
 ## Installation and verification
 
-Download PictureSharp.Jxl.0.2.0.nupkg from the private GitHub pre-release and place it
+Download PictureSharp.Jxl.0.2.1.nupkg from the private GitHub pre-release and place it
 in a local NuGet feed. Add that feed alongside nuget.org (for the PictureSharp dependency),
-then reference PictureSharp.Jxl 0.2.0. This package is not published to nuget.org or GitHub Packages.
-The only library dependency is PictureSharp >= 0.8.2; no native dependencies or unsafe code.
+then reference PictureSharp.Jxl 0.2.1. This package is not published to nuget.org or GitHub Packages.
+The only library dependency is PictureSharp >= 0.8.5; no native dependencies or unsafe code.
 
 ```sh
 dotnet build -c Release
