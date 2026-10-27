@@ -15,5 +15,5 @@ First public release of PictureSharp.Jxl.
 - Rewritten, shorter [JPEG transcoding guide](https://github.com/art-ix/PictureSharp.Jxl/blob/v0.7.2/docs/transcoding.md);
   measurements moved to [docs/benchmarks](https://github.com/art-ix/PictureSharp.Jxl/blob/v0.7.2/docs/benchmarks/transcoding.md).
 
-Codec behaviour and output are unchanged from 0.7.1. Packages are attached to this GitHub release only, not published
-to a package registry.
+Codec behaviour and output are unchanged from 0.7.1. Also available on
+[NuGet](https://www.nuget.org/packages/PictureSharp.Jxl/0.7.2): `dotnet add package PictureSharp.Jxl --version 0.7.2`.

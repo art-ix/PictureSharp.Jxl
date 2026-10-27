@@ -3,8 +3,7 @@
 JPEG XL for [PictureSharp](https://github.com/art-ix/PictureSharp), in pure C# with no native dependencies.
 Requires .NET 10+ and PictureSharp 0.8.5+.
 
-The package is attached to the [GitHub releases](https://github.com/art-ix/PictureSharp.Jxl/releases) only (not nuget.org):
-put `PictureSharp.Jxl.0.7.2.nupkg` in a local NuGet feed, then
+Install from [NuGet](https://www.nuget.org/packages/PictureSharp.Jxl):
 
 ```bash
 dotnet add package PictureSharp.Jxl --version 0.7.2

@@ -1,11 +1,19 @@
+# Pushing a v* tag validates, packs and creates the GitHub Release, then pushes the same package to nuget.org
+# (Trusted Publishing, no stored API key). Running it manually with a tag pushes that existing release's package.
 name: Release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing release tag to publish to nuget.org (e.g. v0.7.2)
+        required: true
 permissions:
   contents: read
 jobs:
   version:
+    if: github.event_name == 'push'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -32,3 +40,35 @@ jobs:
           version="$(tr -d '[:space:]' < VERSION)"
           (cd artifacts && sha256sum *.nupkg *.snupkg > SHA256SUMS)
           gh release create "$GITHUB_REF_NAME" --verify-tag --latest --title "PictureSharp.Jxl $version" --notes-file "docs/releases/release-$version.md" artifacts/*.nupkg artifacts/*.snupkg artifacts/SHA256SUMS
+  nuget:
+    needs: publish
+    if: ${{ !cancelled() && (github.event_name == 'workflow_dispatch' || needs.publish.result == 'success') }}
+    runs-on: ubuntu-24.04
+    environment: nuget
+    permissions:
+      contents: read
+      id-token: write # OIDC token for NuGet Trusted Publishing
+    steps:
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - if: github.event_name == 'push'
+        uses: actions/download-artifact@v4
+        with:
+          name: packages
+          path: artifacts
+      - name: Download release packages
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+        run: |
+          [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Invalid tag: $TAG" >&2; exit 1; }
+          gh release download "$TAG" -R "$GITHUB_REPOSITORY" -D artifacts -p '*.nupkg' -p '*.snupkg' -p SHA256SUMS
+          (cd artifacts && sha256sum -c SHA256SUMS)
+      - name: NuGet login
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+      - run: dotnet nuget push "artifacts/*.nupkg" --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
