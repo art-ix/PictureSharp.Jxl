@@ -1,4 +1,4 @@
-# Speed measurements — 0.7.3–0.7.5 (scalar)
+# Speed measurements — 0.7.3–0.7.6 (scalar)
 
 Measured on 2026-10-27, Linux x64, Intel Core i5-12500H, .NET 10, one thread (`DOTNET_PROCESSOR_COUNT=1`).
 libjxl 0.12.0 (`4128790`) times are its own `--num_reps=3` geomean with `--num_threads=1`, PNG I/O excluded, AVX2 enabled.
@@ -103,6 +103,28 @@ photo1-d0-e3 and screen-d0-e7 stay within noise (about ±10 % on this machine). 
 single-property lookup loop (slower at effort 7), inlining the weighted predictor (e3 about 20 % slower), branch-free
 selection of its largest error (no change). Converting decoded integers to float planes is about 8 % of lossless
 decoding; most of it is first writes to newly allocated planes, which the memory work of a later milestone addresses.
+
+## VarDCT rendering (0.7.6)
+
+Each EPF stage runs as its own pixel loop (the kernel is a struct type parameter instead of a per-pixel delegate),
+and Gaborish and the EPF stages filter in place: each output row is written back once no later row reads its
+unfiltered values, so no second set of planes is allocated. Gaborish slides its 3x3 window along the row (three loads
+per pixel instead of nine). The degree-4 rational polynomials of the sRGB and PQ output curves are unrolled. Decoded
+pixels and encoded files are unchanged (all 1142 golden results identical to 0.7.2).
+Lossy decoding, 7 runs pinned to one core, two alternating rounds against the 0.7.5 package (mean of the two medians):
+
+| Case | 0.7.5 (ms) | Now (ms) | Speed-up | libjxl 1 thread (ms) |
+| --- | ---: | ---: | ---: | ---: |
+| decode/photo12-d1-e7 | 720 | 652 | 1.10× | 221 |
+| decode-srgb/photo12-d1-e7 | 844 | 722 | 1.17× | 248 |
+| decode/photo1-d1-e7 | 75 | 69 | 1.09× | 16 |
+| decode/screen-d1-e7 | 138 | 123 | 1.12× | 28 |
+
+Memory for the 12 MP decode: 528 → 381 MB allocated per decode, peak RSS of the process 1120 → 643 MB. Time per
+stage of the 12 MP decode now (Stopwatch around each stage, median per run): dequantisation and IDCT about 240 ms,
+EPF 89, AC tokens 71, colour conversion 71, Gaborish 68, Rgba32 writing 56. Not kept: a dedicated 8×8 IDCT without
+transposes and an IDCT writing its last butterfly straight into the plane (no measurable change; most of the area of
+this image is DCT32 and DCT64, and the IDCT costs about 3 ns per sample).
 
 ## Reproduce
 

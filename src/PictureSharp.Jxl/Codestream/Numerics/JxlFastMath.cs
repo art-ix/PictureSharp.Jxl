@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 namespace PictureSharp.Formats.Jxl.Codestream.Numerics;
 
 /// <summary>
@@ -13,8 +15,17 @@ internal static class JxlFastMath
     public static float Fma(float a, float b, float c) => MathF.FusedMultiplyAdd(a, b, c);
 
     /// <summary>Evaluates p(x) / q(x) by Horner's scheme; the arrays hold coefficients from degree 0 up.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static float EvalRationalPolynomial(float x, ReadOnlySpan<float> p, ReadOnlySpan<float> q)
     {
+        // Degree 4 over 4 (the transfer functions), unrolled; with constant tables the JIT keeps only this branch.
+        if (p.Length == 5 && q.Length == 5)
+        {
+            float numerator = Fma(Fma(Fma(Fma(p[4], x, p[3]), x, p[2]), x, p[1]), x, p[0]);
+            float denominator = Fma(Fma(Fma(Fma(q[4], x, q[3]), x, q[2]), x, q[1]), x, q[0]);
+            return numerator / denominator;
+        }
+
         float yp = p[^1];
         for (int i = p.Length - 2; i >= 0; i--)
         {

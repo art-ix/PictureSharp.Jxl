@@ -76,14 +76,13 @@ internal sealed class JxlFrameRenderer(JxlFrameHeader frame, JxlHeaders headers,
         }
     }
 
-    // Gaborish, then the EPF stages; each filter writes into the planes the previous one read.
+    // Gaborish, then the EPF stages, each in place.
     private JxlPlane[] Restore(JxlPlane[] color)
     {
         JxlLoopFilter filter = frame.LoopFilter;
-        JxlPlane[]? spare = null;
         if (filter.Gaborish)
         {
-            (color, spare) = (JxlRenderPipeline.Gaborish(color, filter, spare, cancellationToken), color);
+            JxlRenderPipeline.Gaborish(color, filter, cancellationToken);
         }
 
         if (filter.EpfIterations == 0)
@@ -95,13 +94,13 @@ internal sealed class JxlFrameRenderer(JxlFrameHeader frame, JxlHeaders headers,
         float[] sigma = epfSigma ?? ModularSigma(filter, xBlocks * (int)frame.YSizeBlocks);
         if (filter.EpfIterations >= 3)
         {
-            (color, spare) = (JxlRenderPipeline.Epf0(color, filter, sigma, xBlocks, spare, cancellationToken), color);
+            color = JxlRenderPipeline.Epf0(color, filter, sigma, xBlocks, cancellationToken);
         }
 
-        (color, spare) = (JxlRenderPipeline.Epf1(color, filter, sigma, xBlocks, spare, cancellationToken), color);
+        color = JxlRenderPipeline.Epf1(color, filter, sigma, xBlocks, cancellationToken);
         if (filter.EpfIterations >= 2)
         {
-            color = JxlRenderPipeline.Epf2(color, filter, sigma, xBlocks, spare, cancellationToken);
+            color = JxlRenderPipeline.Epf2(color, filter, sigma, xBlocks, cancellationToken);
         }
 
         return color;
