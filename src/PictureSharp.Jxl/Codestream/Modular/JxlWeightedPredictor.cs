@@ -25,9 +25,15 @@ internal sealed class JxlWeightedPredictor(JxlWeightedHeader header, int width)
     private readonly uint maxWeight3 = header.Weights[3];
     // Two rows of errors, each padded by one position on both sides.
     private readonly int rowStride = width + 2;
-    private readonly uint[][] predictionErrors = [ErrorRows(width), ErrorRows(width), ErrorRows(width), ErrorRows(width)];
+    private readonly uint[] predictionErrors0 = ErrorRows(width);
+    private readonly uint[] predictionErrors1 = ErrorRows(width);
+    private readonly uint[] predictionErrors2 = ErrorRows(width);
+    private readonly uint[] predictionErrors3 = ErrorRows(width);
     private readonly int[] errors = new int[(width + 2) * 2];
-    private readonly long[] predictions = new long[4];
+    private long prediction0;
+    private long prediction1;
+    private long prediction2;
+    private long prediction3;
     private long prediction;
 
     /// <summary>Predicts the pixel at (x, y) from its neighbours; <paramref name="maxError"/> is the WP property.</summary>
@@ -38,10 +44,10 @@ internal sealed class JxlWeightedPredictor(JxlWeightedHeader header, int width)
         int positionN = previous + x;
         int positionNe = x < width - 1 ? positionN + 1 : positionN;
         int positionNw = x > 0 ? positionN - 1 : positionN;
-        uint weight0 = ErrorWeight(predictionErrors[0], positionN, positionNe, positionNw, maxWeight0);
-        uint weight1 = ErrorWeight(predictionErrors[1], positionN, positionNe, positionNw, maxWeight1);
-        uint weight2 = ErrorWeight(predictionErrors[2], positionN, positionNe, positionNw, maxWeight2);
-        uint weight3 = ErrorWeight(predictionErrors[3], positionN, positionNe, positionNw, maxWeight3);
+        uint weight0 = ErrorWeight(predictionErrors0, positionN, positionNe, positionNw, maxWeight0);
+        uint weight1 = ErrorWeight(predictionErrors1, positionN, positionNe, positionNw, maxWeight1);
+        uint weight2 = ErrorWeight(predictionErrors2, positionN, positionNe, positionNw, maxWeight2);
+        uint weight3 = ErrorWeight(predictionErrors3, positionN, positionNe, positionNw, maxWeight3);
 
         long n = AddBits(neighbours.N);
         long w = AddBits(neighbours.W);
@@ -72,10 +78,10 @@ internal sealed class JxlWeightedPredictor(JxlWeightedHeader header, int width)
         }
 
         maxError = (int)property;
-        predictions[0] = w + ne - n;
-        predictions[1] = n - (((sumWn + errorNe) * header.P1C) >> 5);
-        predictions[2] = w - (((sumWn + errorNw) * header.P2C) >> 5);
-        predictions[3] = n - ((errorNw * header.P3Ca + errorN * header.P3Cb + errorNe * header.P3Cc + (nn - n) * header.P3Cd
+        prediction0 = w + ne - n;
+        prediction1 = n - (((sumWn + errorNe) * header.P1C) >> 5);
+        prediction2 = w - (((sumWn + errorNw) * header.P2C) >> 5);
+        prediction3 = n - ((errorNw * header.P3Ca + errorN * header.P3Cb + errorNe * header.P3Cc + (nn - n) * header.P3Cd
             + (nw - w) * header.P3Ce) >> 5);
         prediction = WeightedAverage(weight0, weight1, weight2, weight3);
 
@@ -94,13 +100,18 @@ internal sealed class JxlWeightedPredictor(JxlWeightedHeader header, int width)
         int previous = (y & 1) != 0 ? rowStride : 0;
         value = AddBits(value);
         errors[current + x] = unchecked((int)(prediction - value));
-        for (int i = 0; i < 4; i++)
-        {
-            uint error = unchecked((uint)((Math.Abs(predictions[i] - value) + Round) >> ExtraBits));
-            predictionErrors[i][current + x] = error;
-            // Adding the error to the NE position makes it count for the E and EE pixels of the next row.
-            predictionErrors[i][previous + x + 1] = unchecked(predictionErrors[i][previous + x + 1] + error);
-        }
+        UpdateErrors(predictionErrors0, prediction0, value, current + x, previous + x + 1);
+        UpdateErrors(predictionErrors1, prediction1, value, current + x, previous + x + 1);
+        UpdateErrors(predictionErrors2, prediction2, value, current + x, previous + x + 1);
+        UpdateErrors(predictionErrors3, prediction3, value, current + x, previous + x + 1);
+    }
+
+    private static void UpdateErrors(uint[] errorsOf, long predicted, long value, int position, int positionNe)
+    {
+        uint error = unchecked((uint)((Math.Abs(predicted - value) + Round) >> ExtraBits));
+        errorsOf[position] = error;
+        // Adding the error to the NE position makes it count for the E and EE pixels of the next row.
+        errorsOf[positionNe] = unchecked(errorsOf[positionNe] + error);
     }
 
     private static uint[] ErrorRows(int width) => new uint[(width + 2) * 2];
@@ -126,10 +137,10 @@ internal sealed class JxlWeightedPredictor(JxlWeightedHeader header, int width)
         weight3 >>= shift;
         uint sum = weight0 + weight1 + weight2 + weight3;
         long total = unchecked((sum >> 1) - 1);
-        total = unchecked(total + predictions[0] * weight0);
-        total = unchecked(total + predictions[1] * weight1);
-        total = unchecked(total + predictions[2] * weight2);
-        total = unchecked(total + predictions[3] * weight3);
+        total = unchecked(total + prediction0 * weight0);
+        total = unchecked(total + prediction1 * weight1);
+        total = unchecked(total + prediction2 * weight2);
+        total = unchecked(total + prediction3 * weight3);
         return unchecked(total * DivLookup[sum - 1]) >> 24;
     }
 }

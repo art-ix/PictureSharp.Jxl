@@ -3,8 +3,28 @@ using static PictureSharp.Formats.Jxl.Codestream.IO.JxlU32;
 
 namespace PictureSharp.Formats.Jxl.Codestream.Entropy;
 
-/// <summary>One alias table entry; see libjxl's AliasTable for the layout.</summary>
-internal readonly record struct JxlAliasEntry(int Cutoff, int RightValue, int Freq0, int Offsets1, int Freq1);
+/// <summary>
+/// One alias table entry, packed into 8 bytes like libjxl's AliasTable::Entry: alphabets have at most 256 symbols, so
+/// the cutoff (at most 4096 / 32) and the right value fit a byte, frequencies (at most 4096) and offsets a 16-bit field.
+/// </summary>
+internal readonly struct JxlAliasEntry(int cutoff, int rightValue, int freq0, int offsets1, int freq1)
+{
+    private readonly byte cutoff = (byte)cutoff;
+    private readonly byte rightValue = (byte)rightValue;
+    private readonly ushort freq0 = (ushort)freq0;
+    private readonly short offsets1 = (short)offsets1;
+    private readonly ushort freq1 = (ushort)freq1;
+
+    public int Cutoff => cutoff;
+
+    public int RightValue => rightValue;
+
+    public int Freq0 => freq0;
+
+    public int Offsets1 => offsets1;
+
+    public int Freq1 => freq1;
+}
 
 /// <summary>
 /// Clustered entropy codes for a set of contexts: the context map, LZ77 parameters, and per cluster a hybrid integer

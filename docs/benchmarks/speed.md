@@ -1,4 +1,4 @@
-# Speed measurements — 0.7.3 (scalar)
+# Speed measurements — 0.7.3–0.7.4 (scalar)
 
 Measured on 2026-10-27, Linux x64, Intel Core i5-12500H, .NET 10, one thread (`DOTNET_PROCESSOR_COUNT=1`).
 libjxl 0.12.0 (`4128790`) times are its own `--num_reps=3` geomean with `--num_threads=1`, PNG I/O excluded, AVX2 enabled.
@@ -58,6 +58,29 @@ Small decodes allocate ~45 MB per call and trigger gen2 collections, which makes
 Notes: lossless encoding currently ignores `Effort` (every effort runs the e7 search), hence the large gap to cjxl at
 e1/e3. `encode/screen-d0-e7` (0.94×) was not re-measured. Peak RSS: up to 1.4 GB for 12 MP lossless decoding and
 about 2.8–3.7 GB for 12 MP encoding.
+
+## Entropy and Modular decoding (0.7.4)
+
+Entropy decoding turned out to be a small share (about 10 % of lossless and 1–3 % of lossy decoding), so 0.7.4 also
+covers the Modular pixel loop: trees without decisions predict directly, trees deciding on one property use a lookup
+table instead of walking the tree, tree nodes are packed into one array, and the weighted predictor's error update is
+unrolled. Alias table entries are packed into 8 bytes. Decoded pixels and encoded files are unchanged (515 golden
+results identical to 0.7.2). Lossless decoding, 5 runs, compared with the 0.7.3 release measurement:
+
+| Case | 0.7.3 (ms) | Now (ms) | Speed-up | libjxl 1 thread (ms) |
+| --- | ---: | ---: | ---: | ---: |
+| decode/photo12-d0-e1 | 1002 | 824 | 1.22× | 345 |
+| decode/photo12-d0-e2 | 1137 | 820 | 1.39× | 428 |
+| decode/photo12-d0-e7 | 3118 | 2968 | 1.05× | 1691 |
+| decode/photo1-d0-e3 | 243 | 163 | 1.49× | 74 |
+| decode/photo1-d0-e7 | 299 | 286 | 1.05× | 142 |
+| decode/screen-d0-e7 | 140 | 107 | 1.31× | 60 |
+
+At effort 7 about a fifth of the time is the tree walk itself (data-dependent branches); lossy decoding is unchanged.
+Tried for effort 7 and not kept, compared by minimum time in alternating runs: libjxl's two-level flattened tree (no
+faster with branches, about 10 % slower branch-free) and an edge-free neighbour path for interior pixels (no
+measurable difference). Computing only the properties a tree uses was not pursued: the local properties are a dozen
+integer operations per pixel, while the cost is in branches that depend on the data (tree walk, leaf predictor).
 
 ## Reproduce
 

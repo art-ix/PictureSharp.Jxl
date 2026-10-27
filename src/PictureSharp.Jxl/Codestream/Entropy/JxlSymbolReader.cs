@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Runtime.CompilerServices;
 using PictureSharp.Formats.Jxl.Codestream.IO;
 
 namespace PictureSharp.Formats.Jxl.Codestream.Entropy;
@@ -25,6 +26,12 @@ internal sealed class JxlSymbolReader : IDisposable
     ];
 
     private readonly JxlEntropyCode code;
+    // Copies of the code's tables, read once per symbol on the hot path.
+    private readonly byte[] contextMap;
+    private readonly JxlHybridUint[] configs;
+    private readonly JxlAliasEntry[] aliasTables;
+    private readonly bool usePrefixCode;
+    private readonly int logAlphaSize;
     private readonly int logEntrySize;
     private uint[]? window;
     private readonly ArrayPool<uint> windowPool;
@@ -40,6 +47,11 @@ internal sealed class JxlSymbolReader : IDisposable
     public JxlSymbolReader(JxlEntropyCode code, ref JxlBitReader reader, int distanceMultiplier = 0, ArrayPool<uint>? windowPool = null)
     {
         this.code = code;
+        contextMap = code.ContextMap;
+        configs = code.Configs;
+        aliasTables = code.AliasTables;
+        usePrefixCode = code.UsePrefixCode;
+        logAlphaSize = code.LogAlphaSize;
         this.windowPool = windowPool ?? ArrayPool<uint>.Shared;
         if (!code.UsePrefixCode)
         {
@@ -66,7 +78,7 @@ internal sealed class JxlSymbolReader : IDisposable
     public bool IsFinalStateValid => state == JxlEntropyCode.AnsSignature;
 
     /// <summary>Reads the value of an unclustered context.</summary>
-    public uint Read(int context, ref JxlBitReader reader) => ReadClustered(code.ContextMap[context], ref reader);
+    public uint Read(int context, ref JxlBitReader reader) => ReadClustered(contextMap[context], ref reader);
 
     /// <summary>Reads the value of a cluster (a context already mapped through the context map).</summary>
     public uint ReadClustered(int cluster, ref JxlBitReader reader)
@@ -74,7 +86,9 @@ internal sealed class JxlSymbolReader : IDisposable
         ObjectDisposedException.ThrowIf(disposed, this);
         if (window is null)
         {
-            return code.Configs[cluster].Decode(ReadSymbol(cluster, ref reader), ref reader);
+            uint symbol = usePrefixCode ? code.PrefixCodes[cluster].ReadSymbol(ref reader) : ReadAnsSymbol(cluster, ref reader);
+            ref readonly JxlHybridUint config = ref configs[cluster];
+            return symbol < config.SplitToken ? symbol : config.Decode(symbol, ref reader);
         }
 
         if (toCopy > 0)
@@ -85,14 +99,14 @@ internal sealed class JxlSymbolReader : IDisposable
         uint token = ReadSymbol(cluster, ref reader);
         if (token < code.Lz77MinSymbol)
         {
-            uint value = code.Configs[cluster].Decode(token, ref reader);
+            uint value = configs[cluster].Decode(token, ref reader);
             window[decoded++ & WindowMask] = value;
             return value;
         }
 
         toCopy = unchecked(code.Lz77LengthConfig.Decode(token - code.Lz77MinSymbol, ref reader) + code.Lz77MinLength);
         int distanceCluster = code.Lz77DistanceCluster;
-        uint distance = code.Configs[distanceCluster].Decode(ReadSymbol(distanceCluster, ref reader), ref reader);
+        uint distance = configs[distanceCluster].Decode(ReadSymbol(distanceCluster, ref reader), ref reader);
         distance = distance < specialDistances.Length ? specialDistances[distance] : unchecked(distance + 1 - (uint)specialDistances.Length);
         distance = Math.Min(Math.Min(distance, decoded), WindowSize);
         copyPosition = decoded - distance;
@@ -117,15 +131,14 @@ internal sealed class JxlSymbolReader : IDisposable
         return value;
     }
 
-    private uint ReadSymbol(int cluster, ref JxlBitReader reader)
-    {
-        if (code.UsePrefixCode)
-        {
-            return code.PrefixCodes[cluster].ReadSymbol(ref reader);
-        }
+    private uint ReadSymbol(int cluster, ref JxlBitReader reader) =>
+        usePrefixCode ? code.PrefixCodes[cluster].ReadSymbol(ref reader) : ReadAnsSymbol(cluster, ref reader);
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private uint ReadAnsSymbol(int cluster, ref JxlBitReader reader)
+    {
         uint slot = state & (JxlEntropyCode.AnsTabSize - 1);
-        JxlAliasEntry entry = code.AliasTables[(cluster << code.LogAlphaSize) + (int)(slot >> logEntrySize)];
+        JxlAliasEntry entry = aliasTables[(cluster << logAlphaSize) + (int)(slot >> logEntrySize)];
         int position = (int)(slot & ((1u << logEntrySize) - 1));
         bool greater = position >= entry.Cutoff;
         uint symbol = (uint)(greater ? entry.RightValue : (int)(slot >> logEntrySize));

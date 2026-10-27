@@ -240,17 +240,75 @@ internal sealed class JxlMaTree
     {
         public int ReferenceProperties => PropertyCount - JxlMaProperty.Local;
 
+        // The decision nodes packed together, so each step of a lookup reads one 16-byte entry. (libjxl's two-level
+        // FlatDecisionNode was measured too: no faster with branches, about 10 % slower without them.)
+        private readonly Node[] nodes = [.. Property.Select((p, i) => new Node(p, Split[i], Left[i], Right[i]))];
+
         public ref readonly JxlMaLeaf Lookup(ReadOnlySpan<int> properties)
         {
-            int node = 0;
-            while (Property[node] >= 0)
+            Node[] packed = nodes;
+            Node node = packed[0];
+            while (node.Property >= 0)
             {
-                node = properties[Property[node]] > Split[node] ? Left[node] : Right[node];
+                node = packed[properties[node.Property] > node.Split ? node.Left : node.Right];
             }
 
-            return ref Leaves[Left[node]];
+            return ref Leaves[node.Left];
+        }
+
+        private readonly record struct Node(int Property, int Split, int Left, int Right);
+
+        /// <summary>
+        /// For a tree whose decisions all test one local property (other than the channel-wide ones), a table from the
+        /// property value to the leaf index. Values below the smallest split take every right branch and values above
+        /// the largest every left one, so the property is clamped to <c>[Min, Min + Table.Length - 1]</c>.
+        /// </summary>
+        public (int Property, int Min, int[] Table)? SinglePropertyLookup()
+        {
+            int single = -1;
+            int min = int.MaxValue;
+            int max = int.MinValue;
+            for (int node = 0; node < Property.Length; node++)
+            {
+                if (Property[node] < 0)
+                {
+                    continue;
+                }
+
+                if (single >= 0 && Property[node] != single)
+                {
+                    return null;
+                }
+
+                single = Property[node];
+                min = Math.Min(min, Split[node]);
+                max = Math.Max(max, Split[node]);
+            }
+
+            if (single is < JxlMaProperty.Y or >= JxlMaProperty.Local || (long)max - min > MaxLookupRange)
+            {
+                return null;
+            }
+
+            int[] table = new int[max - min + 2];
+            for (int i = 0; i < table.Length; i++)
+            {
+                int value = min + i;
+                int node = 0;
+                while (Property[node] >= 0)
+                {
+                    node = value > Split[node] ? Left[node] : Right[node];
+                }
+
+                table[i] = Left[node];
+            }
+
+            return (single, min, table);
         }
     }
+
+    // Larger split ranges fall back to walking the tree.
+    private const int MaxLookupRange = 1 << 16;
 
     /// <summary>Decodes one channel of <paramref name="image"/> (DecodeModularChannelMAANS).</summary>
     public void DecodeChannel(ref JxlBitReader reader, JxlSymbolReader symbols, byte[] contextMap, JxlWeightedHeader weightedHeader,
@@ -265,6 +323,21 @@ internal sealed class JxlMaTree
         FilteredTree tree = Filter(channelIndex, stream, contextMap);
         int width = channel.Width;
         int[] pixels = channel.Pixels;
+        if (tree.ReferenceProperties == 0)
+        {
+            if (tree.Leaves.Length == 1 && !tree.UsesWeighted)
+            {
+                DecodeSingleLeaf(ref reader, symbols, tree.Leaves[0], channel, cancellationToken);
+                return;
+            }
+
+            if (tree.SinglePropertyLookup() is { } lookup)
+            {
+                DecodeWithLookup(ref reader, symbols, tree, lookup, weightedHeader, channel, channelIndex, stream, cancellationToken);
+                return;
+            }
+        }
+
         // At most 256 properties: the coded property index is below 256.
         Span<int> properties = stackalloc int[tree.PropertyCount];
         int referenceCount = tree.ReferenceProperties;
@@ -290,7 +363,11 @@ internal sealed class JxlMaTree
                     weightedPrediction = weighted.Predict(x, y, neighbours, out properties[JxlMaProperty.WeightedMaxError]);
                 }
 
-                references.AsSpan(x * referenceCount, referenceCount).CopyTo(properties[JxlMaProperty.Local..]);
+                if (referenceCount > 0)
+                {
+                    references.AsSpan(x * referenceCount, referenceCount).CopyTo(properties[JxlMaProperty.Local..]);
+                }
+
                 ref readonly JxlMaLeaf leaf = ref tree.Lookup(properties);
                 long guess = leaf.Offset + Predict(leaf.Predictor, neighbours, weightedPrediction);
                 uint value = symbols.ReadClustered(leaf.Cluster, ref reader);
@@ -299,6 +376,87 @@ internal sealed class JxlMaTree
             }
         }
     }
+
+    /// <summary>A tree without decisions: every pixel uses the same leaf, so no properties are computed.</summary>
+    private static void DecodeSingleLeaf(ref JxlBitReader reader, JxlSymbolReader symbols, JxlMaLeaf leaf, JxlChannel channel,
+        CancellationToken cancellationToken)
+    {
+        int width = channel.Width;
+        int[] pixels = channel.Pixels;
+        int cluster = leaf.Cluster;
+        long multiplier = leaf.Multiplier;
+        for (int y = 0; y < channel.Height; y++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            int row = y * width;
+            if (leaf.Predictor == JxlPredictor.Gradient && y > 0)
+            {
+                // Interior rows: W, N and NW exist from the second pixel on, so the edge substitutes are not needed.
+                pixels[row] = Next(ref reader, symbols, cluster, multiplier, leaf.Offset + pixels[row - width]);
+                for (int x = 1; x < width; x++)
+                {
+                    int i = row + x;
+                    long guess = leaf.Offset + JxlMaProperty.ClampedGradient(pixels[i - 1], pixels[i - width], pixels[i - width - 1]);
+                    pixels[i] = Next(ref reader, symbols, cluster, multiplier, guess);
+                }
+
+                continue;
+            }
+
+            for (int x = 0; x < width; x++)
+            {
+                long guess = leaf.Offset + Predict(leaf.Predictor, JxlNeighbours.At(pixels, width, x, y), 0);
+                pixels[row + x] = Next(ref reader, symbols, cluster, multiplier, guess);
+            }
+        }
+    }
+
+    /// <summary>
+    /// A tree deciding on a single local property: the leaf comes from a table indexed by that property, and only that
+    /// property (and the weighted prediction when a leaf or the property needs it) is computed per pixel.
+    /// </summary>
+    private static void DecodeWithLookup(ref JxlBitReader reader, JxlSymbolReader symbols, FilteredTree tree,
+        (int Property, int Min, int[] Table) lookup, JxlWeightedHeader weightedHeader, JxlChannel channel, int channelIndex,
+        int stream, CancellationToken cancellationToken)
+    {
+        int width = channel.Width;
+        int[] pixels = channel.Pixels;
+        JxlMaLeaf[] leaves = tree.Leaves;
+        (int property, int min, int[] table) = lookup;
+        int last = table.Length - 1;
+        Span<int> properties = stackalloc int[JxlMaProperty.Local];
+        JxlWeightedPredictor? weighted = tree.UsesWeighted ? new JxlWeightedPredictor(weightedHeader, width) : null;
+        for (int y = 0; y < channel.Height; y++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            JxlMaProperty.StartRow(properties, channelIndex, stream, y);
+            int row = y * width;
+            for (int x = 0; x < width; x++)
+            {
+                var neighbours = JxlNeighbours.At(pixels, width, x, y);
+                long weightedPrediction = 0;
+                if (weighted is not null)
+                {
+                    weightedPrediction = weighted.Predict(x, y, neighbours, out properties[JxlMaProperty.WeightedMaxError]);
+                }
+
+                if (property != JxlMaProperty.WeightedMaxError)
+                {
+                    JxlMaProperty.SetLocal(properties, x, neighbours);
+                }
+
+                long index = (long)properties[property] - min;
+                ref readonly JxlMaLeaf leaf = ref leaves[table[index < 0 ? 0 : index > last ? last : (int)index]];
+                long guess = leaf.Offset + Predict(leaf.Predictor, neighbours, weightedPrediction);
+                pixels[row + x] = Next(ref reader, symbols, leaf.Cluster, leaf.Multiplier, guess);
+                weighted?.Update(pixels[row + x], x, y);
+            }
+        }
+    }
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    private static int Next(ref JxlBitReader reader, JxlSymbolReader symbols, int cluster, long multiplier, long guess) =>
+        unchecked((int)(UnpackSigned(symbols.ReadClustered(cluster, ref reader)) * multiplier + guess));
 
     /// <summary>Properties from earlier channels of the same shape: |v|, v, |v - gradient|, v - gradient.</summary>
     private static void PrecomputeReferences(JxlModularImage image, int channelIndex, int y, int[] references, int count)
