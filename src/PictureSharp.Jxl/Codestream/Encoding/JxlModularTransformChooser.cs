@@ -100,10 +100,9 @@ internal static class JxlModularTransformChooser
         int step = (int)Math.Max(1, (long)width * height / RctSamplePixels);
         JxlRctType best = JxlRctType.None;
         double bestCost = double.MaxValue;
-        Span<int> current = stackalloc int[3];
-        Span<int> west = stackalloc int[3];
-        Span<int> north = stackalloc int[3];
-        Span<int> northWest = stackalloc int[3];
+        // The sampled row and the row above it after the transform, three interleaved channels per pixel.
+        int[] above = new int[3 * width];
+        int[] row = new int[3 * width];
         for (uint value = 0; value < JxlRctType.Count; value++)
         {
             var type = new JxlRctType(value);
@@ -116,15 +115,18 @@ internal static class JxlModularTransformChooser
             long extra = 0;
             for (int y = 1; y < height; y += step)
             {
+                for (int x = 0; x < width; x++)
+                {
+                    forward.Apply(planes, (y - 1) * width + x, above.AsSpan(3 * x, 3));
+                    forward.Apply(planes, y * width + x, row.AsSpan(3 * x, 3));
+                }
+
                 for (int x = 1; x < width; x++)
                 {
-                    forward.Apply(planes, y * width + x, current);
-                    forward.Apply(planes, y * width + x - 1, west);
-                    forward.Apply(planes, (y - 1) * width + x, north);
-                    forward.Apply(planes, (y - 1) * width + x - 1, northWest);
                     for (int c = 0; c < 3; c++)
                     {
-                        long residual = current[c] - JxlMaProperty.ClampedGradient(west[c], north[c], northWest[c]);
+                        int i = 3 * x + c;
+                        long residual = row[i] - JxlMaProperty.ClampedGradient(row[i - 3], above[i], above[i - 3]);
                         uint token = JxlHybridUint.Default.Encode(PackSigned(residual), out int bits, out _);
                         histograms[c][Math.Min(token, CostTokens - 1)]++;
                         extra += bits;

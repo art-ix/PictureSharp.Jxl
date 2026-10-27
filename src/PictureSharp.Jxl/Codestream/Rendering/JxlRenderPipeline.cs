@@ -248,7 +248,7 @@ internal static class JxlRenderPipeline
         return fits ? spare! : [.. planes.Select(plane => new JxlPlane(plane.Width, plane.Height))];
     }
 
-    private delegate void EpfPixel(float[][] src, int index, int stride, float invSigma, IReadOnlyList<float> scale, Span<float> result);
+    private delegate void EpfPixel(float[][] src, int index, int stride, float invSigma, float[] scale, Span<float> result);
 
     private static void AddPixel(float[][] src, int neighbour, float sad, float invSigma, ref float x, ref float y, ref float b, ref float w)
     {
@@ -293,6 +293,7 @@ internal static class JxlRenderPipeline
         JxlPlane[] output = Outputs(planes, spare);
         int width = planes[0].Width;
         int stride = planes[0].Stride;
+        float[] scale = [.. filter.ChannelScale];
         Span<float> result = stackalloc float[3];
         for (int y = 0; y < planes[0].Height; y++)
         {
@@ -315,7 +316,7 @@ internal static class JxlRenderPipeline
                 }
 
                 float invSigma = blockSigma * (borderRow || x % 8 == 0 || x % 8 == 7 ? bsm : sm);
-                pixel(src, i, stride, invSigma, filter.ChannelScale, result);
+                pixel(src, i, stride, invSigma, scale, result);
                 for (int c = 0; c < 3; c++)
                 {
                     output[c].Data[o] = result[c];

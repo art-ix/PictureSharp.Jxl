@@ -1,4 +1,11 @@
 <Project Sdk="Microsoft.NET.Sdk">
+  <!-- Builds from source (default) or against a released package with -p:JxlPackageVersion=x.y.z (artifacts/ or nuget.org)
+       to measure a baseline; scripts/measure-speed.py does this with its package option. -->
   <PropertyGroup><OutputType>Exe</OutputType><IsPackable>false</IsPackable><ServerGarbageCollection>false</ServerGarbageCollection></PropertyGroup>
-  <ItemGroup><ProjectReference Include="../../src/PictureSharp.Jxl/PictureSharp.Jxl.csproj" /></ItemGroup>
+  <PropertyGroup Condition="'$(JxlPackageVersion)' != ''">
+    <RestoreAdditionalProjectSources>$(MSBuildThisFileDirectory)../../artifacts</RestoreAdditionalProjectSources>
+    <RestorePackagesPath>$(MSBuildThisFileDirectory)../../artifacts/consumer-packages</RestorePackagesPath>
+  </PropertyGroup>
+  <ItemGroup Condition="'$(JxlPackageVersion)' == ''"><ProjectReference Include="../../src/PictureSharp.Jxl/PictureSharp.Jxl.csproj" /></ItemGroup>
+  <ItemGroup Condition="'$(JxlPackageVersion)' != ''"><PackageReference Include="PictureSharp.Jxl" Version="$(JxlPackageVersion)" /></ItemGroup>
 </Project>

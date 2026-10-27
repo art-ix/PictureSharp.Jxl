@@ -115,30 +115,31 @@ internal sealed class JxlColorOutput
     /// <summary>Converts the three colour planes in place to the output colour space and transfer function.</summary>
     public void Apply(JxlPlane[] planes, CancellationToken cancellationToken = default)
     {
-        switch (transform)
+        if (transform is not (JxlColorTransform.YCbCr or JxlColorTransform.Xyb))
         {
-            case JxlColorTransform.YCbCr:
-                ForEach(planes, YCbCrToRgb, cancellationToken);
-                break;
-            case JxlColorTransform.Xyb:
-                ForEach(planes, XybToRgb, cancellationToken);
-                break;
+            return;
         }
-    }
 
-    private delegate void PixelTransform(ref float a, ref float b, ref float c);
-
-    private static void ForEach(JxlPlane[] planes, PixelTransform transform, CancellationToken cancellationToken)
-    {
+        // Direct calls per sample (no delegate) so the conversion inlines into the row loop.
         for (int y = 0; y < planes[0].Height; y++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Span<float> r0 = planes[0].Row(y);
-            Span<float> r1 = planes[1].Row(y);
-            Span<float> r2 = planes[2].Row(y);
-            for (int x = 0; x < r0.Length; x++)
+            Span<float> r1 = planes[1].Row(y)[..r0.Length];
+            Span<float> r2 = planes[2].Row(y)[..r0.Length];
+            if (transform == JxlColorTransform.YCbCr)
             {
-                transform(ref r0[x], ref r1[x], ref r2[x]);
+                for (int x = 0; x < r0.Length; x++)
+                {
+                    YCbCrToRgb(ref r0[x], ref r1[x], ref r2[x]);
+                }
+            }
+            else
+            {
+                for (int x = 0; x < r0.Length; x++)
+                {
+                    XybToRgb(ref r0[x], ref r1[x], ref r2[x]);
+                }
             }
         }
     }

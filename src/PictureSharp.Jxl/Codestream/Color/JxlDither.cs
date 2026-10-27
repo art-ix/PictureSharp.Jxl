@@ -47,10 +47,18 @@ internal static class JxlDither
         0.04825f, -0.07914f, -0.39954f, 0.12160f, 0.29145f, 0.00965f, -0.37638f, 0.32233f, 0.20267f, -0.17564f, 0.39182f, 0.12160f, 0.18336f, 0.32619f, 0.26057f, 0.49219f, -0.48447f, -0.20653f, -0.10616f, -0.38796f, 0.31847f, 0.07528f, -0.01737f, 0.44586f, 0.11774f, 0.02509f, 0.47289f, 0.07142f, 0.33392f, -0.38410f, -0.17950f, 0.28373f,
     ];
 
-    /// <summary>The 8-bit value of channel <paramref name="c"/> (0–2 colour or gray, then alpha) at (x, y).</summary>
-    public static byte ToByte(float value, int x, int y, int c)
+    /// <summary>
+    /// The dither values of channel <paramref name="c"/> (0–2 colour or gray, then alpha) in row <paramref name="y"/>,
+    /// indexed by <see cref="Column"/>.
+    /// </summary>
+    public static ReadOnlySpan<float> Row(int y, int c) => Table.Slice((y + c * 13) % Size * Size, Size);
+
+    /// <summary>The index into <see cref="Row"/> for column <paramref name="x"/> of channel <paramref name="c"/>.</summary>
+    public static int Column(int x, int c) => (x + c * 23) & (Size - 1);
+
+    /// <summary>The 8-bit value of a sample with its dither value from <see cref="Row"/>.</summary>
+    public static byte ToByte(float value, float dither)
     {
-        float dither = Table[(y + c * 13) % Size * Size + (x + c * 23) % Size];
         float scaled = Math.Clamp(value * 255.0f + dither, 0.0f, 255.0f);
         return (byte)MathF.Round(scaled, MidpointRounding.ToEven);
     }

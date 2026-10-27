@@ -46,20 +46,29 @@ internal static class JxlPixelWriter
     // Without alpha the row has no alpha samples and every pixel is opaque.
     private static void WriteGrayRow(ReadOnlySpan<float> v, ReadOnlySpan<float> a, Span<Rgba32> row, int y)
     {
+        ReadOnlySpan<float> dither = JxlDither.Row(y, 0);
+        ReadOnlySpan<float> ditherAlpha = JxlDither.Row(y, 1);
         for (int x = 0; x < row.Length; x++)
         {
-            byte value = JxlDither.ToByte(v[x], x, y, 0);
-            row[x] = new Rgba32(value, value, value, a.IsEmpty ? (byte)255 : JxlDither.ToByte(a[x], x, y, 1));
+            byte value = JxlDither.ToByte(v[x], dither[JxlDither.Column(x, 0)]);
+            row[x] = new Rgba32(value, value, value, a.IsEmpty ? (byte)255 : JxlDither.ToByte(a[x], ditherAlpha[JxlDither.Column(x, 1)]));
         }
     }
 
     private static void WriteColorRow(ReadOnlySpan<float> r, ReadOnlySpan<float> g, ReadOnlySpan<float> b, ReadOnlySpan<float> a,
         Span<Rgba32> row, int y)
     {
+        ReadOnlySpan<float> ditherR = JxlDither.Row(y, 0);
+        ReadOnlySpan<float> ditherG = JxlDither.Row(y, 1);
+        ReadOnlySpan<float> ditherB = JxlDither.Row(y, 2);
+        ReadOnlySpan<float> ditherA = JxlDither.Row(y, 3);
+        r = r[..row.Length];
+        g = g[..row.Length];
+        b = b[..row.Length];
         for (int x = 0; x < row.Length; x++)
         {
-            row[x] = new Rgba32(JxlDither.ToByte(r[x], x, y, 0), JxlDither.ToByte(g[x], x, y, 1), JxlDither.ToByte(b[x], x, y, 2),
-                a.IsEmpty ? (byte)255 : JxlDither.ToByte(a[x], x, y, 3));
+            row[x] = new Rgba32(JxlDither.ToByte(r[x], ditherR[JxlDither.Column(x, 0)]), JxlDither.ToByte(g[x], ditherG[JxlDither.Column(x, 1)]),
+                JxlDither.ToByte(b[x], ditherB[JxlDither.Column(x, 2)]), a.IsEmpty ? (byte)255 : JxlDither.ToByte(a[x], ditherA[JxlDither.Column(x, 3)]));
         }
     }
 }

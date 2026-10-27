@@ -18,6 +18,11 @@ internal sealed class JxlWeightedPredictor(JxlWeightedHeader header, int width)
     private static readonly uint[] DivLookup = [.. Enumerable.Range(0, 64).Select(i => (uint)((1 << 24) / (i + 1)))];
 
     private readonly int width = width;
+    // The header's maximum weights, copied out of its read-only list for the per-pixel loop.
+    private readonly uint maxWeight0 = header.Weights[0];
+    private readonly uint maxWeight1 = header.Weights[1];
+    private readonly uint maxWeight2 = header.Weights[2];
+    private readonly uint maxWeight3 = header.Weights[3];
     // Two rows of errors, each padded by one position on both sides.
     private readonly int rowStride = width + 2;
     private readonly uint[][] predictionErrors = [ErrorRows(width), ErrorRows(width), ErrorRows(width), ErrorRows(width)];
@@ -33,12 +38,10 @@ internal sealed class JxlWeightedPredictor(JxlWeightedHeader header, int width)
         int positionN = previous + x;
         int positionNe = x < width - 1 ? positionN + 1 : positionN;
         int positionNw = x > 0 ? positionN - 1 : positionN;
-        Span<uint> weights = stackalloc uint[4];
-        for (int i = 0; i < 4; i++)
-        {
-            uint[] errorsOf = predictionErrors[i];
-            weights[i] = ErrorWeight(unchecked(errorsOf[positionN] + errorsOf[positionNe] + errorsOf[positionNw]), header.Weights[i]);
-        }
+        uint weight0 = ErrorWeight(predictionErrors[0], positionN, positionNe, positionNw, maxWeight0);
+        uint weight1 = ErrorWeight(predictionErrors[1], positionN, positionNe, positionNw, maxWeight1);
+        uint weight2 = ErrorWeight(predictionErrors[2], positionN, positionNe, positionNw, maxWeight2);
+        uint weight3 = ErrorWeight(predictionErrors[3], positionN, positionNe, positionNw, maxWeight3);
 
         long n = AddBits(neighbours.N);
         long w = AddBits(neighbours.W);
@@ -74,7 +77,7 @@ internal sealed class JxlWeightedPredictor(JxlWeightedHeader header, int width)
         predictions[2] = w - (((sumWn + errorNw) * header.P2C) >> 5);
         predictions[3] = n - ((errorNw * header.P3Ca + errorN * header.P3Cb + errorNe * header.P3Cc + (nn - n) * header.P3Cd
             + (nw - w) * header.P3Ce) >> 5);
-        prediction = WeightedAverage(weights);
+        prediction = WeightedAverage(weight0, weight1, weight2, weight3);
 
         // When the three errors have different signs, clamp to the range of W, NE and N.
         if (((errorN ^ errorW) | (errorN ^ errorNw)) <= 0)
@@ -104,6 +107,9 @@ internal sealed class JxlWeightedPredictor(JxlWeightedHeader header, int width)
 
     private static long AddBits(long value) => unchecked(value << ExtraBits);
 
+    private static uint ErrorWeight(uint[] errorsOf, int positionN, int positionNe, int positionNw, uint maxWeight) =>
+        ErrorWeight(unchecked(errorsOf[positionN] + errorsOf[positionNe] + errorsOf[positionNw]), maxWeight);
+
     // 4 + (maxWeight << 24) / (x + 1), approximately and without division.
     private static uint ErrorWeight(uint x, uint maxWeight)
     {
@@ -111,28 +117,19 @@ internal sealed class JxlWeightedPredictor(JxlWeightedHeader header, int width)
         return 4 + ((maxWeight * DivLookup[x >> shift]) >> shift);
     }
 
-    private long WeightedAverage(Span<uint> weights)
+    private long WeightedAverage(uint weight0, uint weight1, uint weight2, uint weight3)
     {
-        uint sum = 0;
-        foreach (uint weight in weights)
-        {
-            sum = unchecked(sum + weight);
-        }
-
-        int log = Log2Floor(sum);
-        sum = 0;
-        for (int i = 0; i < 4; i++)
-        {
-            weights[i] >>= log - 4;
-            sum += weights[i];
-        }
-
+        int shift = Log2Floor(unchecked(weight0 + weight1 + weight2 + weight3)) - 4;
+        weight0 >>= shift;
+        weight1 >>= shift;
+        weight2 >>= shift;
+        weight3 >>= shift;
+        uint sum = weight0 + weight1 + weight2 + weight3;
         long total = unchecked((sum >> 1) - 1);
-        for (int i = 0; i < 4; i++)
-        {
-            total = unchecked(total + predictions[i] * weights[i]);
-        }
-
+        total = unchecked(total + predictions[0] * weight0);
+        total = unchecked(total + predictions[1] * weight1);
+        total = unchecked(total + predictions[2] * weight2);
+        total = unchecked(total + predictions[3] * weight3);
         return unchecked(total * DivLookup[sum - 1]) >> 24;
     }
 }

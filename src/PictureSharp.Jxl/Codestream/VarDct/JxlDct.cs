@@ -5,7 +5,7 @@ namespace PictureSharp.Formats.Jxl.Codestream.VarDct;
 /// <summary>
 /// The VarDCT inverse transforms (TransformToPixels), the forward DCT that turns DC values into the lowest
 /// coefficients of large varblocks (LowestFrequenciesFromDC), and the encoder's forward transforms
-/// (TransformFromPixels, DCFromLowestFrequencies). Scalar ports, column by column, of libjxl v0.12.0
+/// (TransformFromPixels, DCFromLowestFrequencies). Scalar ports, all columns of a 1D pass at once, of libjxl v0.12.0
 /// lib/jxl/dct-inl.h, lib/jxl/dec_transforms-inl.h, lib/jxl/enc_transforms-inl.h and lib/jxl/transpose-inl.h
 /// (BSD-3-Clause), with the same operation order and fused multiply-adds.
 /// </summary>
@@ -14,7 +14,7 @@ internal static class JxlDct
     internal const float Sqrt2 = 1.41421356237f;
 
     /// <summary>Scratch floats a transform of a varblock of <paramref name="coefficients"/> coefficients needs.</summary>
-    public static int ScratchSize(int coefficients) => 2 * coefficients + 4 * 256 + 64;
+    public static int ScratchSize(int coefficients) => 4 * coefficients + 4 * 256 + 64;
 
     /// <summary>
     /// Writes the pixels of a varblock: <paramref name="coefficients"/> (destroyed) are laid out with the smaller
@@ -460,135 +460,266 @@ internal static class JxlDct
         }
     }
 
-    /// <summary>The n-point IDCT down each of <paramref name="count"/> columns.</summary>
-    private static void Idct1D(int n, int count, ReadOnlySpan<float> from, int fromStride, Span<float> to, int toStride, Span<float> scratch)
+    /// <summary>
+    /// The n-point IDCT down each of <paramref name="count"/> columns. <paramref name="from"/> is contiguous
+    /// (<paramref name="fromStride"/> = <paramref name="count"/>) and destroyed: the columns are transformed in place,
+    /// all at once row by row, then copied to <paramref name="to"/>.
+    /// </summary>
+    private static void Idct1D(int n, int count, Span<float> from, int fromStride, Span<float> to, int toStride, Span<float> scratch)
     {
-        Span<float> column = scratch[..n];
-        Span<float> result = scratch.Slice(n, n);
-        Span<float> tmp = scratch[(2 * n)..];
-        for (int c = 0; c < count; c++)
+        System.Diagnostics.Debug.Assert(fromStride == count);
+        Span<float> data = from[..(n * count)];
+        IdctColumns(n, count, data, scratch);
+        for (int i = 0; i < n; i++)
         {
-            for (int i = 0; i < n; i++)
-            {
-                column[i] = from[i * fromStride + c];
-            }
-
-            Idct(n, column, result, tmp);
-            for (int i = 0; i < n; i++)
-            {
-                to[i * toStride + c] = result[i];
-            }
+            data.Slice(i * count, count).CopyTo(to[(i * toStride)..]);
         }
     }
 
-    /// <summary>The n-point DCT down each of <paramref name="count"/> columns, scaled by 1/n (DCT1DWrapper).</summary>
+    /// <summary>
+    /// The n-point DCT down each of <paramref name="count"/> columns, scaled by 1/n (DCT1DWrapper); <paramref name="to"/>
+    /// is contiguous (<paramref name="toStride"/> = <paramref name="count"/>) and must not overlap <paramref name="from"/>.
+    /// </summary>
     private static void Dct1D(int n, int count, ReadOnlySpan<float> from, int fromStride, Span<float> to, int toStride, Span<float> scratch)
     {
-        Span<float> column = scratch[..n];
-        Span<float> tmp = scratch[n..];
-        float scale = 1.0f / n;
-        for (int c = 0; c < count; c++)
+        System.Diagnostics.Debug.Assert(toStride == count);
+        Span<float> data = to[..(n * count)];
+        for (int i = 0; i < n; i++)
         {
-            for (int i = 0; i < n; i++)
-            {
-                column[i] = from[i * fromStride + c];
-            }
+            from.Slice(i * fromStride, count).CopyTo(data[(i * count)..]);
+        }
 
-            Dct(n, column, tmp);
-            for (int i = 0; i < n; i++)
-            {
-                to[i * toStride + c] = scale * column[i];
-            }
+        DctColumns(n, count, data, scratch);
+        float scale = 1.0f / n;
+        for (int i = 0; i < data.Length; i++)
+        {
+            data[i] = scale * data[i];
         }
     }
 
-    // IDCT1DImpl: even/odd split, recursive halves, then the butterflies. Input and output may be the same span.
-    private static void Idct(int n, ReadOnlySpan<float> input, Span<float> output, Span<float> scratch)
+    // IDCT1DImpl on every column of the n×count matrix at once (row i holds element i of each column): even/odd
+    // split, recursive halves, then the butterflies, each column with the same operations in the same order as a
+    // single-column transform. Sizes 4 and 8 (the leaves of every larger size) are unrolled per column.
+    private static void IdctColumns(int n, int count, Span<float> data, Span<float> scratch)
     {
-        if (n == 1)
+        switch (n)
         {
-            output[0] = input[0];
-            return;
-        }
+            case 1:
+                return;
+            case 2:
+                Span<float> row0 = data[..count];
+                Span<float> row1 = data.Slice(count, count);
+                for (int c = 0; c < count; c++)
+                {
+                    (float a, float b) = (row0[c], row1[c]);
+                    row0[c] = a + b;
+                    row1[c] = a - b;
+                }
 
-        if (n == 2)
-        {
-            (float a, float b) = (input[0], input[1]);
-            output[0] = a + b;
-            output[1] = a - b;
-            return;
+                return;
+            case 4:
+                for (int c = 0; c < count; c++)
+                {
+                    Idct4(data[c], data[count + c], data[2 * count + c], data[3 * count + c],
+                        out data[c], out data[count + c], out data[2 * count + c], out data[3 * count + c]);
+                }
+
+                return;
+            case 8:
+                for (int c = 0; c < count; c++)
+                {
+                    Idct8(data, c, count);
+                }
+
+                return;
         }
 
         int half = n / 2;
-        Span<float> tmp = scratch[..n];
+        int halfSize = half * count;
+        Span<float> even = scratch[..halfSize];
+        Span<float> odd = scratch.Slice(halfSize, halfSize);
+        Span<float> rest = scratch[(2 * halfSize)..];
         for (int i = 0; i < half; i++)
         {
-            tmp[i] = input[2 * i];
-            tmp[half + i] = input[2 * i + 1];
+            data.Slice(2 * i * count, count).CopyTo(even[(i * count)..]);
+            data.Slice((2 * i + 1) * count, count).CopyTo(odd[(i * count)..]);
         }
 
-        Idct(half, tmp[..half], tmp[..half], scratch[n..]);
-        Span<float> odd = tmp[half..];
+        IdctColumns(half, count, even, rest);
         for (int i = half - 1; i > 0; i--)
         {
-            odd[i] += odd[i - 1];
+            Span<float> row = odd.Slice(i * count, count);
+            ReadOnlySpan<float> previous = odd.Slice((i - 1) * count, count);
+            for (int c = 0; c < count; c++)
+            {
+                row[c] += previous[c];
+            }
         }
 
-        odd[0] *= Sqrt2;
-        Idct(half, odd, odd, scratch[n..]);
+        Span<float> first = odd[..count];
+        for (int c = 0; c < count; c++)
+        {
+            first[c] *= Sqrt2;
+        }
+
+        IdctColumns(half, count, odd, rest);
         ReadOnlySpan<float> multipliers = Multipliers(n);
         for (int i = 0; i < half; i++)
         {
-            float even = tmp[i];
-            float scaled = odd[i];
-            output[i] = JxlFastMath.Fma(multipliers[i], scaled, even);
-            output[n - i - 1] = JxlFastMath.Fma(-multipliers[i], scaled, even);
+            float multiplier = multipliers[i];
+            ReadOnlySpan<float> evenRow = even.Slice(i * count, count);
+            ReadOnlySpan<float> oddRow = odd.Slice(i * count, count);
+            Span<float> top = data.Slice(i * count, count);
+            Span<float> bottom = data.Slice((n - i - 1) * count, count);
+            for (int c = 0; c < count; c++)
+            {
+                top[c] = JxlFastMath.Fma(multiplier, oddRow[c], evenRow[c]);
+                bottom[c] = JxlFastMath.Fma(-multiplier, oddRow[c], evenRow[c]);
+            }
         }
     }
 
-    // DCT1DImpl, in place.
-    private static void Dct(int n, Span<float> mem, Span<float> scratch)
+    // The 8-point IDCT of the column starting at data[offset] with the given stride, in place.
+    private static void Idct8(Span<float> data, int offset, int stride)
     {
-        if (n == 1)
-        {
-            return;
-        }
+        float in0 = data[offset], in1 = data[offset + stride], in2 = data[offset + 2 * stride], in3 = data[offset + 3 * stride];
+        float in4 = data[offset + 4 * stride], in5 = data[offset + 5 * stride], in6 = data[offset + 6 * stride], in7 = data[offset + 7 * stride];
+        Idct4(in0, in2, in4, in6, out float e0, out float e1, out float e2, out float e3);
+        Idct4(in1 * Sqrt2, in3 + in1, in5 + in3, in7 + in5, out float o0, out float o1, out float o2, out float o3);
+        ReadOnlySpan<float> m = JxlDctTables.Multipliers8;
+        data[offset + 7 * stride] = JxlFastMath.Fma(-m[0], o0, e0);
+        data[offset] = JxlFastMath.Fma(m[0], o0, e0);
+        data[offset + 6 * stride] = JxlFastMath.Fma(-m[1], o1, e1);
+        data[offset + stride] = JxlFastMath.Fma(m[1], o1, e1);
+        data[offset + 5 * stride] = JxlFastMath.Fma(-m[2], o2, e2);
+        data[offset + 2 * stride] = JxlFastMath.Fma(m[2], o2, e2);
+        data[offset + 4 * stride] = JxlFastMath.Fma(-m[3], o3, e3);
+        data[offset + 3 * stride] = JxlFastMath.Fma(m[3], o3, e3);
+    }
 
-        if (n == 2)
+    private static void Idct4(float in0, float in1, float in2, float in3, out float out0, out float out1, out float out2, out float out3)
+    {
+        float e0 = in0 + in2;
+        float e1 = in0 - in2;
+        float odd0 = in1 * Sqrt2;
+        float odd1 = in3 + in1;
+        float p0 = odd0 + odd1;
+        float p1 = odd0 - odd1;
+        ReadOnlySpan<float> m = JxlDctTables.Multipliers4;
+        out0 = JxlFastMath.Fma(m[0], p0, e0);
+        out3 = JxlFastMath.Fma(-m[0], p0, e0);
+        out1 = JxlFastMath.Fma(m[1], p1, e1);
+        out2 = JxlFastMath.Fma(-m[1], p1, e1);
+    }
+
+    // DCT1DImpl on every column of the n×count matrix at once, in place; see IdctColumns.
+    private static void DctColumns(int n, int count, Span<float> data, Span<float> scratch)
+    {
+        switch (n)
         {
-            (float a, float b) = (mem[0], mem[1]);
-            mem[0] = a + b;
-            mem[1] = a - b;
-            return;
+            case 1:
+                return;
+            case 2:
+                Span<float> row0 = data[..count];
+                Span<float> row1 = data.Slice(count, count);
+                for (int c = 0; c < count; c++)
+                {
+                    (float a, float b) = (row0[c], row1[c]);
+                    row0[c] = a + b;
+                    row1[c] = a - b;
+                }
+
+                return;
+            case 4:
+                for (int c = 0; c < count; c++)
+                {
+                    Dct4(data[c], data[count + c], data[2 * count + c], data[3 * count + c],
+                        out data[c], out data[count + c], out data[2 * count + c], out data[3 * count + c]);
+                }
+
+                return;
+            case 8:
+                for (int c = 0; c < count; c++)
+                {
+                    Dct8(data, c, count);
+                }
+
+                return;
         }
 
         int half = n / 2;
-        Span<float> tmp = scratch[..n];
-        for (int i = 0; i < half; i++)
-        {
-            tmp[i] = mem[i] + mem[n - 1 - i];
-        }
-
-        Dct(half, tmp[..half], scratch[n..]);
+        int halfSize = half * count;
+        Span<float> even = scratch[..halfSize];
+        Span<float> odd = scratch.Slice(halfSize, halfSize);
+        Span<float> rest = scratch[(2 * halfSize)..];
         ReadOnlySpan<float> multipliers = Multipliers(n);
         for (int i = 0; i < half; i++)
         {
-            tmp[half + i] = (mem[i] - mem[n - 1 - i]) * multipliers[i];
+            float multiplier = multipliers[i];
+            ReadOnlySpan<float> top = data.Slice(i * count, count);
+            ReadOnlySpan<float> bottom = data.Slice((n - 1 - i) * count, count);
+            Span<float> evenRow = even.Slice(i * count, count);
+            Span<float> oddRow = odd.Slice(i * count, count);
+            for (int c = 0; c < count; c++)
+            {
+                evenRow[c] = top[c] + bottom[c];
+                oddRow[c] = (top[c] - bottom[c]) * multiplier;
+            }
         }
 
-        Span<float> odd = tmp[half..];
-        Dct(half, odd, scratch[n..]);
-        odd[0] = JxlFastMath.Fma(odd[0], Sqrt2, odd[1]);
+        DctColumns(half, count, even, rest);
+        DctColumns(half, count, odd, rest);
+        Span<float> first = odd[..count];
+        ReadOnlySpan<float> second = odd.Slice(count, count);
+        for (int c = 0; c < count; c++)
+        {
+            first[c] = JxlFastMath.Fma(first[c], Sqrt2, second[c]);
+        }
+
         for (int i = 1; i + 1 < half; i++)
         {
-            odd[i] += odd[i + 1];
+            Span<float> row = odd.Slice(i * count, count);
+            ReadOnlySpan<float> next = odd.Slice((i + 1) * count, count);
+            for (int c = 0; c < count; c++)
+            {
+                row[c] += next[c];
+            }
         }
 
         for (int i = 0; i < half; i++)
         {
-            mem[2 * i] = tmp[i];
-            mem[2 * i + 1] = tmp[half + i];
+            even.Slice(i * count, count).CopyTo(data[(2 * i * count)..]);
+            odd.Slice(i * count, count).CopyTo(data[((2 * i + 1) * count)..]);
         }
+    }
+
+    // The 8-point DCT of the column starting at data[offset] with the given stride, in place.
+    private static void Dct8(Span<float> data, int offset, int stride)
+    {
+        float m0 = data[offset], m1 = data[offset + stride], m2 = data[offset + 2 * stride], m3 = data[offset + 3 * stride];
+        float m4 = data[offset + 4 * stride], m5 = data[offset + 5 * stride], m6 = data[offset + 6 * stride], m7 = data[offset + 7 * stride];
+        ReadOnlySpan<float> m = JxlDctTables.Multipliers8;
+        Dct4(m0 + m7, m1 + m6, m2 + m5, m3 + m4, out data[offset], out data[offset + 2 * stride], out data[offset + 4 * stride], out data[offset + 6 * stride]);
+        Dct4((m0 - m7) * m[0], (m1 - m6) * m[1], (m2 - m5) * m[2], (m3 - m4) * m[3], out float u0, out float u1, out float u2, out float u3);
+        data[offset + stride] = JxlFastMath.Fma(u0, Sqrt2, u1);
+        data[offset + 3 * stride] = u1 + u2;
+        data[offset + 5 * stride] = u2 + u3;
+        data[offset + 7 * stride] = u3;
+    }
+
+    private static void Dct4(float m0, float m1, float m2, float m3, out float out0, out float out1, out float out2, out float out3)
+    {
+        float t0 = m0 + m3;
+        float t1 = m1 + m2;
+        ReadOnlySpan<float> m = JxlDctTables.Multipliers4;
+        float u0 = (m0 - m3) * m[0];
+        float u1 = (m1 - m2) * m[1];
+        float v0 = u0 + u1;
+        float v1 = u0 - u1;
+        out0 = t0 + t1;
+        out1 = JxlFastMath.Fma(v0, Sqrt2, v1);
+        out2 = t0 - t1;
+        out3 = v1;
     }
 
     private static void Identity(ReadOnlySpan<float> coefficients, Span<float> pixels, int stride)
