@@ -17,7 +17,8 @@
    "renderingIntent": "Relative",
    "icc": false,
    "intensityTarget": 255.0,
-   "boxes": []
+   "boxes": [],
+   "rgba8Sha256": "0c06de835d65464eeec27dd831e18c5886e74cc3d195a5bfc531ef2fc4540f7e"
   },
   "container-exif.jxl": {
    "width": 40,
@@ -41,7 +42,8 @@
     "jxlp",
     "Exif",
     "jxlp"
-   ]
+   ],
+   "rgba8Sha256": "a428557340d649bfe614d5e9fd6897c35dfa896310b85d926d5d7ddbe66a2702"
   },
   "container-jxlc.jxl": {
    "width": 40,
@@ -63,7 +65,65 @@
     "JXL ",
     "ftyp",
     "jxlc"
-   ]
+   ],
+   "rgba8Sha256": "0393f175d37aa05d87225e873242758ae7082d7c1541adeb4a2e1b01dded6bdb"
+  },
+  "delta-palette.jxl": {
+   "width": 40,
+   "height": 24,
+   "bits": 8,
+   "float": false,
+   "alpha": false,
+   "animated": false,
+   "extraChannels": 0,
+   "orientation": 1,
+   "colorSpace": "RGB",
+   "whitePoint": "D65",
+   "primaries": "sRGB",
+   "transferFunction": "sRGB",
+   "renderingIntent": "Relative",
+   "icc": false,
+   "intensityTarget": 255.0,
+   "boxes": [],
+   "rgba8Sha256": "73623d9cb012fc13cc80346fcb041511841d8948a468471caff9c67b28f36827"
+  },
+  "effort1.jxl": {
+   "width": 40,
+   "height": 24,
+   "bits": 8,
+   "float": false,
+   "alpha": true,
+   "animated": false,
+   "extraChannels": 1,
+   "orientation": 1,
+   "colorSpace": "RGB",
+   "whitePoint": "D65",
+   "primaries": "sRGB",
+   "transferFunction": "sRGB",
+   "renderingIntent": "Relative",
+   "icc": false,
+   "intensityTarget": 255.0,
+   "boxes": [],
+   "rgba8Sha256": "46c4f2237abc16e31ed3b58a6b969b61694229cd675cfa04c17043f4bbbb875d"
+  },
+  "effort9.jxl": {
+   "width": 40,
+   "height": 24,
+   "bits": 8,
+   "float": false,
+   "alpha": false,
+   "animated": false,
+   "extraChannels": 0,
+   "orientation": 1,
+   "colorSpace": "RGB",
+   "whitePoint": "D65",
+   "primaries": "sRGB",
+   "transferFunction": "sRGB",
+   "renderingIntent": "Relative",
+   "icc": false,
+   "intensityTarget": 255.0,
+   "boxes": [],
+   "rgba8Sha256": "0393f175d37aa05d87225e873242758ae7082d7c1541adeb4a2e1b01dded6bdb"
   },
   "float32.jxl": {
    "width": 20,
@@ -86,7 +146,8 @@
     "ftyp",
     "jxll",
     "jxlc"
-   ]
+   ],
+   "rgba8Sha256": "515c6e9c90b1e0db876d196bc036dab6d5903301989f3066898712cc8fea8ac1"
   },
   "gamma-custom.jxl": {
    "width": 40,
@@ -104,7 +165,8 @@
    "renderingIntent": "Relative",
    "icc": false,
    "intensityTarget": 255.0,
-   "boxes": []
+   "boxes": [],
+   "rgba8Sha256": "0393f175d37aa05d87225e873242758ae7082d7c1541adeb4a2e1b01dded6bdb"
   },
   "gray16-alpha.jxl": {
    "width": 33,
@@ -127,7 +189,8 @@
     "ftyp",
     "jxll",
     "jxlc"
-   ]
+   ],
+   "rgba8Sha256": "bb12f5ac57429e505a2b1269c78382c12d091c786262d18698d8655fcb052493"
   },
   "gray8-lossless.jxl": {
    "width": 40,
@@ -145,7 +208,27 @@
    "renderingIntent": "Relative",
    "icc": false,
    "intensityTarget": 255.0,
-   "boxes": []
+   "boxes": [],
+   "rgba8Sha256": "417b02dc0c96a5570cf411218a70ec448d2e067dfed8a0a891676acc8405fddb"
+  },
+  "groups-300x200.jxl": {
+   "width": 300,
+   "height": 200,
+   "bits": 8,
+   "float": false,
+   "alpha": false,
+   "animated": false,
+   "extraChannels": 0,
+   "orientation": 1,
+   "colorSpace": "RGB",
+   "whitePoint": "D65",
+   "primaries": "sRGB",
+   "transferFunction": "sRGB",
+   "renderingIntent": "Relative",
+   "icc": false,
+   "intensityTarget": 255.0,
+   "boxes": [],
+   "rgba8Sha256": "2c5c215bd16a84a419f524647a4bae48f2afa6b1e79cb3efc992238c0f43d2d0"
   },
   "icc-profile.jxl": {
    "width": 40,
@@ -163,7 +246,8 @@
    "renderingIntent": null,
    "icc": true,
    "intensityTarget": 255.0,
-   "boxes": []
+   "boxes": [],
+   "rgba8Sha256": "0393f175d37aa05d87225e873242758ae7082d7c1541adeb4a2e1b01dded6bdb"
   },
   "jxlp-v1-out-of-order.jxl": {
    "width": 40,
@@ -186,7 +270,8 @@
     "ftyp",
     "jxlp",
     "jxlp"
-   ]
+   ],
+   "rgba8Sha256": "fb61a866d26f2d8befabfab060c854df5c006cb323fe9ffa4f5cd8a6776cc926"
   },
   "jxlp-v1.jxl": {
    "width": 40,
@@ -209,7 +294,27 @@
     "ftyp",
     "jxlp",
     "jxlp"
-   ]
+   ],
+   "rgba8Sha256": "fb61a866d26f2d8befabfab060c854df5c006cb323fe9ffa4f5cd8a6776cc926"
+  },
+  "lf-groups.jxl": {
+   "width": 1100,
+   "height": 40,
+   "bits": 8,
+   "float": false,
+   "alpha": true,
+   "animated": false,
+   "extraChannels": 1,
+   "orientation": 1,
+   "colorSpace": "RGB",
+   "whitePoint": "D65",
+   "primaries": "sRGB",
+   "transferFunction": "sRGB",
+   "renderingIntent": "Relative",
+   "icc": false,
+   "intensityTarget": 255.0,
+   "boxes": [],
+   "rgba8Sha256": "184f2c919023be6f40478a2129e46bd30cd5d9228202d31111e4ffd65bc17a87"
   },
   "orient1.jxl": {
    "width": 40,
@@ -233,7 +338,8 @@
     "jxlp",
     "brob",
     "jxlp"
-   ]
+   ],
+   "rgba8Sha256": "a428557340d649bfe614d5e9fd6897c35dfa896310b85d926d5d7ddbe66a2702"
   },
   "orient2.jxl": {
    "width": 40,
@@ -257,7 +363,8 @@
     "jxlp",
     "brob",
     "jxlp"
-   ]
+   ],
+   "rgba8Sha256": "e80995e7ba8320fa7cc14a97b448cc0e414748555d9432e892f475233ebb1f2d"
   },
   "orient3.jxl": {
    "width": 40,
@@ -281,7 +388,8 @@
     "jxlp",
     "brob",
     "jxlp"
-   ]
+   ],
+   "rgba8Sha256": "352a4d375bd1c4b3aa57ad9fcdc45e3ad31f93926bef27d7534220ce6a86f1c4"
   },
   "orient4.jxl": {
    "width": 40,
@@ -305,7 +413,8 @@
     "jxlp",
     "brob",
     "jxlp"
-   ]
+   ],
+   "rgba8Sha256": "6902916df3fb94397726875d8e2eed1e3a91a29eec684653a12096e48371e382"
   },
   "orient5.jxl": {
    "width": 40,
@@ -329,7 +438,8 @@
     "jxlp",
     "brob",
     "jxlp"
-   ]
+   ],
+   "rgba8Sha256": "603f73826625e98933d870efe40d8210a8097a74588c61bce4f3aa3fba88dca0"
   },
   "orient6.jxl": {
    "width": 40,
@@ -353,7 +463,8 @@
     "jxlp",
     "brob",
     "jxlp"
-   ]
+   ],
+   "rgba8Sha256": "71bf6e55185338a7c2e18c01c7fdc80a2dee6e50f8d9a593ad0da3e0e3cfd205"
   },
   "orient7.jxl": {
    "width": 40,
@@ -377,7 +488,8 @@
     "jxlp",
     "brob",
     "jxlp"
-   ]
+   ],
+   "rgba8Sha256": "0e0bfae90561a902b1bc55ec26a6f55ee247a304d5f41feab90b3af40daa3ae7"
   },
   "orient8.jxl": {
    "width": 40,
@@ -401,7 +513,8 @@
     "jxlp",
     "brob",
     "jxlp"
-   ]
+   ],
+   "rgba8Sha256": "af5cfc12bdc9e6aabde915c7c20fd32c199ecf8d5d65205fc81b7fb0211a0841"
   },
   "p3-perceptual.jxl": {
    "width": 40,
@@ -419,7 +532,27 @@
    "renderingIntent": "Perceptual",
    "icc": false,
    "intensityTarget": 255.0,
-   "boxes": []
+   "boxes": [],
+   "rgba8Sha256": "0393f175d37aa05d87225e873242758ae7082d7c1541adeb4a2e1b01dded6bdb"
+  },
+  "palette.jxl": {
+   "width": 40,
+   "height": 24,
+   "bits": 8,
+   "float": false,
+   "alpha": false,
+   "animated": false,
+   "extraChannels": 0,
+   "orientation": 1,
+   "colorSpace": "RGB",
+   "whitePoint": "D65",
+   "primaries": "sRGB",
+   "transferFunction": "sRGB",
+   "renderingIntent": "Relative",
+   "icc": false,
+   "intensityTarget": 255.0,
+   "boxes": [],
+   "rgba8Sha256": "f5cc672006a003df2e83448ea67bb80abe5590d5a24b03a587695ce672bc8ce3"
   },
   "pq-bt2100.jxl": {
    "width": 40,
@@ -437,7 +570,27 @@
    "renderingIntent": "Relative",
    "icc": false,
    "intensityTarget": 10000.0,
-   "boxes": []
+   "boxes": [],
+   "rgba8Sha256": "0393f175d37aa05d87225e873242758ae7082d7c1541adeb4a2e1b01dded6bdb"
+  },
+  "progressive.jxl": {
+   "width": 40,
+   "height": 24,
+   "bits": 8,
+   "float": false,
+   "alpha": false,
+   "animated": false,
+   "extraChannels": 0,
+   "orientation": 1,
+   "colorSpace": "RGB",
+   "whitePoint": "D65",
+   "primaries": "sRGB",
+   "transferFunction": "sRGB",
+   "renderingIntent": "Relative",
+   "icc": false,
+   "intensityTarget": 255.0,
+   "boxes": [],
+   "rgba8Sha256": "0393f175d37aa05d87225e873242758ae7082d7c1541adeb4a2e1b01dded6bdb"
   },
   "ratio-160x90.jxl": {
    "width": 160,
@@ -455,7 +608,8 @@
    "renderingIntent": "Relative",
    "icc": false,
    "intensityTarget": 255.0,
-   "boxes": []
+   "boxes": [],
+   "rgba8Sha256": "da3156ee68abdb8cc0af7ef885912aec0420f93bc270850e25af4e36c29ee008"
   },
   "rgb16-lossless.jxl": {
    "width": 40,
@@ -478,7 +632,8 @@
     "ftyp",
     "jxll",
     "jxlc"
-   ]
+   ],
+   "rgba8Sha256": "0393f175d37aa05d87225e873242758ae7082d7c1541adeb4a2e1b01dded6bdb"
   },
   "rgb8-lossless.jxl": {
    "width": 40,
@@ -496,7 +651,8 @@
    "renderingIntent": "Relative",
    "icc": false,
    "intensityTarget": 255.0,
-   "boxes": []
+   "boxes": [],
+   "rgba8Sha256": "0393f175d37aa05d87225e873242758ae7082d7c1541adeb4a2e1b01dded6bdb"
   },
   "rgb8-lossy.jxl": {
    "width": 40,
@@ -514,7 +670,8 @@
    "renderingIntent": "Relative",
    "icc": false,
    "intensityTarget": 255.0,
-   "boxes": []
+   "boxes": [],
+   "rgba8Sha256": "fb61a866d26f2d8befabfab060c854df5c006cb323fe9ffa4f5cd8a6776cc926"
   },
   "rgba8-lossless.jxl": {
    "width": 40,
@@ -532,7 +689,8 @@
    "renderingIntent": "Relative",
    "icc": false,
    "intensityTarget": 255.0,
-   "boxes": []
+   "boxes": [],
+   "rgba8Sha256": "46c4f2237abc16e31ed3b58a6b969b61694229cd675cfa04c17043f4bbbb875d"
   },
   "small-64x64.jxl": {
    "width": 64,
@@ -550,7 +708,27 @@
    "renderingIntent": "Relative",
    "icc": false,
    "intensityTarget": 255.0,
-   "boxes": []
+   "boxes": [],
+   "rgba8Sha256": "1007e66e346877c30493a79a0f59a25050f62edf20d3348fbef9366d10da0f24"
+  },
+  "squeeze.jxl": {
+   "width": 40,
+   "height": 24,
+   "bits": 8,
+   "float": false,
+   "alpha": true,
+   "animated": false,
+   "extraChannels": 1,
+   "orientation": 1,
+   "colorSpace": "RGB",
+   "whitePoint": "D65",
+   "primaries": "sRGB",
+   "transferFunction": "sRGB",
+   "renderingIntent": "Relative",
+   "icc": false,
+   "intensityTarget": 255.0,
+   "boxes": [],
+   "rgba8Sha256": "46c4f2237abc16e31ed3b58a6b969b61694229cd675cfa04c17043f4bbbb875d"
   },
   "tiny-1x1.jxl": {
    "width": 1,
@@ -568,7 +746,27 @@
    "renderingIntent": "Relative",
    "icc": false,
    "intensityTarget": 255.0,
-   "boxes": []
+   "boxes": [],
+   "rgba8Sha256": "e3820096cb82366b860b8a4e668453a7aaaf423af03bdf289fa308ea03a79332"
+  },
+  "weighted.jxl": {
+   "width": 40,
+   "height": 24,
+   "bits": 8,
+   "float": false,
+   "alpha": false,
+   "animated": false,
+   "extraChannels": 0,
+   "orientation": 1,
+   "colorSpace": "RGB",
+   "whitePoint": "D65",
+   "primaries": "sRGB",
+   "transferFunction": "sRGB",
+   "renderingIntent": "Relative",
+   "icc": false,
+   "intensityTarget": 255.0,
+   "boxes": [],
+   "rgba8Sha256": "0393f175d37aa05d87225e873242758ae7082d7c1541adeb4a2e1b01dded6bdb"
   },
   "wide-1025x3.jxl": {
    "width": 1025,
@@ -586,7 +784,8 @@
    "renderingIntent": "Relative",
    "icc": false,
    "intensityTarget": 255.0,
-   "boxes": []
+   "boxes": [],
+   "rgba8Sha256": "c07f2518a7982b6d7811cdbb899e6bc0e85f7318405c9e87a28e468433d21d95"
   }
  }
 }

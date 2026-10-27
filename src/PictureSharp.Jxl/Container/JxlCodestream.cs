@@ -19,4 +19,35 @@ internal sealed class JxlCodestream
 
     /// <summary>Total length in bytes.</summary>
     public long Length { get; }
+
+    /// <summary>The bytes <c>[offset, offset + length)</c> as a codestream of their own, without copying.</summary>
+    public JxlCodestream Slice(long offset, long length)
+    {
+        if (offset < 0 || length < 0 || offset > Length - length)
+        {
+            throw JxlDescriptor.Corrupt("Truncated codestream.");
+        }
+
+        var slices = new List<ReadOnlyMemory<byte>>();
+        foreach (ReadOnlyMemory<byte> segment in Segments)
+        {
+            if (length == 0)
+            {
+                break;
+            }
+
+            if (offset >= segment.Length)
+            {
+                offset -= segment.Length;
+                continue;
+            }
+
+            int take = (int)Math.Min(segment.Length - offset, length);
+            slices.Add(segment.Slice((int)offset, take));
+            length -= take;
+            offset = 0;
+        }
+
+        return new JxlCodestream([.. slices]);
+    }
 }

@@ -58,6 +58,33 @@ internal ref struct JxlBitReader
 
     public bool ReadBool() => ReadBits(1) != 0;
 
+    /// <summary>
+    /// Returns the next <paramref name="count"/> (0–32) bits without consuming them; bits past the end read as zero,
+    /// as in libjxl. Table-driven decoders peek a fixed width and then <see cref="Consume"/> what the code used.
+    /// </summary>
+    public uint PeekBits(int count)
+    {
+        if (bufferedBits < count)
+        {
+            Refill();
+        }
+
+        return (uint)(buffer & ((1UL << count) - 1));
+    }
+
+    /// <summary>Consumes bits returned by <see cref="PeekBits"/>; failing when they lie past the end.</summary>
+    public void Consume(int count)
+    {
+        if (bufferedBits < count)
+        {
+            throw Truncated();
+        }
+
+        buffer >>= count;
+        bufferedBits -= count;
+        BitPosition += count;
+    }
+
     /// <summary>Skips <paramref name="count"/> bits, failing when fewer remain.</summary>
     public void SkipBits(ulong count)
     {

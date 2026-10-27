@@ -29,10 +29,10 @@ jobs:
         with:
           name: packages
           path: artifacts
-      - name: Publish private pre-release
+      - name: Publish private release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           version="$(tr -d '[:space:]' < VERSION)"
           (cd artifacts && sha256sum *.nupkg *.snupkg > SHA256SUMS)
-          gh release create "$GITHUB_REF_NAME" --verify-tag --prerelease --title "PictureSharp.Jxl $version" --notes-file "docs/releases/release-$version.md" artifacts/*.nupkg artifacts/*.snupkg artifacts/SHA256SUMS
+          gh release create "$GITHUB_REF_NAME" --verify-tag --latest --title "PictureSharp.Jxl $version" --notes-file "docs/releases/release-$version.md" artifacts/*.nupkg artifacts/*.snupkg artifacts/SHA256SUMS

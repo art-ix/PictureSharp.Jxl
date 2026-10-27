@@ -5,7 +5,7 @@ public static class JxlImageFormatExtensions
 {
     extension(ImageFormat)
     {
-        /// <summary>JPEG XL (image/jxl). Register JxlFormat for detection and Identify; pixel codecs are not implemented in 0.2.1.</summary>
+        /// <summary>JPEG XL (image/jxl). Register JxlFormat for detection, Identify and lossless decoding (0.3.0); no encoder yet.</summary>
         public static ImageFormat Jxl => JxlFormat.Descriptor;
     }
 }

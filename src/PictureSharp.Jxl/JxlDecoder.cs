@@ -4,14 +4,12 @@ using PictureSharp.Formats.Jxl.Container;
 namespace PictureSharp.Formats.Jxl;
 
 /// <summary>
-/// Identify reads the container and the codestream headers. Pixel decoding is not implemented in this version, so
-/// Decode throws <see cref="NotSupportedException"/>.
+/// Identify reads the container and the codestream headers. Decode supports still lossless Modular images (see
+/// <see cref="JxlFrameDecoder"/>); other valid images throw <see cref="NotSupportedException"/>.
 /// </summary>
 internal sealed class JxlDecoder : IImageFormatDecoder
 {
     public static readonly JxlDecoder Instance = new();
-    private const string DecodeMessage = "PictureSharp.Jxl 0.2.1 reads JPEG XL headers (Identify) only; pixel decoding is not implemented.";
-
     public static JxlHeaders ReadHeaders(ReadOnlyMemory<byte> data) => JxlHeaders.Read(JxlContainer.Parse(data).Codestream);
 
     public ImageInfo Identify(ReadOnlyMemory<byte> data, DecoderOptions options)
@@ -96,5 +94,66 @@ internal sealed class JxlDecoder : IImageFormatDecoder
         return primaries is { } p ? new CicpColorDescription(p, (int)color.TransferFunction, 0, fullRange: true) : null;
     }
 
-    public Image Decode(ReadOnlyMemory<byte> data, ImageDecodeContext context) => throw new NotSupportedException(DecodeMessage);
+    public Image Decode(ReadOnlyMemory<byte> data, ImageDecodeContext context)
+    {
+        JxlCodestream codestream = JxlContainer.Parse(data).Codestream;
+        JxlHeaders headers = JxlHeaders.Read(codestream);
+        (uint width, uint height) = (headers.Size.Width, headers.Size.Height);
+        if (width > int.MaxValue)
+        {
+            throw JxlDescriptor.Unsupported($"image width {width} exceeds the largest supported width.");
+        }
+
+        context.ReservePixels((int)width, (int)height);
+        JxlDecodedImage decoded = JxlFrameDecoder.Decode(codestream, headers, context.CancellationToken);
+        bool alpha = decoded.Alpha is not null;
+        var image = alpha ? new Image(decoded.Width, decoded.Height) : new Image(decoded.Width, decoded.Height, new Rgba32(0, 0, 0, 255));
+        try
+        {
+            Span<Rgba32> pixels = image.GetPixelMemory().Span;
+            int[] red = decoded.Color[0];
+            int[] green = decoded.Color[decoded.Color.Length == 3 ? 1 : 0];
+            int[] blue = decoded.Color[^1];
+            Func<int, byte> color = Converter(decoded.ColorBits);
+            Func<int, byte> opacity = Converter(decoded.AlphaBits);
+            for (int i = 0; i < pixels.Length; i++)
+            {
+                pixels[i] = new Rgba32(color(red[i]), color(green[i]), color(blue[i]), alpha ? opacity(decoded.Alpha![i]) : (byte)255);
+            }
+
+            // Stored orientation, as for JPEG: ApplyExifOrientation (or AutoOrient) applies it.
+            var orientation = (ExifOrientation)headers.Metadata.Orientation;
+            if (orientation != ExifOrientation.TopLeft)
+            {
+                image.Metadata.Orientation = orientation;
+            }
+
+            return image;
+        }
+        catch
+        {
+            image.Dispose();
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Samples of <paramref name="bits"/> bits to 8 bits the way libjxl renders them: scaled to [0, 1] in single
+    /// precision (double from 23 bits), clamped, multiplied by 255 and rounded to nearest even.
+    /// </summary>
+    private static Func<int, byte> Converter(int bits)
+    {
+        if (bits == 0)
+        {
+            return static _ => 255;
+        }
+
+        double factor = 1.0 / ((1u << bits) - 1);
+        float single = (float)factor;
+        return bits < 23
+            ? value => ToByte(value * single)
+            : value => ToByte((float)(value * factor));
+    }
+
+    private static byte ToByte(float value) => (byte)MathF.Round(Math.Clamp(value, 0f, 1f) * 255f, MidpointRounding.ToEven);
 }

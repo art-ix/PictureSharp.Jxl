@@ -6,12 +6,12 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <PackageId>PictureSharp.Jxl</PackageId>
-    <Description>Pure C# JPEG XL plugin for PictureSharp. Version 0.2.1 detects and identifies JPEG XL files (raw codestream and container); pixel decoding and encoding are not implemented yet.</Description>
+    <Description>Pure C# JPEG XL plugin for PictureSharp. Version 0.3.0 detects and identifies JPEG XL files (raw codestream and container) and decodes still lossless Modular images; lossy decoding and encoding are not implemented yet.</Description>
     <PackageTags>picturesharp;image;jxl;jpegxl</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/art-ix/picturesharp.jxl</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageReleaseNotes>0.2.1: requires PictureSharp 0.8.5; Image.Identify reports ImageInfo.Color (colour model, channels, bits and sample format, alpha mode, ICC presence, CICP) and Compression. No pixel decoding, encoding or metadata support.</PackageReleaseNotes>
+    <PackageReleaseNotes>0.3.0: Image.Load decodes still lossless (non-XYB) Modular images - RGB, grayscale and alpha, all Modular transforms and predictors, matching djxl 0.12.0 exactly at 8 bits. No lossy decoding, encoding or metadata support.</PackageReleaseNotes>
   </PropertyGroup>
   <ItemGroup><PackageReference Include="PictureSharp" Version="$(PictureSharpVersion)" /></ItemGroup>
   <ItemGroup>

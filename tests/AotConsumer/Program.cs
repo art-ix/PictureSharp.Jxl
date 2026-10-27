@@ -16,10 +16,9 @@ try
     throw new InvalidOperationException("A truncated header was accepted.");
 }
 catch (ImageFormatException) { }
-try
+using (var image = Image.Load(data))
 {
-    using var image = Image.Load(data);
-    throw new InvalidOperationException("Version 0.2.1 unexpectedly decoded an image.");
+    if (image.Width != 1 || image.Height != 1 || image.HasAlpha || image.GetPixelMemory().Span[0] != new Rgba32(0, 0, 0, 255))
+        throw new InvalidOperationException("Lossless decoding returned the wrong pixel.");
 }
-catch (NotSupportedException exception) when (exception.Message.Contains("0.2.1", StringComparison.Ordinal)) { }
-Console.WriteLine("Package consumer: registration, detection, Identify and unsupported decoding passed.");
+Console.WriteLine("Package consumer: registration, detection, Identify and lossless decoding passed.");

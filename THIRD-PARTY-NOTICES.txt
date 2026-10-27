@@ -1,4 +1,4 @@
-PictureSharp.Jxl 0.2.1
+PictureSharp.Jxl 0.3.0
 
 No native libraries are bundled. PictureSharp is a NuGet dependency distributed
 separately under MIT. Project scaffolding and test patterns are adapted from
@@ -20,6 +20,22 @@ in source comments:
   lib/jxl/color_encoding_internal.cc, lib/jxl/cms/color_encoding_cms.h
 - src/PictureSharp.Jxl/Codestream/JxlHeaders.cs and Container/JxlContainer.cs:
   header order, box rules and jxlp ordering of lib/jxl/decode.cc
+- src/PictureSharp.Jxl/Codestream/JxlPrefixCode.cs: lib/jxl/dec_huffman.cc,
+  huffman_table.cc
+- src/PictureSharp.Jxl/Codestream/JxlEntropyCode.cs and JxlSymbolReader.cs:
+  lib/jxl/dec_ans.cc, dec_ans.h, ans_common.cc, ans_common.h, dec_context_map.cc,
+  inverse_mtf-inl.h
+- src/PictureSharp.Jxl/Codestream/JxlFrameHeader.cs: lib/jxl/frame_header.cc,
+  frame_header.h, frame_dimensions.h, loop_filter.cc, toc.cc, coeff_order.cc,
+  lehmer_code.h
+- src/PictureSharp.Jxl/Codestream/JxlMaTree.cs, JxlModularStream.cs and
+  JxlWeightedPredictor.cs: lib/jxl/modular/encoding/dec_ma.cc, encoding.cc,
+  encoding.h, context_predict.h
+- src/PictureSharp.Jxl/Codestream/JxlModularImage.cs:
+  lib/jxl/modular/modular_image.cc, transform/transform.cc, rct.cc, palette.cc,
+  palette.h, squeeze.cc, squeeze.h, squeeze_params.cc
+- src/PictureSharp.Jxl/Codestream/JxlFrameDecoder.cs: lib/jxl/dec_frame.cc,
+  dec_modular.cc, icc_codec.cc, icc_codec_common.cc
 
 libjxl is distributed under the following license:
 

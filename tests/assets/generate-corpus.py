@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Generate public, synthetic JPEG XL fixtures and their jxlinfo oracle (no external images).
+"""Generate public, synthetic JPEG XL fixtures and their jxlinfo and djxl oracle (no external images).
 
 Requires Pillow and the libjxl v0.12.0 tools (cjxl, djxl, jxlinfo) on PATH or in JXL_TOOLS. The outputs are
 committed, so tests and CI do not need the tools. Run: python3 tests/assets/generate-corpus.py
 """
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -91,6 +92,22 @@ def swap_partial_codestreams(data):
     return data[:12] + b''.join(box for _, box in items)
 
 
+def few_colors(path, width, height):
+    image = Image.new('RGB', (width, height))
+    palette = [(0, 0, 0), (255, 255, 255), (200, 30, 30), (30, 160, 60), (40, 60, 220), (240, 200, 0)]
+    image.putdata([palette[(x // 5 + y // 3) % len(palette)] for y in range(height) for x in range(width)])
+    image.save(path)
+
+
+def pixels(path, temp):
+    """SHA-256 of the RGBA pixels djxl renders at 8 bits (orientation applied), or None if djxl fails."""
+    png = Path(temp) / 'pixels.png'
+    result = subprocess.run([tool('djxl'), str(path), str(png), '--bits_per_sample=8', '--quiet'], capture_output=True)
+    if result.returncode != 0:
+        return None
+    return hashlib.sha256(Image.open(png).convert('RGBA').tobytes()).hexdigest()
+
+
 def info(path):
     text = run(tool('jxlinfo'), '-v', str(path))
     head = re.search(r'JPEG XL (image|animation), (\d+)x(\d+), .*?(\d+)-bit (float \()?.*?(RGB|Grayscale)(\+Alpha)?', text)
@@ -124,6 +141,9 @@ def main():
         png(tmp / 'ratio.png', 160, 90)
         png(tmp / 'tiny.png', 1, 1)
         png(tmp / 'wide.png', 1025, 3)
+        png(tmp / 'groups.png', 300, 200)
+        png(tmp / 'lf-groups.png', 1100, 40, alpha=True)
+        few_colors(tmp / 'few.png', 40, 24)
         pfm(tmp / 'float.pfm', 20, 12)
         animation(tmp / 'anim.png')
         # Lossless encoding keeps an embedded profile as ICC instead of an enumerated colour encoding.
@@ -152,6 +172,16 @@ def main():
             'container-exif': ('orient1.jpg', '-j', '0', '-d', '0', '--compress_boxes=0'),
             'icc-profile': ('icc.png', '-d', '0'),
             'jxlp-v1': ('rgb.png', '-d', '1', '--output_mode=2'),
+            # Modular coding tools: palettes, squeeze, passes, effort extremes, predictors, groups, LF groups.
+            'palette': ('few.png', '-d', '0'),
+            'delta-palette': ('rgb.png', '-d', '0', '-m', '1', '--modular_lossy_palette', '--modular_palette_colors=0'),
+            'squeeze': ('rgba.png', '-d', '0', '-R', '1'),
+            'progressive': ('rgb.png', '-d', '0', '-p'),
+            'effort1': ('rgba.png', '-d', '0', '-e', '1'),
+            'effort9': ('rgb.png', '-d', '0', '-e', '9'),
+            'weighted': ('rgb.png', '-d', '0', '-P', '6'),
+            'groups-300x200': ('groups.png', '-d', '0', '-g', '0'),
+            'lf-groups': ('lf-groups.png', '-d', '0', '-g', '0', '-R', '1'),
         }
         cases.update({f'orient{o}': (f'orient{o}.jpg', '-j', '0', '-d', '0') for o in range(1, 9)})
         for name, (source, *options) in cases.items():
@@ -164,7 +194,8 @@ def main():
         run(djxl, str(swapped), str(tmp / 'b.ppm'))
         assert (tmp / 'a.ppm').read_bytes() == (tmp / 'b.ppm').read_bytes()
 
-    oracle = {path.name: info(path) for path in sorted(OUTPUT.glob('*.jxl'))}
+    with tempfile.TemporaryDirectory() as temp:
+        oracle = {path.name: info(path) | {'rgba8Sha256': pixels(path, temp)} for path in sorted(OUTPUT.glob('*.jxl'))}
     (OUTPUT / 'corpus.json').write_text(json.dumps({'generator': run(tool('cjxl'), '--version').splitlines()[0], 'files': oracle}, indent=1) + '\n')
     print(f'{len(oracle)} files, {sum(p.stat().st_size for p in OUTPUT.glob("*.jxl"))} bytes')
 
