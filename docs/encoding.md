@@ -41,7 +41,8 @@ One VarDCT frame, a scalar port of libjxl 0.12.0's encoder with the same decisio
 
 - **Colour:** pixels go to XYB from sRGB, linear, gamma, BT.709, DCI and PQ transfer functions, the standard and
   custom primaries, and matrix/TRC ICC profiles. Images whose colour cannot be converted this way (lookup-table ICC
-  profiles, HLG) are written losslessly instead.
+  profiles, HLG) are written losslessly instead. A profile that an enumerated colour encoding describes, such as the
+  Display P3 profile of phone photos, is stored as that encoding (see the [metadata guide](metadata.md#writing)).
 - **Alpha:** stored losslessly as a Modular extra channel; the colour of invisible pixels is simplified first.
 - **Resampling:** from distance 10 the frame is coded at half size and upsampled by the decoder, as in `cjxl`;
   images with alpha keep their full size.
@@ -58,6 +59,12 @@ Measured at distance 1 against `cjxl` 0.12.0 (`--num_threads=0`), quality by ssi
 | 1024×768 photo | 7 | 164 491 B, 85.53 | 165 396 B, 85.49 |
 | small text screenshot | 7 | 16 085 B | 15 315 B |
 | 900×600 text | 7 | 18 931 B, 92.6 | 166 208 B, 90.18 |
+| 3024×4032 iPhone photo, Display P3 | 7 | 812 720 B, 85.73 | 826 418 B, 85.70 |
+| 3024×4032 iPhone photo, Display P3 | 7 | 864 752 B, 88.46 | 873 122 B, 88.49 |
+| 4032×3024 iPhone photo, Display P3 | 7 | 2 093 782 B, 84.39 | 2 104 239 B, 84.37 |
+
+Lossy encoding is not optimized yet: the first 12-megapixel photo above takes 37 s and 2.6 GB at effort 7 on one core,
+`cjxl` 2.8 s and 0.35 GB.
 
 ## Lossless frames
 

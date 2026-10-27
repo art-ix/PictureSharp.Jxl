@@ -12,7 +12,11 @@ Lossy encoding for PictureSharp 0.8.5 (.NET 10 / C# 14).
   repeated shapes at effort 7+.
 - **Alpha** is stored losslessly; the colour of invisible pixels is simplified. Lookup-table ICC profiles and HLG
   images fall back to lossless.
-- **Size and quality** match `cjxl` at the same distance and effort on photos (within about 1%, equal ssimulacra2);
+- **ICC profiles** that an enumerated colour encoding describes (Display P3 of phone photos, sRGB, gamma curves) are
+  stored as that encoding in lossy files, as `cjxl` does, so `djxl` and other libjxl decoders return the pixels in
+  that space instead of linear sRGB. Lossless files keep the profile.
+- **Size and quality** match `cjxl` at the same distance and effort on photos (within about 1%, equal ssimulacra2,
+  also on five 12-megapixel Display P3 iPhone photos);
   large text images are much smaller because `cjxl` skips patches in streaming mode.
 
 Verification: all tests, djxl oracle tests and a randomized sweep (sizes 1–1030, gray/RGB with alpha, distances

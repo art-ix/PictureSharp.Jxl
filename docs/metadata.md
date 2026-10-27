@@ -43,7 +43,10 @@ Every block is charged against `MaxMetadataBytes` before it is materialized, Bro
 When `EncoderOptions.Metadata` allows them (all by default), the encoder writes:
 
 - **ICC profile:** into the codestream, so the samples are declared to be in that profile. Only RGB and gray profiles
-  are accepted; a gray profile on colour pixels throws `NotSupportedException`.
+  are accepted; a gray profile on colour pixels throws `NotSupportedException`. Lossy images store a matrix/TRC or
+  gray profile that an enumerated colour encoding describes (Display P3, sRGB, gamma or linear curves, custom
+  primaries) as that encoding instead, as `cjxl` does: decoders then return the pixels in that space, while with the
+  profile libjxl returns linear sRGB. Reading such a file gives a colour description, not the original profile.
 - **Colour description** (without a profile): `SrgbRenderingIntent` gives sRGB with that intent; `Chromaticities` give
   the named primaries and white points (sRGB, P3, BT.2100; D65, DCI, E) or custom ones; `Gamma` 1 is linear, 1/2.6 the
   DCI curve, 1/2.2 the sRGB curve, any other value up to 1 a pure gamma. A gamma above 1 keeps the sRGB curve. Images

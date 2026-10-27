@@ -51,6 +51,13 @@ internal sealed class JxlEncoder : IImageFormatEncoder<JxlEncoderOptions>
         JxlColorEncoding encoding = JxlMetadataWriter.Encoding(metadata, gray);
         uint orientation = JxlMetadataWriter.Orientation(metadata);
         float distance = options.EffectiveDistance;
+        // As libjxl for XYB images: a profile an enumerated encoding describes is stored as that encoding, so decoders
+        // return pixels in it rather than in linear sRGB. Lossless frames keep the profile.
+        if (distance != 0 && icc is not null && JxlIccEncoding.TryEnumerate(icc, gray) is { } enumerated)
+        {
+            (encoding, icc) = (enumerated, null);
+        }
+
         JxlXybInput? xybInput = distance == 0 ? null
             : JxlXybInput.TryCreate(icc is null ? encoding : new JxlColorEncoding { WantIcc = true, ColorSpace = gray ? JxlColorSpace.Gray : JxlColorSpace.Rgb },
                 icc is null ? null : JxlIccTarget.TryCreate(icc, gray), JxlToneMapping.Default.IntensityTarget);

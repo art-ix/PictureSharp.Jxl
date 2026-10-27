@@ -63,18 +63,7 @@ internal sealed class JxlXybInput
             return null;
         }
 
-        float pqScale = 10000.0f / intensityTarget;
-        Func<float, float> transfer = color.Gamma != 0
-            ? Gamma(1.0f / (float)(color.Gamma * 1e-7))
-            : color.TransferFunction switch
-            {
-                JxlTransferFunction.Linear => value => value,
-                JxlTransferFunction.Bt709 => value => value < 0.081f ? value / 4.5f : MathF.Pow((value + 0.099f) / 1.099f, 1.0f / 0.45f),
-                JxlTransferFunction.Dci => Gamma(1.0f / JxlColorEncoding.DciGamma),
-                JxlTransferFunction.Pq => value => Pq(value) * pqScale,
-                _ => Srgb,
-            };
-        float[] table = Table(transfer);
+        float[] table = Table(ToLinear(color, intensityTarget));
         float[]? primaries = !gray && (color.Primaries != JxlPrimaries.Srgb || color.WhitePoint != JxlWhitePoint.D65)
             ? JxlColorOutput.Invert(JxlColorOutput.SrgbToOriginal(color))
             : null;
@@ -113,6 +102,35 @@ internal sealed class JxlXybInput
             b[i] = mixed2;
         }
     }
+
+    /// <summary>The transfer function of <paramref name="color"/> to linear light (PQ relative to <paramref name="intensityTarget"/>).</summary>
+    internal static Func<float, float> ToLinear(JxlColorEncoding color, float intensityTarget = 255)
+    {
+        float pqScale = 10000.0f / intensityTarget;
+        return color.Gamma != 0
+            ? Gamma(1.0f / (float)(color.Gamma * 1e-7))
+            : color.TransferFunction switch
+            {
+                JxlTransferFunction.Linear => value => value,
+                JxlTransferFunction.Bt709 => value => value < 0.081f ? value / 4.5f : MathF.Pow((value + 0.099f) / 1.099f, 1.0f / 0.45f),
+                JxlTransferFunction.Dci => Gamma(1.0f / JxlColorEncoding.DciGamma),
+                JxlTransferFunction.Pq => value => Pq(value) * pqScale,
+                _ => Srgb,
+            };
+    }
+
+    /// <summary>The inverse of <see cref="ToLinear"/> for gamma, linear, BT.709, DCI and sRGB curves.</summary>
+    internal static Func<float, float> FromLinear(JxlColorEncoding color) =>
+        color.Gamma != 0
+            ? Gamma((float)(color.Gamma * 1e-7))
+            : color.TransferFunction switch
+            {
+                JxlTransferFunction.Linear => value => value,
+                JxlTransferFunction.Bt709 => value => value < 0.018f ? value * 4.5f : 1.099f * MathF.Pow(value, 0.45f) - 0.099f,
+                JxlTransferFunction.Dci => Gamma(JxlColorEncoding.DciGamma),
+                JxlTransferFunction.Srgb => value => value <= 0.0031308f ? value * 12.92f : 1.055f * MathF.Pow(value, 1 / 2.4f) - 0.055f,
+                _ => throw new ArgumentOutOfRangeException(nameof(color), color.TransferFunction, "No inverse for this transfer function."),
+            };
 
     private static float[] Table(Func<float, float> transfer)
     {

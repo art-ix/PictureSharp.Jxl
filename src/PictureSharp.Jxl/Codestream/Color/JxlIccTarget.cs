@@ -10,9 +10,11 @@ namespace PictureSharp.Formats.Jxl.Codestream.Color;
 /// <remarks>Implements ICC.1:2022 sections 7 (header and tag table) and 10.6, 10.18 and 10.31 (curv, para, XYZ).</remarks>
 internal sealed class JxlIccTarget
 {
-    private JxlIccTarget(bool gray, float[] toXyzD50, float[] fromXyzD50, JxlToneCurve[] curves)
+    private JxlIccTarget(bool gray, float[] toXyzD50, float[] fromXyzD50, JxlToneCurve[] curves, float[]? mediaWhite, float[]? adaptation)
     {
         IsGray = gray;
+        MediaWhite = mediaWhite;
+        Adaptation = adaptation;
         ToXyzD50 = toXyzD50;
         FromXyzD50 = fromXyzD50;
         Curves = curves;
@@ -25,6 +27,10 @@ internal sealed class JxlIccTarget
     public float[] FromXyzD50 { get; }
     /// <summary>The inverse tone curves, one per output channel.</summary>
     public JxlToneCurve[] Curves { get; }
+    /// <summary>The media white point (wtpt) as XYZ, or null when the profile has none.</summary>
+    public float[]? MediaWhite { get; }
+    /// <summary>The chromatic adaptation to D50 (chad), row-major, or null when the profile has none.</summary>
+    public float[]? Adaptation { get; }
 
     /// <summary>The output colour space, or null when the profile is not a usable matrix/TRC or gray profile.</summary>
     public static JxlIccTarget? TryCreate(ReadOnlySpan<byte> icc, bool gray)
@@ -78,9 +84,11 @@ internal sealed class JxlIccTarget
         ReadOnlySpan<byte> Data(string name) =>
             tags.TryGetValue(Signature(name), out var tag) ? profile.AsSpan(tag.Offset, tag.Size) : default;
 
+        float[]? mediaWhite = Xyz(Data("wtpt"));
+        float[]? adaptation = Sf32Matrix(Data("chad"));
         if (gray)
         {
-            return JxlToneCurve.TryCreate(Data("kTRC")) is { } curve ? new JxlIccTarget(true, [], [], [curve]) : null;
+            return JxlToneCurve.TryCreate(Data("kTRC")) is { } curve ? new JxlIccTarget(true, [], [], [curve], mediaWhite, adaptation) : null;
         }
 
         float[]? red = Xyz(Data("rXYZ"));
@@ -95,7 +103,7 @@ internal sealed class JxlIccTarget
 
         double[] m = [red[0], green[0], blue[0], red[1], green[1], blue[1], red[2], green[2], blue[2]];
         float[]? inverse = Invert(m);
-        return inverse is null ? null : new JxlIccTarget(false, [.. m.Select(value => (float)value)], inverse, [r, g, b]);
+        return inverse is null ? null : new JxlIccTarget(false, [.. m.Select(value => (float)value)], inverse, [r, g, b], mediaWhite, adaptation);
     }
 
     private static float[]? Xyz(ReadOnlySpan<byte> tag)
@@ -106,6 +114,23 @@ internal sealed class JxlIccTarget
         }
 
         return [S15Fixed16(tag[8..]), S15Fixed16(tag[12..]), S15Fixed16(tag[16..])];
+    }
+
+    // An s15Fixed16ArrayType of nine values (ICC.1:2022 10.22), the chad tag's 3×3 matrix.
+    private static float[]? Sf32Matrix(ReadOnlySpan<byte> tag)
+    {
+        if (tag.Length < 44 || !tag[..4].SequenceEqual("sf32"u8))
+        {
+            return null;
+        }
+
+        float[] matrix = new float[9];
+        for (int i = 0; i < matrix.Length; i++)
+        {
+            matrix[i] = S15Fixed16(tag[(8 + i * 4)..]);
+        }
+
+        return matrix;
     }
 
     internal static float S15Fixed16(ReadOnlySpan<byte> data) => BinaryPrimitives.ReadInt32BigEndian(data) / 65536.0f;
@@ -177,6 +202,9 @@ internal sealed class JxlToneCurve
         float fraction = high > low ? (value - low) / (high - low) : 0.0f;
         return (i + fraction) / last;
     }
+
+    /// <summary>The exponent when the curve is a pure power function, otherwise null.</summary>
+    public float? Exponent => forward is null ? gamma : null;
 
     /// <summary>The linear value of encoded <paramref name="value"/> on [0, 1]: the curve itself, interpolated.</summary>
     public float Decode(float value)
