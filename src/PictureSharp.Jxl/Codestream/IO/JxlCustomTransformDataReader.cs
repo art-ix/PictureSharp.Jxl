@@ -1,5 +1,4 @@
 using PictureSharp.Formats.Jxl.Codestream.Model;
-using static PictureSharp.Formats.Jxl.Codestream.IO.JxlU32;
 using static PictureSharp.Formats.Jxl.Codestream.Model.JxlCustomTransformData;
 
 namespace PictureSharp.Formats.Jxl.Codestream.IO;
@@ -19,29 +18,18 @@ internal static class JxlCustomTransformDataReader
         {
             data = data with
             {
-                OpsinInverseMatrix = Floats(ref reader, 9),
-                OpsinBiases = Floats(ref reader, 3),
-                QuantBiases = Floats(ref reader, 4)
+                OpsinInverseMatrix = JxlFields.F16Array(ref reader, 9),
+                OpsinBiases = JxlFields.F16Array(ref reader, 3),
+                QuantBiases = JxlFields.F16Array(ref reader, 4)
             };
         }
 
         uint mask = reader.ReadBits(3);
         return data with
         {
-            Upsampling2Weights = (mask & 1) != 0 ? Floats(ref reader, 15) : null,
-            Upsampling4Weights = (mask & 2) != 0 ? Floats(ref reader, 55) : null,
-            Upsampling8Weights = (mask & 4) != 0 ? Floats(ref reader, 210) : null
+            Upsampling2Weights = (mask & 1) != 0 ? JxlFields.F16Array(ref reader, 15) : null,
+            Upsampling4Weights = (mask & 2) != 0 ? JxlFields.F16Array(ref reader, 55) : null,
+            Upsampling8Weights = (mask & 4) != 0 ? JxlFields.F16Array(ref reader, 210) : null
         };
-    }
-
-    private static float[] Floats(ref JxlBitReader reader, int count)
-    {
-        float[] values = new float[count];
-        for (int i = 0; i < count; i++)
-        {
-            values[i] = JxlFields.F16(ref reader);
-        }
-
-        return values;
     }
 }

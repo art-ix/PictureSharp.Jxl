@@ -22,106 +22,83 @@ internal static class JxlMetadataRewriter
         }
 
         JxlContainer container = JxlContainer.Parse(data, includeMetadata: false, cancellationToken);
-        var boxes = container.IsBoxed ? JxlContainer.Boxes(data.Span) : [];
-        if (boxes.Any(box => box.Type == "jbrd"))
+        List<JxlBoxEntry> boxes = container.IsBoxed ? JxlContainer.Boxes(data.Span) : [];
+        if (boxes.Any(box => box.Type == JxlBoxType.JpegReconstruction))
         {
             throw new NotSupportedException("Editing the metadata of a recompressed JPEG would invalidate its JPEG reconstruction data.");
         }
 
-        JxlCodestream codestream = container.Codestream;
-        JxlHeaders headers = JxlHeadersReader.Read(codestream);
-        bool iccChanged = !Same(original.IccProfile, metadata.IccProfile);
-        bool colorChanged = iccChanged || original.Gamma != metadata.Gamma || original.Chromaticities != metadata.Chromaticities
-            || original.SrgbRenderingIntent != metadata.SrgbRenderingIntent;
-        uint orientation = JxlMetadataWriter.Orientation(metadata);
-        bool exifChanged = !Same(original.Exif, metadata.Exif);
-        bool xmpChanged = !Same(original.Xmp, metadata.Xmp);
-
-        byte[]? newCodestream = null;
-        if (colorChanged || orientation != headers.Metadata.Orientation)
-        {
-            // The frames start at the byte after the ICC stream (or the headers), as the decoder finds them.
-            long frameStart = JxlFrameSectionReader.ReadIcc(codestream, headers, cancellationToken, out byte[]? icc).BitPosition / 8;
-            JxlColorEncoding color = headers.Metadata.Color;
-            if (colorChanged)
-            {
-                icc = metadata.IccProfile;
-                bool gray = color.ColorSpace == JxlColorSpace.Gray;
-                if (icc is not null)
-                {
-                    JxlColorSpace space = JxlMetadataWriter.IccColorSpace(icc)
-                        ?? throw new NotSupportedException("JPEG XL images can only carry RGB or gray ICC profiles.");
-                    if (space == JxlColorSpace.Gray != gray)
-                    {
-                        throw new NotSupportedException("An ICC profile cannot change a JPEG XL image between gray and colour.");
-                    }
-
-                    color = new JxlColorEncoding { WantIcc = true, ColorSpace = color.ColorSpace == JxlColorSpace.Xyb ? JxlColorSpace.Rgb : space };
-                }
-                else
-                {
-                    color = JxlMetadataWriter.Encoding(metadata, gray);
-                }
-            }
-
-            newCodestream = JxlCodestreamWriter.Rewrite(codestream, headers,
-                headers.Metadata with { Color = color, Orientation = orientation }, color.WantIcc ? icc : null, frameStart);
-        }
-
+        var changes = MetadataChanges.Between(original, metadata);
+        byte[]? codestream = RewriteCodestream(container.Codestream, metadata, changes.Color, cancellationToken);
+        byte[]? exif = changes.Exif ? metadata.Exif : null;
+        byte[]? xmp = changes.Xmp ? metadata.Xmp : null;
         if (!container.IsBoxed)
         {
-            byte[] stream = newCodestream ?? data.ToArray();
-            var added = new List<JxlBox>();
-            if (exifChanged && metadata.Exif is { } exif) added.Add(JxlMetadataWriter.ExifBox(exif, compress: false));
-            if (xmpChanged && metadata.Xmp is { } xmp) added.Add(JxlMetadataWriter.XmpBox(xmp, compress: false));
-            return added.Count == 0 ? stream : JxlContainerWriter.Write(stream, added);
+            byte[] stream = codestream ?? data.ToArray();
+            JxlBox[] added = JxlMetadataWriter.DescriptiveBoxes(exif, xmp, compress: false);
+            return added.Length == 0 ? stream : JxlContainerWriter.Write(stream, added);
         }
 
-        return RewriteBoxes(data.Span, boxes, newCodestream, exifChanged ? metadata.Exif : null, exifChanged,
-            xmpChanged ? metadata.Xmp : null, xmpChanged);
+        var pending = new PendingBoxes(changes, exif, xmp, codestream, boxes);
+        return RewriteBoxes(data.Span, boxes, pending);
     }
 
-    private static byte[] RewriteBoxes(ReadOnlySpan<byte> data, List<(string Type, string? Inner, long Start, long ContentStart, long End)> boxes,
-        byte[]? codestream, byte[]? exif, bool exifChanged, byte[]? xmp, bool xmpChanged)
+    // The new codestream when the colour or the orientation changes, else null.
+    private static byte[]? RewriteCodestream(JxlCodestream codestream, ImageMetadata metadata, bool colorChanged, CancellationToken cancellationToken)
     {
-        var output = new MemoryStream();
-        bool exifWritten = !exifChanged || exif is null;
-        bool xmpWritten = !xmpChanged || xmp is null;
-        bool codestreamWritten = codestream is null;
-        bool Compressed(string type) => boxes.Any(box => box.Type == "brob" && box.Inner == type);
-        bool exifCompressed = Compressed("Exif");
-        bool xmpCompressed = Compressed("xml ");
-        long end = 0;
-        foreach ((string type, string? inner, long start, long contentStart, long boxEnd) in boxes)
+        JxlHeaders headers = JxlHeadersReader.Read(codestream);
+        uint orientation = JxlMetadataWriter.Orientation(metadata);
+        if (!colorChanged && orientation == headers.Metadata.Orientation)
         {
-            end = boxEnd;
-            string kind = inner ?? type;
-            bool isCodestream = type is "jxlc" or "jxlp";
-            if ((kind == "Exif" && exifChanged) || (kind == "xml " && xmpChanged) || (isCodestream && codestream is not null))
-            {
-                // Replaced boxes: the new content takes the place of the first one of its kind.
-                if (kind == "Exif" && !exifWritten)
-                {
-                    JxlContainerWriter.WriteBox(output, JxlMetadataWriter.ExifBox(exif!, exifCompressed));
-                    exifWritten = true;
-                }
-                else if (kind == "xml " && !xmpWritten)
-                {
-                    JxlContainerWriter.WriteBox(output, JxlMetadataWriter.XmpBox(xmp!, xmpCompressed));
-                    xmpWritten = true;
-                }
-                else if (isCodestream && !codestreamWritten)
-                {
-                    WriteNewBoxes(output, ref exifWritten, exif, ref xmpWritten, xmp);
-                    JxlContainerWriter.WriteBox(output, new JxlBox("jxlc", codestream));
-                    codestreamWritten = true;
-                }
+            return null;
+        }
 
+        // The frames start at the byte after the ICC stream (or the headers), as the decoder finds them.
+        long frameStart = JxlFrameSectionReader.ReadIcc(codestream, headers, cancellationToken, out byte[]? icc).BitPosition / 8;
+        JxlColorEncoding color = headers.Metadata.Color;
+        if (colorChanged)
+        {
+            icc = metadata.IccProfile;
+            color = RewrittenColor(color, metadata);
+        }
+
+        return JxlCodestreamWriter.Rewrite(codestream, headers, headers.Metadata with { Color = color, Orientation = orientation },
+            color.WantIcc ? icc : null, frameStart);
+    }
+
+    // The colour encoding of the new ICC profile or colour description; gray stays gray and colour stays colour.
+    private static JxlColorEncoding RewrittenColor(JxlColorEncoding current, ImageMetadata metadata)
+    {
+        bool gray = current.ColorSpace == JxlColorSpace.Gray;
+        if (metadata.IccProfile is not { } icc)
+        {
+            return JxlMetadataWriter.Encoding(metadata, gray);
+        }
+
+        JxlColorSpace space = JxlMetadataWriter.RequireIccColorSpace(icc, "JPEG XL images can only carry RGB or gray ICC profiles.");
+        if (space == JxlColorSpace.Gray != gray)
+        {
+            throw new NotSupportedException("An ICC profile cannot change a JPEG XL image between gray and colour.");
+        }
+
+        return new JxlColorEncoding { WantIcc = true, ColorSpace = current.ColorSpace == JxlColorSpace.Xyb ? JxlColorSpace.Rgb : space };
+    }
+
+    private static byte[] RewriteBoxes(ReadOnlySpan<byte> data, List<JxlBoxEntry> boxes, PendingBoxes pending)
+    {
+        using var output = new MemoryStream();
+        long end = 0;
+        foreach (JxlBoxEntry box in boxes)
+        {
+            end = box.Header.End;
+            if (pending.Replaces(box))
+            {
+                pending.WriteReplacement(output, box);
                 continue;
             }
 
-            if (isCodestream) WriteNewBoxes(output, ref exifWritten, exif, ref xmpWritten, xmp);
-            output.Write(data[(int)start..(int)boxEnd]);
+            if (box.IsCodestream) pending.WriteAdded(output);
+            output.Write(data[(int)box.Header.Start..(int)end]);
         }
 
         // Boxes after a second signature box are kept as they were.
@@ -129,21 +106,68 @@ internal static class JxlMetadataRewriter
         return output.ToArray();
     }
 
-    // New Exif and xml boxes that replace none go before the codestream, where the encoder puts them.
-    private static void WriteNewBoxes(Stream output, ref bool exifWritten, byte[]? exif, ref bool xmpWritten, byte[]? xmp)
-    {
-        if (!exifWritten)
-        {
-            JxlContainerWriter.WriteBox(output, JxlMetadataWriter.ExifBox(exif!, compress: false));
-            exifWritten = true;
-        }
+    private static bool Same(byte[]? a, byte[]? b) => (a is null) == (b is null) && (a is null || a.AsSpan().SequenceEqual(b));
 
-        if (!xmpWritten)
-        {
-            JxlContainerWriter.WriteBox(output, JxlMetadataWriter.XmpBox(xmp!, compress: false));
-            xmpWritten = true;
-        }
+    private readonly record struct MetadataChanges(bool Color, bool Exif, bool Xmp)
+    {
+        public static MetadataChanges Between(ImageMetadata original, ImageMetadata metadata) => new(
+            Color: !Same(original.IccProfile, metadata.IccProfile) || original.Gamma != metadata.Gamma
+                || original.Chromaticities != metadata.Chromaticities || original.SrgbRenderingIntent != metadata.SrgbRenderingIntent,
+            Exif: !Same(original.Exif, metadata.Exif),
+            Xmp: !Same(original.Xmp, metadata.Xmp));
     }
 
-    private static bool Same(byte[]? a, byte[]? b) => (a is null) == (b is null) && (a is null || a.AsSpan().SequenceEqual(b));
+    /// <summary>
+    /// The boxes that still have to be written. A replacement takes the place of the first box of its kind and keeps
+    /// its compression; the rest of that kind is dropped. Exif and xml boxes that replace none go before the
+    /// codestream, uncompressed, where the encoder puts them.
+    /// </summary>
+    private sealed class PendingBoxes(MetadataChanges changes, byte[]? exif, byte[]? xmp, byte[]? codestream, List<JxlBoxEntry> boxes)
+    {
+        private readonly bool exifCompressed = boxes.Any(box => box.BrotliType == JxlBoxType.Exif);
+        private readonly bool xmpCompressed = boxes.Any(box => box.BrotliType == JxlBoxType.Xmp);
+        private byte[]? exif = exif;
+        private byte[]? xmp = xmp;
+        private byte[]? codestream = codestream;
+
+        // Changed metadata and a rewritten codestream replace every box of their kind.
+        private readonly bool replaceCodestream = codestream is not null;
+
+        public bool Replaces(JxlBoxEntry box) => box.Kind switch
+        {
+            JxlBoxType.Exif => changes.Exif,
+            JxlBoxType.Xmp => changes.Xmp,
+            _ => box.IsCodestream && replaceCodestream,
+        };
+
+        public void WriteReplacement(Stream output, JxlBoxEntry box)
+        {
+            if (box.Kind == JxlBoxType.Exif && exif is not null)
+            {
+                JxlContainerWriter.WriteBox(output, JxlMetadataWriter.ExifBox(exif, exifCompressed));
+                exif = null;
+            }
+            else if (box.Kind == JxlBoxType.Xmp && xmp is not null)
+            {
+                JxlContainerWriter.WriteBox(output, JxlMetadataWriter.XmpBox(xmp, xmpCompressed));
+                xmp = null;
+            }
+            else if (box.IsCodestream && codestream is not null)
+            {
+                WriteAdded(output);
+                JxlContainerWriter.WriteBox(output, new JxlBox(JxlBoxType.Codestream, codestream));
+                codestream = null;
+            }
+        }
+
+        public void WriteAdded(Stream output)
+        {
+            foreach (JxlBox box in JxlMetadataWriter.DescriptiveBoxes(exif, xmp, compress: false))
+            {
+                JxlContainerWriter.WriteBox(output, box);
+            }
+
+            (exif, xmp) = (null, null);
+        }
+    }
 }

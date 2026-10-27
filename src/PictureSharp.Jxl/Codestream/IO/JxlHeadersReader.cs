@@ -1,5 +1,4 @@
 using PictureSharp.Formats.Jxl.Codestream.Model;
-using static PictureSharp.Formats.Jxl.Codestream.IO.JxlU32;
 using static PictureSharp.Formats.Jxl.Codestream.Model.JxlHeaders;
 
 namespace PictureSharp.Formats.Jxl.Codestream.IO;
@@ -10,7 +9,7 @@ internal static class JxlHeadersReader
     public static JxlHeaders Read(JxlCodestream codestream)
     {
         var reader = new JxlBitReader(codestream);
-        if (codestream.Length < 2 || reader.ReadBits(16) != 0x0AFF)
+        if (codestream.Length < 2 || reader.ReadBits(16) != JxlDescriptor.CodestreamMarker)
         {
             throw JxlDescriptor.Corrupt("Missing codestream signature.");
         }

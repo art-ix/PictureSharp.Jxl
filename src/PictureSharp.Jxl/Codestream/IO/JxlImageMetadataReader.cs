@@ -38,10 +38,7 @@ internal static class JxlImageMetadataReader
         metadata = metadata with { BitDepth = JxlBitDepthReader.Read(ref reader), Modular16BitBufferSufficient = reader.ReadBool() };
         uint count = JxlFields.U32(ref reader, Val(0), Val(1), BitsOffset(4, 2), BitsOffset(12, 1));
         // Each channel takes at least one bit, so a count beyond the remaining input is truncated, not allocated.
-        if (count > reader.RemainingBits)
-        {
-            throw JxlDescriptor.Corrupt("Truncated codestream.");
-        }
+        reader.EnsureRemaining(count);
 
         var channels = new JxlExtraChannelInfo[count];
         for (int i = 0; i < channels.Length; i++)

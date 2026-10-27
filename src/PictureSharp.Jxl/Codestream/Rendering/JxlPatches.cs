@@ -45,9 +45,6 @@ internal static class JxlPatches
         }
     }
 
-    private static bool UsesAlpha(JxlPatchBlendMode mode) => mode is JxlPatchBlendMode.BlendAbove or JxlPatchBlendMode.BlendBelow
-        or JxlPatchBlendMode.AlphaWeightedAddAbove or JxlPatchBlendMode.AlphaWeightedAddBelow;
-
     // PerformBlending for one pixel: extra channels first (with the alpha before blending), then colour.
     private static void Blend(float[] bg, float[] fg, float[] result, IReadOnlyList<JxlPatchBlending> blendings, IReadOnlyList<JxlExtraChannelInfo> info, bool hasAlpha)
     {

@@ -10,7 +10,7 @@ namespace PictureSharp.Formats.Jxl.Codestream.VarDct;
 /// </summary>
 internal static class JxlDct
 {
-    private const float Sqrt2 = 1.41421356237f;
+    internal const float Sqrt2 = 1.41421356237f;
 
     /// <summary>Scratch floats a transform of a varblock of <paramref name="coefficients"/> coefficients needs.</summary>
     public static int ScratchSize(int coefficients) => 2 * coefficients + 4 * 256 + 64;
@@ -41,8 +41,8 @@ internal static class JxlDct
                 Afv(strategy - JxlAcStrategyType.Afv0, coefficients, pixels, stride, scratch);
                 break;
             default:
-                int rows = 8 * JxlAcStrategy.BlocksY(strategy);
-                int columns = 8 * JxlAcStrategy.BlocksX(strategy);
+                int rows = 8 * strategy.BlocksY;
+                int columns = 8 * strategy.BlocksX;
                 ScaledIdct(rows, columns, coefficients, pixels, stride, scratch);
                 break;
         }
@@ -55,8 +55,8 @@ internal static class JxlDct
     public static void LowestFrequenciesFromDc(JxlAcStrategyType strategy, ReadOnlySpan<float> dc, int dcStride, Span<float> llf,
         Span<float> scratch)
     {
-        int rows = JxlAcStrategy.BlocksY(strategy);
-        int columns = JxlAcStrategy.BlocksX(strategy);
+        int rows = strategy.BlocksY;
+        int columns = strategy.BlocksX;
         if (rows * columns == 1)
         {
             llf[0] = dc[0];
@@ -300,12 +300,8 @@ internal static class JxlDct
 
     private static void Identity(ReadOnlySpan<float> coefficients, Span<float> pixels, int stride)
     {
-        float block00 = coefficients[0];
-        float block01 = coefficients[1];
-        float block10 = coefficients[8];
-        float block11 = coefficients[9];
-        Span<float> dcs = [block00 + block01 + block10 + block11, block00 + block01 - block10 - block11,
-            block00 - block01 + block10 - block11, block00 - block01 - block10 + block11];
+        Span<float> dcs = stackalloc float[4];
+        QuarterDcs(coefficients, dcs);
         for (int y = 0; y < 2; y++)
         {
             for (int x = 0; x < 2; x++)
@@ -349,17 +345,7 @@ internal static class JxlDct
         Span<float> block = stackalloc float[32];
         for (int half = 0; half < 2; half++)
         {
-            block[0] = dcs[half];
-            for (int iy = 0; iy < 4; iy++)
-            {
-                for (int ix = 0; ix < 8; ix++)
-                {
-                    if (ix != 0 || iy != 0)
-                    {
-                        block[iy * 8 + ix] = coefficients[(half + iy * 2) * 8 + ix];
-                    }
-                }
-            }
+            Gather(coefficients, half * 8, 16, 1, 4, 8, dcs[half], block);
 
             if (sideBySide)
             {
@@ -374,28 +360,14 @@ internal static class JxlDct
 
     private static void Dct4X4(ReadOnlySpan<float> coefficients, Span<float> pixels, int stride, Span<float> scratch)
     {
-        float block00 = coefficients[0];
-        float block01 = coefficients[1];
-        float block10 = coefficients[8];
-        float block11 = coefficients[9];
-        Span<float> dcs = [block00 + block01 + block10 + block11, block00 + block01 - block10 - block11,
-            block00 - block01 + block10 - block11, block00 - block01 - block10 + block11];
+        Span<float> dcs = stackalloc float[4];
+        QuarterDcs(coefficients, dcs);
         Span<float> block = stackalloc float[16];
         for (int y = 0; y < 2; y++)
         {
             for (int x = 0; x < 2; x++)
             {
-                block[0] = dcs[y * 2 + x];
-                for (int iy = 0; iy < 4; iy++)
-                {
-                    for (int ix = 0; ix < 4; ix++)
-                    {
-                        if (ix != 0 || iy != 0)
-                        {
-                            block[iy * 4 + ix] = coefficients[(y + iy * 2) * 8 + x + ix * 2];
-                        }
-                    }
-                }
+                Gather(coefficients, y * 8 + x, 16, 2, 4, 4, dcs[y * 2 + x], block);
 
                 ScaledIdct(4, 4, block, pixels[(y * 4 * stride + x * 4)..], stride, scratch);
             }
@@ -454,17 +426,7 @@ internal static class JxlDct
         float dc1 = block00 + block10 - block01;
         float dc2 = block00 - block10;
         Span<float> coeff = stackalloc float[16];
-        coeff[0] = dc0;
-        for (int iy = 0; iy < 4; iy++)
-        {
-            for (int ix = 0; ix < 4; ix++)
-            {
-                if (ix != 0 || iy != 0)
-                {
-                    coeff[iy * 4 + ix] = coefficients[iy * 2 * 8 + ix * 2];
-                }
-            }
-        }
+        Gather(coefficients, 0, 16, 2, 4, 4, dc0, coeff);
 
         Span<float> block = stackalloc float[32];
         ReadOnlySpan<float> basis = JxlDctTables.AfvBasis;
@@ -487,31 +449,41 @@ internal static class JxlDct
             }
         }
 
-        block[0] = dc1;
-        for (int iy = 0; iy < 4; iy++)
-        {
-            for (int ix = 0; ix < 4; ix++)
-            {
-                if (ix != 0 || iy != 0)
-                {
-                    block[iy * 4 + ix] = coefficients[iy * 2 * 8 + ix * 2 + 1];
-                }
-            }
-        }
+        Gather(coefficients, 1, 16, 2, 4, 4, dc1, block);
 
         ScaledIdct(4, 4, block, pixels[(afvY * 4 * stride + (afvX == 1 ? 0 : 4))..], stride, scratch);
-        block[0] = dc2;
-        for (int iy = 0; iy < 4; iy++)
+        Gather(coefficients, 8, 16, 1, 4, 8, dc2, block);
+
+        ScaledIdct(4, 8, block, pixels[((afvY == 1 ? 0 : 4) * stride)..], stride, scratch);
+    }
+
+    // The DCs of the four 4×4 quarters from the top-left 2×2 coefficients.
+    private static void QuarterDcs(ReadOnlySpan<float> coefficients, Span<float> dcs)
+    {
+        float block00 = coefficients[0];
+        float block01 = coefficients[1];
+        float block10 = coefficients[8];
+        float block11 = coefficients[9];
+        dcs[0] = block00 + block01 + block10 + block11;
+        dcs[1] = block00 + block01 - block10 - block11;
+        dcs[2] = block00 - block01 + block10 - block11;
+        dcs[3] = block00 - block01 - block10 + block11;
+    }
+
+    // A rows×columns sub-block: the DC first, then the interleaved coefficients at start + iy·rowStep + ix·columnStep.
+    private static void Gather(ReadOnlySpan<float> coefficients, int start, int rowStep, int columnStep, int rows, int columns, float dc,
+        Span<float> block)
+    {
+        block[0] = dc;
+        for (int iy = 0; iy < rows; iy++)
         {
-            for (int ix = 0; ix < 8; ix++)
+            for (int ix = 0; ix < columns; ix++)
             {
                 if (ix != 0 || iy != 0)
                 {
-                    block[iy * 8 + ix] = coefficients[(1 + iy * 2) * 8 + ix];
+                    block[iy * columns + ix] = coefficients[start + iy * rowStep + ix * columnStep];
                 }
             }
         }
-
-        ScaledIdct(4, 8, block, pixels[((afvY == 1 ? 0 : 4) * stride)..], stride, scratch);
     }
 }

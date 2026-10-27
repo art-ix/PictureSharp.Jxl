@@ -18,10 +18,7 @@ internal static class JxlTocReader
 
         int count = (int)entries;
         // Every entry takes at least 12 bits, so a TOC larger than the input is truncated, not allocated.
-        if (count * 12L > reader.RemainingBits)
-        {
-            throw JxlDescriptor.Corrupt("Truncated codestream.");
-        }
+        reader.EnsureRemaining(count * 12L);
 
         int[]? permutation = reader.ReadBool() ? ReadPermutation(ref reader, count) : null;
         reader.JumpToByteBoundary();

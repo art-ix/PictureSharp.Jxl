@@ -1,6 +1,5 @@
 using PictureSharp.Formats.Jxl.Codestream.Model;
 using static PictureSharp.Formats.Jxl.Codestream.IO.JxlU32;
-using static PictureSharp.Formats.Jxl.Codestream.Model.JxlBlendingInfo;
 
 namespace PictureSharp.Formats.Jxl.Codestream.IO;
 

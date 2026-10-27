@@ -102,7 +102,7 @@ public sealed class JxlEncoderTests
         foreach (bool compress in new[] { false, true })
         {
             byte[] encoded = image.ToJxl(Encoder(new() { CompressMetadata = compress }));
-            var boxes = JxlContainer.Boxes(encoded).Select(box => box.Inner ?? box.Type).ToList();
+            var boxes = JxlContainer.Boxes(encoded).Select(box => box.Kind).ToList();
             await Assert.That(boxes).IsEquivalentTo(new[] { "JXL ", "ftyp", "Exif", "xml ", "jxlc" });
             await Assert.That(JxlContainer.Boxes(encoded).Count(box => box.Type == "brob")).IsEqualTo(compress ? 2 : 0);
             ImageMetadata metadata = Image.ReadMetadata((ReadOnlyMemory<byte>)encoded, Options());
@@ -210,8 +210,8 @@ public sealed class JxlEncoderTests
         await Assert.That(read.Exif).IsEquivalentTo(original.Exif!);
         await Assert.That(read.Xmp).IsEquivalentTo("<b/>"u8.ToArray());
         // The codestream boxes are copied byte for byte.
-        static byte[] Codestream(byte[] file) => [.. JxlContainer.Boxes(file).Where(box => box.Type is "jxlc" or "jxlp")
-            .SelectMany(box => file[(int)box.Start..(int)box.End])];
+        static byte[] Codestream(byte[] file) => [.. JxlContainer.Boxes(file).Where(box => box.IsCodestream)
+            .SelectMany(box => file[(int)box.Header.Start..(int)box.Header.End])];
         await Assert.That(Codestream(edited)).IsEquivalentTo(Codestream(data));
         using Image expected = Image.Load(data, Options());
         using Image decoded = Image.Load(edited, Options());

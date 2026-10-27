@@ -13,57 +13,58 @@ internal sealed class JxlRctTransform(JxlTransform description) : IJxlModularTra
     {
         image.CheckEqualChannels(description.BeginC, description.BeginC + 2L);
         int m = (int)description.BeginC;
-        if (description.RctType == 0)
+        JxlRctType type = description.RctType;
+        if (type == JxlRctType.None)
         {
             return;
         }
 
-        // Permutation: 0=RGB, 1=GBR, 2=BRG, 3=RBG, 4=GRB, 5=BGR. Type 6 is YCoCg; 0–5 have the low bit for the third
-        // channel (subtract first) and the high bits for the second (nothing, subtract first, subtract average).
-        int permutation = (int)description.RctType / 7;
-        int custom = (int)description.RctType % 7;
         JxlChannel[] inputs = [image.Channels[m], image.Channels[m + 1], image.Channels[m + 2]];
-        int[] outputs = [m + permutation % 3, m + (permutation + 1 + permutation / 3) % 3, m + (permutation + 2 - permutation / 3) % 3];
-        if (custom != 0)
+        (int first, int second, int third) = type.ChannelOrder;
+        int[] outputs = [m + first, m + second, m + third];
+        if (type.Transform != 0)
         {
-            int[] first = inputs[0].Pixels;
-            int[] second = inputs[1].Pixels;
-            int[] third = inputs[2].Pixels;
-            for (int i = 0; i < first.Length; i++)
+            bool yCoCg = type.IsYCoCg;
+            bool subtractsFirst = type.SubtractsFirstFromThird;
+            int secondMode = type.SecondChannelMode;
+            int[] c0 = inputs[0].Pixels;
+            int[] c1 = inputs[1].Pixels;
+            int[] c2 = inputs[2].Pixels;
+            for (int i = 0; i < c0.Length; i++)
             {
                 if ((i & 0xFFF) == 0) cancellationToken.ThrowIfCancellationRequested();
                 unchecked
                 {
-                    if (custom == 6)
+                    if (yCoCg)
                     {
-                        int y = first[i];
-                        int co = second[i];
-                        int cg = third[i];
+                        int y = c0[i];
+                        int co = c1[i];
+                        int cg = c2[i];
                         int tmp = y - (cg >> 1);
                         int g = cg + tmp;
                         int b = tmp - (co >> 1);
-                        (first[i], second[i], third[i]) = (b + co, g, b);
+                        (c0[i], c1[i], c2[i]) = (b + co, g, b);
                         continue;
                     }
 
-                    int a = first[i];
-                    int s = second[i];
-                    int t = third[i];
-                    if ((custom & 1) != 0)
+                    int a = c0[i];
+                    int s = c1[i];
+                    int t = c2[i];
+                    if (subtractsFirst)
                     {
                         t += a;
                     }
 
-                    if (custom >> 1 == 1)
+                    if (secondMode == 1)
                     {
                         s += a;
                     }
-                    else if (custom >> 1 == 2)
+                    else if (secondMode == 2)
                     {
                         s += (a + t) >> 1;
                     }
 
-                    (first[i], second[i], third[i]) = (a, s, t);
+                    (c0[i], c1[i], c2[i]) = (a, s, t);
                 }
             }
         }

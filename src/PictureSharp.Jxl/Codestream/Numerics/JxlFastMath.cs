@@ -7,8 +7,8 @@ namespace PictureSharp.Formats.Jxl.Codestream.Numerics;
 /// </summary>
 internal static class JxlFastMath
 {
-    private static readonly float[] Log2P = [(float)-1.8503833400518310E-06, (float)1.4287160470083755E+00, (float)7.4245873327820566E-01];
-    private static readonly float[] Log2Q = [(float)9.9032814277590719E-01, (float)1.0096718572241148E+00, (float)1.7409343003366853E-01];
+    private static ReadOnlySpan<float> Log2P => [(float)-1.8503833400518310E-06, (float)1.4287160470083755E+00, (float)7.4245873327820566E-01];
+    private static ReadOnlySpan<float> Log2Q => [(float)9.9032814277590719E-01, (float)1.0096718572241148E+00, (float)1.7409343003366853E-01];
 
     public static float Fma(float a, float b, float c) => MathF.FusedMultiplyAdd(a, b, c);
 

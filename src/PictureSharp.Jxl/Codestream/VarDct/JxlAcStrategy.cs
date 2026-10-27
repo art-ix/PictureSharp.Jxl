@@ -1,6 +1,7 @@
 using PictureSharp.Formats.Jxl.Codestream.Entropy;
 using PictureSharp.Formats.Jxl.Codestream.IO;
 using PictureSharp.Formats.Jxl.Codestream.Model;
+using static PictureSharp.Formats.Jxl.Codestream.Numerics.JxlIntMath;
 
 namespace PictureSharp.Formats.Jxl.Codestream.VarDct;
 
@@ -40,6 +41,47 @@ internal enum JxlAcStrategyType : byte
     Dct128X256 = 26,
 }
 
+/// <summary>A set of AC strategies, such as those a frame uses.</summary>
+internal readonly record struct JxlAcStrategySet(uint Mask)
+{
+    public bool Contains(JxlAcStrategyType type) => (Mask & (1u << (int)type)) != 0;
+
+    public JxlAcStrategySet With(JxlAcStrategyType type) => new(Mask | (1u << (int)type));
+
+    public JxlAcStrategySet Union(JxlAcStrategySet other) => new(Mask | other.Mask);
+
+    /// <summary>The coefficients of the largest varblock in the set.</summary>
+    public int MaxCoefficients
+    {
+        get
+        {
+            int max = 0;
+            for (int s = 0; s < JxlAcStrategy.Count; s++)
+            {
+                if (Contains((JxlAcStrategyType)s)) max = Math.Max(max, JxlAcStrategy.BlockSize << ((JxlAcStrategyType)s).Log2Blocks);
+            }
+
+            return max;
+        }
+    }
+}
+
+/// <summary>A block of a VarDCT frame: the strategy of its varblock and whether it is the varblock's first block.</summary>
+internal readonly record struct JxlVarblock(byte Raw)
+{
+    /// <summary>A block that no varblock covers yet.</summary>
+    public static JxlVarblock Unassigned => new(0xFF);
+
+    public static JxlVarblock Create(JxlAcStrategyType type, bool first) => new((byte)(((int)type << 1) | (first ? 1 : 0)));
+
+    public bool IsAssigned => Raw != Unassigned.Raw;
+
+    /// <summary>Whether this is the top-left block, which carries the varblock's coefficients.</summary>
+    public bool IsFirst => (Raw & 1) != 0;
+
+    public JxlAcStrategyType Type => (JxlAcStrategyType)(Raw >> 1);
+}
+
 internal static class JxlAcStrategy
 {
     public const int Count = 27;
@@ -64,24 +106,30 @@ internal static class JxlAcStrategy
         908, 1164, 1292, 1420, 1548, 2572, 3596, 4620, 5132, 5644, 6156,
     ];
 
-    public static int BlocksX(JxlAcStrategyType type) => CoveredX[(int)type];
+    extension(JxlAcStrategyType type)
+    {
+        /// <summary>The 8×8 blocks the varblock covers horizontally.</summary>
+        public int BlocksX => CoveredX[(int)type];
 
-    public static int BlocksY(JxlAcStrategyType type) => CoveredY[(int)type];
+        public int BlocksY => CoveredY[(int)type];
 
-    public static int Log2Blocks(JxlAcStrategyType type) => Log2Covered[(int)type];
+        /// <summary>log2 of the number of covered blocks.</summary>
+        public int Log2Blocks => Log2Covered[(int)type];
 
-    public static int Order(JxlAcStrategyType type) => StrategyOrder[(int)type];
+        /// <summary>The coefficient order bucket, shared by RxC and CxR.</summary>
+        public int OrderBucket => StrategyOrder[(int)type];
+    }
 
     /// <summary>The first coefficient of the order of bucket <paramref name="order"/> and channel <paramref name="c"/>.</summary>
     public static int OrderOffset(int order, int c) => OrderOffsets[3 * order + c] * BlockSize;
 
     /// <summary>The size of one set of orders (all three channels) covering the strategies in <paramref name="usedStrategies"/>.</summary>
-    public static int OrderSetSize(uint usedStrategies)
+    public static int OrderSetSize(JxlAcStrategySet usedStrategies)
     {
         int size = 0;
         for (int s = 0; s < Count; s++)
         {
-            if ((usedStrategies & (1u << s)) != 0)
+            if (usedStrategies.Contains((JxlAcStrategyType)s))
             {
                 size = Math.Max(size, OrderOffsets[3 * (StrategyOrder[s] + 1)] * BlockSize);
             }
@@ -96,12 +144,12 @@ internal static class JxlAcStrategy
     /// </summary>
     public static int[] NaturalOrder(JxlAcStrategyType type)
     {
-        int cx = Math.Max(BlocksX(type), BlocksY(type));
-        int cy = Math.Min(BlocksX(type), BlocksY(type));
+        int cx = Math.Max(type.BlocksX, type.BlocksY);
+        int cy = Math.Min(type.BlocksX, type.BlocksY);
         int[] order = new int[cx * cy * BlockSize];
         int xs = cx / cy;
         int xsm = xs - 1;
-        int xss = xs <= 1 ? 0 : JxlPrefixCode.Log2Floor((uint)xs - 1) + 1;
+        int xss = CeilLog2(xs);
         int dim = cx * JxlFrameHeader.BlockDim;
         int cur = cx * cy;
         for (int i = 0; i < dim; i++)
@@ -148,7 +196,7 @@ internal static class JxlAcStrategy
     /// Reads the coefficient orders of one pass (DecodeCoeffOrders): the natural order, or a permutation of it after
     /// the lowest frequencies for each bucket in <paramref name="usedOrders"/>.
     /// </summary>
-    public static int[] ReadOrders(ref JxlBitReader reader, uint usedOrders, uint usedStrategies)
+    public static int[] ReadOrders(ref JxlBitReader reader, uint usedOrders, JxlAcStrategySet usedStrategies)
     {
         int[] orders = new int[OrderSetSize(usedStrategies)];
         JxlSymbolReader? symbols = null;
@@ -164,7 +212,7 @@ internal static class JxlAcStrategy
             uint bucketMask = 0;
             for (int s = 0; s < Count; s++)
             {
-                if ((usedStrategies & (1u << s)) != 0)
+                if (usedStrategies.Contains((JxlAcStrategyType)s))
                 {
                     bucketMask |= 1u << StrategyOrder[s];
                 }
@@ -189,7 +237,7 @@ internal static class JxlAcStrategy
                 }
 
                 int[] natural = NaturalOrder(type);
-                int lowest = BlocksX(type) * BlocksY(type);
+                int lowest = type.BlocksX * type.BlocksY;
                 for (int c = 0; c < 3; c++)
                 {
                     if (!coded)
@@ -298,7 +346,7 @@ internal sealed class JxlBlockContextMap
             {
                 uint value = JxlFields.U32(ref reader, JxlU32.Bits32(4), JxlU32.BitsOffset(8, 16), JxlU32.BitsOffset(16, 272),
                     JxlU32.BitsOffset(32, 65808));
-                dc[c][i] = (int)((value >> 1) ^ (((~value) & 1) - 1));
+                dc[c][i] = UnpackSigned(value);
             }
         }
 

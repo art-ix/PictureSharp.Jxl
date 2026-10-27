@@ -6,7 +6,7 @@ internal sealed class JxlGroupHeader(bool useGlobalTree, JxlWeightedHeader weigh
     public bool UseGlobalTree { get; } = useGlobalTree;
     public JxlWeightedHeader Weighted { get; } = weighted;
 
-    public IReadOnlyList<JxlTransform> Transforms { get; } = Array.AsReadOnly((JxlTransform[])transforms.Clone());
+    public IReadOnlyList<JxlTransform> Transforms { get; } = transforms.Snapshot();
 
     public static JxlGroupHeader Default { get; } = new(false, JxlWeightedHeader.Default, []);
 }

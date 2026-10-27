@@ -10,6 +10,9 @@ internal readonly record struct JxlU32(int Bits, uint Offset)
     public static JxlU32 Bits32(int bits) => new(bits, 0);
 }
 
+/// <summary>The four distributions of a U32 field, chosen by a two-bit selector.</summary>
+internal readonly record struct JxlU32Distribution(JxlU32 D0, JxlU32 D1, JxlU32 D2, JxlU32 D3);
+
 /// <summary>
 /// Field encodings of ISO/IEC 18181-1 Annex A: U32, U64, F16, Enum and extensions. Ported from libjxl v0.12.0
 /// lib/jxl/fields.cc (U32Coder, U64Coder, F16Coder, ReadVisitor::BeginExtensions/EndExtensions), BSD-3-Clause.
@@ -32,6 +35,9 @@ internal static class JxlFields
         // The offsets of valid encodings never overflow; wrap like libjxl's uint32 arithmetic otherwise.
         return unchecked(distribution.Offset + reader.ReadBits(distribution.Bits));
     }
+
+    public static uint U32(ref JxlBitReader reader, JxlU32Distribution distribution) =>
+        U32(ref reader, distribution.D0, distribution.D1, distribution.D2, distribution.D3);
 
     public static ulong U64(ref JxlBitReader reader)
     {
@@ -72,6 +78,18 @@ internal static class JxlFields
         }
 
         return (float)BitConverter.UInt16BitsToHalf((ushort)bits);
+    }
+
+    /// <summary><paramref name="count"/> F16 values.</summary>
+    public static float[] F16Array(ref JxlBitReader reader, int count)
+    {
+        float[] values = new float[count];
+        for (int i = 0; i < count; i++)
+        {
+            values[i] = F16(ref reader);
+        }
+
+        return values;
     }
 
     /// <summary>An enumerator; <paramref name="valid"/> has bit <c>v</c> set for every defined value <c>v</c>.</summary>
@@ -118,11 +136,7 @@ internal static class JxlFields
             return "";
         }
 
-        if (length * 8L > reader.RemainingBits)
-        {
-            throw JxlDescriptor.Corrupt("Truncated codestream.");
-        }
-
+        reader.EnsureRemaining(length * 8L);
         Span<byte> bytes = stackalloc byte[length];
         for (int i = 0; i < length; i++)
         {

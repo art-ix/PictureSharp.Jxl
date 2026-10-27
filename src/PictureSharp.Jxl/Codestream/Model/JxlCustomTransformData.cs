@@ -10,19 +10,19 @@ internal sealed record JxlCustomTransformData
     public static JxlCustomTransformData Default { get; } = new();
 
     /// <summary>Row-major 3×3 inverse opsin matrix, or null for the default.</summary>
-    public IReadOnlyList<float>? OpsinInverseMatrix { get; init => field = value is null ? null : Array.AsReadOnly(value.ToArray()); }
+    public IReadOnlyList<float>? OpsinInverseMatrix { get; init => field = value?.Snapshot(); }
 
     /// <summary>Opsin biases (3) and quantization biases (4), present with <see cref="OpsinInverseMatrix"/>.</summary>
-    public IReadOnlyList<float>? OpsinBiases { get; init => field = value is null ? null : Array.AsReadOnly(value.ToArray()); }
+    public IReadOnlyList<float>? OpsinBiases { get; init => field = value?.Snapshot(); }
 
-    public IReadOnlyList<float>? QuantBiases { get; init => field = value is null ? null : Array.AsReadOnly(value.ToArray()); }
+    public IReadOnlyList<float>? QuantBiases { get; init => field = value?.Snapshot(); }
 
     /// <summary>Custom 2×, 4× and 8× upsampling weights (15, 55 and 210 values), or null for the defaults.</summary>
-    public IReadOnlyList<float>? Upsampling2Weights { get; init => field = value is null ? null : Array.AsReadOnly(value.ToArray()); }
+    public IReadOnlyList<float>? Upsampling2Weights { get; init => field = value?.Snapshot(); }
 
-    public IReadOnlyList<float>? Upsampling4Weights { get; init => field = value is null ? null : Array.AsReadOnly(value.ToArray()); }
+    public IReadOnlyList<float>? Upsampling4Weights { get; init => field = value?.Snapshot(); }
 
-    public IReadOnlyList<float>? Upsampling8Weights { get; init => field = value is null ? null : Array.AsReadOnly(value.ToArray()); }
+    public IReadOnlyList<float>? Upsampling8Weights { get; init => field = value?.Snapshot(); }
 
     public IReadOnlyList<float> EffectiveOpsinInverseMatrix => OpsinInverseMatrix ?? DefaultOpsinInverseMatrix;
 

@@ -1,11 +1,12 @@
-using PictureSharp.Formats.Jxl.Codestream.Color;
 using PictureSharp.Formats.Jxl.Codestream.Buffers;
+using PictureSharp.Formats.Jxl.Codestream.Color;
 using PictureSharp.Formats.Jxl.Codestream.Entropy;
 using PictureSharp.Formats.Jxl.Codestream.IO;
 using PictureSharp.Formats.Jxl.Codestream.Model;
 using PictureSharp.Formats.Jxl.Codestream.Modular;
 using PictureSharp.Formats.Jxl.Codestream.Rendering;
 using PictureSharp.Formats.Jxl.Codestream.VarDct;
+using static PictureSharp.Formats.Jxl.Codestream.Numerics.JxlIntMath;
 
 namespace PictureSharp.Formats.Jxl.Codestream.Frames;
 
@@ -13,6 +14,10 @@ namespace PictureSharp.Formats.Jxl.Codestream.Frames;
 /// dec_modular.cc and dec_cache.cc (BSD-3-Clause).</summary>
 internal sealed class JxlFrameDecoder
 {
+    // LF groups code the channels shifted by at least 3 (libjxl: minShift 3, maxShift 1000, i.e. no maximum).
+    private const int LfMinShift = 3;
+    private const int NoMaxShift = 1000;
+
     private readonly JxlFrameHeader frame;
     private readonly JxlFrameProgress progress;
     private readonly JxlImageMetadata metadata;
@@ -59,14 +64,14 @@ internal sealed class JxlFrameDecoder
     {
         progress.BeginLf();
         cancellationToken.ThrowIfCancellationRequested();
-        if ((frame.Flags & JxlFrameFlags.Patches) != 0)
+        if (frame.HasPatches)
         {
             patches = JxlPatchReader.Read(ref reader, frame.XSizePadded, frame.YSizePadded, metadata.ExtraChannels.Count, references);
         }
 
         matrices.ReadDc(ref reader);
         varDct?.ReadGlobal(ref reader);
-        if (varDct is not null && (frame.Flags & JxlFrameFlags.UseDcFrame) != 0)
+        if (varDct is not null && frame.UsesDcFrame)
         {
             varDct.UseDcFrame(references.GetDc(frame.DcLevel));
         }
@@ -103,15 +108,14 @@ internal sealed class JxlFrameDecoder
     {
         progress.LfGroup(group);
         cancellationToken.ThrowIfCancellationRequested();
-        if ((frame.Flags & JxlFrameFlags.UseDcFrame) == 0)
+        if (!frame.UsesDcFrame)
         {
             varDct?.DecodeDc(ref reader, group, tree);
         }
 
         int dimension = frame.GroupDimension * JxlFrameHeader.BlockDim;
-        int x = (int)(group % frame.XDcGroups) * dimension;
-        int y = (int)(group / frame.XDcGroups) * dimension;
-        DecodeGroup(ref reader, x, y, dimension, 3, 1000, (int)(1 + frame.DcGroups + group));
+        (int x, int y) = frame.DcGroupOrigin(group, dimension);
+        DecodeGroup(ref reader, x, y, dimension, LfMinShift, NoMaxShift, frame.ModularDcStream(group));
         varDct?.DecodeAcMetadata(ref reader, group, tree);
     }
 
@@ -132,7 +136,7 @@ internal sealed class JxlFrameDecoder
     private int[][] ReadRawQuantTable(ref JxlBitReader reader, int index, int width, int height)
     {
         var table = new JxlModularImage(8, [new JxlChannel(width, height), new JxlChannel(width, height), new JxlChannel(width, height)]);
-        JxlModularStream.Decode(ref reader, table, (int)(1 + 3 * frame.DcGroups + index), tree, undoTransforms: true,
+        JxlModularStream.Decode(ref reader, table, frame.QuantTableStream(index), tree, undoTransforms: true,
             cancellationToken: cancellationToken);
         return [.. table.Channels.Select(channel => channel.Pixels)];
     }
@@ -149,11 +153,9 @@ internal sealed class JxlFrameDecoder
         cancellationToken.ThrowIfCancellationRequested();
         varDct?.DecodePass(ref reader, group, pass, coefficients!);
         int dimension = frame.GroupDimension;
-        int x = (int)(group % frame.XGroups) * dimension;
-        int y = (int)(group / frame.XGroups) * dimension;
+        (int x, int y) = frame.GroupOrigin(group, dimension);
         (int minShift, int maxShift) = frame.Passes.DownsamplingBracket(pass);
-        DecodeGroup(ref reader, x, y, dimension, minShift, maxShift,
-            (int)(1 + 3 * frame.DcGroups + JxlQuantWeights.Tables + frame.Groups * pass + group));
+        DecodeGroup(ref reader, x, y, dimension, minShift, maxShift, frame.ModularAcStream(pass, group));
     }
 
     public void FinishGroup(int group, int[]? coefficients)
@@ -261,7 +263,7 @@ internal sealed class JxlFrameDecoder
 
         float[]? sigma = varDct is not null && frame.LoopFilter.EpfIterations > 0
             ? JxlEpfSigma.Compute(frame.LoopFilter, (int)frame.XSizeBlocks, (int)frame.YSizeBlocks,
-                varDct.QuantScale, varDct.QuantField, varDct.Sharpness, varDct.Strategies, cancellationToken)
+                varDct.QuantScale, varDct.QuantField, varDct.Sharpness, varDct.Varblocks, cancellationToken)
             : null;
         color = new JxlFrameRenderer(frame, headers, patches, references, sigma, cancellationToken, colorTarget)
             .Render(color, extraPlanes, colorTransform);
@@ -323,9 +325,4 @@ internal sealed class JxlFrameDecoder
 
     private static int ClampedSize(int begin, int size, int end) => (long)begin + size <= end ? size : end > begin ? end - begin : 0;
 
-    private static int CeilLog2(uint value) => value <= 1 ? 0 : JxlPrefixCode.Log2Floor(value - 1) + 1;
-
-    private static int DivCeil(int value, int divisor) => (value + divisor - 1) / divisor;
-
-    private static long DivCeil(long value, long divisor) => (value + divisor - 1) / divisor;
 }

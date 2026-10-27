@@ -19,21 +19,18 @@ internal static class JxlPixelWriter
             JxlPlane blue = decoded.Color[^1];
             // Grayscale is written as one channel (dithered as channel 0, alpha as channel 1) and replicated.
             bool gray = decoded.IsGrayscale;
-            static byte Gray(float value, int x, int y) => JxlDither.ToByte(value, x, y, 0);
             for (int y = 0; y < decoded.Height; y++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                Span<float> r = red.Row(y);
-                Span<float> g = green.Row(y);
-                Span<float> b = blue.Row(y);
-                Span<float> a = alpha is null ? default : alpha.Row(y);
+                ReadOnlySpan<float> a = alpha is null ? default : alpha.Row(y);
                 Span<Rgba32> row = pixels.Slice(y * decoded.Width, decoded.Width);
-                for (int x = 0; x < row.Length; x++)
+                if (gray)
                 {
-                    row[x] = gray
-                        ? new Rgba32(Gray(r[x], x, y), Gray(r[x], x, y), Gray(r[x], x, y), alpha is null ? (byte)255 : JxlDither.ToByte(a[x], x, y, 1))
-                        : new Rgba32(JxlDither.ToByte(r[x], x, y, 0), JxlDither.ToByte(g[x], x, y, 1), JxlDither.ToByte(b[x], x, y, 2),
-                            alpha is null ? (byte)255 : JxlDither.ToByte(a[x], x, y, 3));
+                    WriteGrayRow(red.Row(y), a, row, y);
+                }
+                else
+                {
+                    WriteColorRow(red.Row(y), green.Row(y), blue.Row(y), a, row, y);
                 }
             }
 
@@ -43,6 +40,26 @@ internal static class JxlPixelWriter
         {
             image.Dispose();
             throw;
+        }
+    }
+
+    // Without alpha the row has no alpha samples and every pixel is opaque.
+    private static void WriteGrayRow(ReadOnlySpan<float> v, ReadOnlySpan<float> a, Span<Rgba32> row, int y)
+    {
+        for (int x = 0; x < row.Length; x++)
+        {
+            byte value = JxlDither.ToByte(v[x], x, y, 0);
+            row[x] = new Rgba32(value, value, value, a.IsEmpty ? (byte)255 : JxlDither.ToByte(a[x], x, y, 1));
+        }
+    }
+
+    private static void WriteColorRow(ReadOnlySpan<float> r, ReadOnlySpan<float> g, ReadOnlySpan<float> b, ReadOnlySpan<float> a,
+        Span<Rgba32> row, int y)
+    {
+        for (int x = 0; x < row.Length; x++)
+        {
+            row[x] = new Rgba32(JxlDither.ToByte(r[x], x, y, 0), JxlDither.ToByte(g[x], x, y, 1), JxlDither.ToByte(b[x], x, y, 2),
+                a.IsEmpty ? (byte)255 : JxlDither.ToByte(a[x], x, y, 3));
         }
     }
 }

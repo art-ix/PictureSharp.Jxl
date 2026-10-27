@@ -111,13 +111,8 @@ internal sealed class JxlIccTarget
 
     private static float[]? Invert(double[] m)
     {
-        double[] t =
-        [
-            m[4] * m[8] - m[5] * m[7], m[2] * m[7] - m[1] * m[8], m[1] * m[5] - m[2] * m[4],
-            m[5] * m[6] - m[3] * m[8], m[0] * m[8] - m[2] * m[6], m[2] * m[3] - m[0] * m[5],
-            m[3] * m[7] - m[4] * m[6], m[1] * m[6] - m[0] * m[7], m[0] * m[4] - m[1] * m[3],
-        ];
-        double determinant = m[0] * t[0] + m[1] * t[3] + m[2] * t[6];
+        double[] t = new double[9];
+        double determinant = JxlMatrix3.Adjugate(m, t);
         if (!(Math.Abs(determinant) > 1e-6))
         {
             return null;

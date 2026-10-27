@@ -100,7 +100,7 @@ internal sealed class JxlPaletteTransform(JxlTransform description) : IJxlModula
                                 }
 
                                 output[position] = unchecked((int)value);
-                                predictor.Update(output[position], x, y, width);
+                                predictor.Update(output[position], x, y);
                                 continue;
                             }
 

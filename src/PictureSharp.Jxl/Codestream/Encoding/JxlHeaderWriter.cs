@@ -1,5 +1,6 @@
 using PictureSharp.Formats.Jxl.Codestream.Model;
 using static PictureSharp.Formats.Jxl.Codestream.IO.JxlU32;
+using static PictureSharp.Formats.Jxl.Codestream.Numerics.JxlIntMath;
 
 namespace PictureSharp.Formats.Jxl.Codestream.Encoding;
 
@@ -11,7 +12,7 @@ namespace PictureSharp.Formats.Jxl.Codestream.Encoding;
 /// </summary>
 internal static class JxlHeaderWriter
 {
-    public static void Signature(JxlBitWriter writer) => writer.Write(16, 0x0AFF);
+    public static void Signature(JxlBitWriter writer) => writer.Write(16, JxlDescriptor.CodestreamMarker);
 
     public static void Size(JxlBitWriter writer, JxlSizeHeader size)
     {
@@ -172,7 +173,7 @@ internal static class JxlHeaderWriter
         Coordinate(writer, xy.Y);
     }
 
-    private static void Coordinate(JxlBitWriter writer, int value) => JxlFieldWriter.U32(writer, JxlTokens.PackSigned(value),
+    private static void Coordinate(JxlBitWriter writer, int value) => JxlFieldWriter.U32(writer, PackSigned(value),
         Bits32(19), BitsOffset(19, 524288), BitsOffset(20, 1048576), BitsOffset(21, 2097152));
 
     private static void ToneMapping(JxlBitWriter writer, JxlToneMapping tone)

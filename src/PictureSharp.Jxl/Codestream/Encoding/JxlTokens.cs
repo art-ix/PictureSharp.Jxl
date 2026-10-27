@@ -25,7 +25,4 @@ internal sealed class JxlTokens
         contexts[Count] = context;
         values[Count++] = value;
     }
-
-    /// <summary>A signed value folded to unsigned: 0, -1, 1, -2, … become 0, 1, 2, 3, ….</summary>
-    public static uint PackSigned(long value) => unchecked((uint)(value >= 0 ? 2 * (ulong)value : 2 * (ulong)(-value) - 1));
 }

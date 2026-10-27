@@ -277,11 +277,7 @@ internal static class JxlRenderPipeline
             JxlPlane[] uniform = Outputs(planes, null);
             for (int c = 0; c < 3; c++)
             {
-                for (int y = 0; y < planes[c].Height; y++)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    planes[c].Row(y).CopyTo(uniform[c].Row(y));
-                }
+                planes[c].CopyTo(uniform[c], cancellationToken);
             }
 
             planes = uniform;

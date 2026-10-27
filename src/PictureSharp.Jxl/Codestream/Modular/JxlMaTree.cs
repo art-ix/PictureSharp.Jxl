@@ -2,10 +2,9 @@ using PictureSharp.Formats.Jxl.Codestream.Buffers;
 using PictureSharp.Formats.Jxl.Codestream.Entropy;
 using PictureSharp.Formats.Jxl.Codestream.IO;
 using PictureSharp.Formats.Jxl.Codestream.Model;
+using static PictureSharp.Formats.Jxl.Codestream.Numerics.JxlIntMath;
 
 namespace PictureSharp.Formats.Jxl.Codestream.Modular;
-
-
 
 /// <summary>
 /// A meta-adaptive (MA) tree: decision nodes on pixel properties and leaves with a context, a predictor, an offset
@@ -15,14 +14,13 @@ namespace PictureSharp.Formats.Jxl.Codestream.Modular;
 internal sealed class JxlMaTree
 {
     public const int PredictorCount = 14;
-    public const int StaticProperties = 2;   // channel and stream (group) id
-    public const int NonReferenceProperties = StaticProperties + 13 + 1;
-    public const int WeightedProperty = NonReferenceProperties - 1;
+    // Channel and stream (group) id, which filtering resolves per channel.
+    private const int StaticProperties = JxlMaProperty.Stream + 1;
     public const long MaxSize = 1 << 22;
     private const int ExtraPropertiesPerChannel = 4;
     private const int HeightLimit = 2048;
-
-    private enum TreeContext { SplitValue = 0, Property = 1, Predictor = 2, Offset = 3, MultiplierLog = 4, MultiplierBits = 5 }
+    private const int MaxProperty = 255;
+    public const int TreeContexts = (int)JxlMaTreeContext.MultiplierBits + 1;
 
     // Node arrays: Property is -1 for leaves, whose Left holds the leaf (context) index.
     private readonly int[] property;
@@ -33,7 +31,7 @@ internal sealed class JxlMaTree
     private readonly long[] offset;
     private readonly int[] multiplier;
 
-    private JxlMaTree(List<(int Property, int Split, int Left, int Right, JxlPredictor Predictor, long Offset, int Multiplier)> nodes)
+    private JxlMaTree(List<JxlMaNode> nodes)
     {
         property = [.. nodes.Select(n => n.Property)];
         splitValue = [.. nodes.Select(n => n.Split)];
@@ -52,14 +50,14 @@ internal sealed class JxlMaTree
     /// <summary>Reads the tree's own entropy code and the tree (DecodeTree).</summary>
     public static JxlMaTree Read(ref JxlBitReader reader, long sizeLimit)
     {
-        JxlEntropyCode code = JxlEntropyCode.Read(ref reader, 6);
-        if (!code.UsePrefixCode && code.DegenerateSymbols[code.ContextMap[(int)TreeContext.Property]] > 0)
+        JxlEntropyCode code = JxlEntropyCode.Read(ref reader, TreeContexts);
+        if (!code.UsePrefixCode && code.DegenerateSymbols[code.ContextMap[(int)JxlMaTreeContext.Property]] > 0)
         {
             throw JxlDescriptor.Corrupt("Infinite MA tree.");
         }
 
         sizeLimit = Math.Min(sizeLimit, MaxSize);
-        var nodes = new List<(int, int, int, int, JxlPredictor, long, int)>();
+        var nodes = new List<JxlMaNode>();
         using (var symbols = new JxlSymbolReader(code, ref reader))
         {
             int leaves = 0;
@@ -72,40 +70,21 @@ internal sealed class JxlMaTree
                 }
 
                 pending--;
-                uint encodedProperty = symbols.Read((int)TreeContext.Property, ref reader);
-                if (encodedProperty > 256)
+                uint encodedProperty = symbols.Read((int)JxlMaTreeContext.Property, ref reader);
+                if (encodedProperty > MaxProperty + 1)
                 {
                     throw JxlDescriptor.Corrupt("Invalid MA tree property.");
                 }
 
                 if (encodedProperty == 0)
                 {
-                    uint leafPredictor = symbols.Read((int)TreeContext.Predictor, ref reader);
-                    if (leafPredictor >= PredictorCount)
-                    {
-                        throw JxlDescriptor.Corrupt("Invalid MA tree predictor.");
-                    }
-
-                    long leafOffset = UnpackSigned(symbols.Read((int)TreeContext.Offset, ref reader));
-                    uint log = symbols.Read((int)TreeContext.MultiplierLog, ref reader);
-                    if (log >= 31)
-                    {
-                        throw JxlDescriptor.Corrupt("Invalid MA tree multiplier.");
-                    }
-
-                    uint bits = symbols.Read((int)TreeContext.MultiplierBits, ref reader);
-                    if (bits >= (1u << (int)(31 - log)) - 1)
-                    {
-                        throw JxlDescriptor.Corrupt("Invalid MA tree multiplier.");
-                    }
-
-                    nodes.Add((-1, 0, leaves++, 0, (JxlPredictor)leafPredictor, leafOffset, (int)((bits + 1) << (int)log)));
+                    nodes.Add(ReadLeaf(ref reader, symbols, leaves++));
                     continue;
                 }
 
-                int split = UnpackSigned(symbols.Read((int)TreeContext.SplitValue, ref reader));
+                int split = UnpackSigned(symbols.Read((int)JxlMaTreeContext.SplitValue, ref reader));
                 int child = (int)(nodes.Count + pending + 1);
-                nodes.Add(((int)encodedProperty - 1, split, child, child + 1, JxlPredictor.Zero, 0, 1));
+                nodes.Add(JxlMaNode.Decision((int)encodedProperty - 1, split, child));
                 pending += 2;
             }
 
@@ -118,6 +97,31 @@ internal sealed class JxlMaTree
         var tree = new JxlMaTree(nodes);
         tree.Validate();
         return tree;
+    }
+
+    // A leaf: its predictor, offset and multiplier (log and mantissa); the context is the leaf's index.
+    private static JxlMaNode ReadLeaf(ref JxlBitReader reader, JxlSymbolReader symbols, int leaf)
+    {
+        uint leafPredictor = symbols.Read((int)JxlMaTreeContext.Predictor, ref reader);
+        if (leafPredictor >= PredictorCount)
+        {
+            throw JxlDescriptor.Corrupt("Invalid MA tree predictor.");
+        }
+
+        long leafOffset = UnpackSigned(symbols.Read((int)JxlMaTreeContext.Offset, ref reader));
+        uint log = symbols.Read((int)JxlMaTreeContext.MultiplierLog, ref reader);
+        if (log >= 31)
+        {
+            throw JxlDescriptor.Corrupt("Invalid MA tree multiplier.");
+        }
+
+        uint bits = symbols.Read((int)JxlMaTreeContext.MultiplierBits, ref reader);
+        if (bits >= (1u << (int)(31 - log)) - 1)
+        {
+            throw JxlDescriptor.Corrupt("Invalid MA tree multiplier.");
+        }
+
+        return JxlMaNode.Leaf(leaf, (JxlPredictor)leafPredictor, leafOffset, (int)((bits + 1) << (int)log));
     }
 
     /// <summary>Every split must narrow the range its property can still have on that path (ValidateTree).</summary>
@@ -181,7 +185,7 @@ internal sealed class JxlMaTree
         var splits = new List<int>();
         var lefts = new List<int>();
         var rights = new List<int>();
-        var leaves = new List<(int Cluster, JxlPredictor Predictor, long Offset, int Multiplier)>();
+        var leaves = new List<JxlMaLeaf>();
         bool weighted = false;
         int maxProperty = -1;
         // (source node, index of the parent's child slot to patch, which side).
@@ -192,7 +196,7 @@ internal sealed class JxlMaTree
             (int node, int parent, bool isLeft) = queue.Dequeue();
             while (property[node] is >= 0 and < StaticProperties)
             {
-                int value = property[node] == 0 ? channel : stream;
+                int value = property[node] == JxlMaProperty.Channel ? channel : stream;
                 node = value > splitValue[node] ? left[node] : right[node];
             }
 
@@ -209,7 +213,7 @@ internal sealed class JxlMaTree
                 splits.Add(0);
                 lefts.Add(leaves.Count);
                 rights.Add(0);
-                leaves.Add((contextMap[left[node]], predictor[node], offset[node], multiplier[node]));
+                leaves.Add(new JxlMaLeaf(contextMap[left[node]], predictor[node], offset[node], multiplier[node]));
                 weighted |= predictor[node] == JxlPredictor.Weighted;
                 continue;
             }
@@ -219,25 +223,24 @@ internal sealed class JxlMaTree
             lefts.Add(0);
             rights.Add(0);
             maxProperty = Math.Max(maxProperty, property[node]);
-            weighted |= property[node] == WeightedProperty;
+            weighted |= property[node] == JxlMaProperty.WeightedMaxError;
             queue.Enqueue((left[node], index, true));
             queue.Enqueue((right[node], index, false));
         }
 
-        int count = maxProperty + 1 > NonReferenceProperties
-            ? (maxProperty + 1 - NonReferenceProperties + ExtraPropertiesPerChannel - 1) / ExtraPropertiesPerChannel * ExtraPropertiesPerChannel
-                + NonReferenceProperties
-            : NonReferenceProperties;
+        int count = maxProperty + 1 > JxlMaProperty.Local
+            ? DivCeil(maxProperty + 1 - JxlMaProperty.Local, ExtraPropertiesPerChannel) * ExtraPropertiesPerChannel + JxlMaProperty.Local
+            : JxlMaProperty.Local;
         return new FilteredTree([.. properties], [.. splits], [.. lefts], [.. rights], [.. leaves], count, weighted);
     }
 
     /// <summary>A tree for one channel; leaves hold clusters.</summary>
-    internal sealed record FilteredTree(int[] Property, int[] Split, int[] Left, int[] Right,
-        (int Cluster, JxlPredictor Predictor, long Offset, int Multiplier)[] Leaves, int PropertyCount, bool UsesWeighted)
+    internal sealed record FilteredTree(int[] Property, int[] Split, int[] Left, int[] Right, JxlMaLeaf[] Leaves, int PropertyCount,
+        bool UsesWeighted)
     {
-        public int ReferenceProperties => PropertyCount - NonReferenceProperties;
+        public int ReferenceProperties => PropertyCount - JxlMaProperty.Local;
 
-        public ref readonly (int Cluster, JxlPredictor Predictor, long Offset, int Multiplier) Lookup(ReadOnlySpan<int> properties)
+        public ref readonly JxlMaLeaf Lookup(ReadOnlySpan<int> properties)
         {
             int node = 0;
             while (Property[node] >= 0)
@@ -275,49 +278,24 @@ internal sealed class JxlMaTree
                 PrecomputeReferences(image, channelIndex, y, references, referenceCount);
             }
 
-            properties[0] = channelIndex;
-            properties[1] = stream;
-            properties[2] = y;
-            properties[9] = 0;
+            JxlMaProperty.StartRow(properties, channelIndex, stream, y);
             int row = y * width;
             for (int x = 0; x < width; x++)
             {
-                int i = row + x;
-                long l = x > 0 ? pixels[i - 1] : y > 0 ? pixels[i - width] : 0;
-                long t = y > 0 ? pixels[i - width] : l;
-                long tl = x > 0 && y > 0 ? pixels[i - 1 - width] : l;
-                long tr = x + 1 < width && y > 0 ? pixels[i + 1 - width] : t;
-                long ll = x > 1 ? pixels[i - 2] : l;
-                long tt = y > 1 ? pixels[i - 2 * width] : t;
-                long trr = x + 2 < width && y > 0 ? pixels[i + 2 - width] : tr;
-                unchecked
-                {
-                    properties[3] = x;
-                    properties[4] = (int)(t > 0 ? t : -t);
-                    properties[5] = (int)(l > 0 ? l : -l);
-                    properties[6] = (int)t;
-                    properties[7] = (int)l;
-                    properties[8] = (int)(l - properties[9]);
-                    properties[9] = (int)(l + t - tl);
-                    properties[10] = (int)(l - tl);
-                    properties[11] = (int)(tl - t);
-                    properties[12] = (int)(t - tr);
-                    properties[13] = (int)(t - tt);
-                    properties[14] = (int)(l - ll);
-                }
-
+                var neighbours = JxlNeighbours.At(pixels, width, x, y);
+                JxlMaProperty.SetLocal(properties, x, neighbours);
                 long weightedPrediction = 0;
                 if (weighted is not null)
                 {
-                    weightedPrediction = weighted.Predict(x, y, width, t, l, tr, tl, tt, out properties[WeightedProperty]);
+                    weightedPrediction = weighted.Predict(x, y, neighbours, out properties[JxlMaProperty.WeightedMaxError]);
                 }
 
-                references.AsSpan(x * referenceCount, referenceCount).CopyTo(properties[NonReferenceProperties..]);
-                ref readonly var leaf = ref tree.Lookup(properties);
-                long guess = leaf.Offset + PredictOne(leaf.Predictor, l, t, tt, tl, tr, ll, trr, weightedPrediction);
+                references.AsSpan(x * referenceCount, referenceCount).CopyTo(properties[JxlMaProperty.Local..]);
+                ref readonly JxlMaLeaf leaf = ref tree.Lookup(properties);
+                long guess = leaf.Offset + Predict(leaf.Predictor, neighbours, weightedPrediction);
                 uint value = symbols.ReadClustered(leaf.Cluster, ref reader);
-                pixels[i] = unchecked((int)(UnpackSigned(value) * (long)leaf.Multiplier + guess));
-                weighted?.Update(pixels[i], x, y, width);
+                pixels[row + x] = unchecked((int)(UnpackSigned(value) * (long)leaf.Multiplier + guess));
+                weighted?.Update(pixels[row + x], x, y);
             }
         }
     }
@@ -343,10 +321,10 @@ internal sealed class JxlMaTree
             for (int x = 0; x < width; x++)
             {
                 long v = pixels[row + x];
-                long l = x > 0 ? pixels[row + x - 1] : 0;
-                long t = y > 0 ? pixels[previous + x] : l;
-                long tl = x > 0 && y > 0 ? pixels[previous + x - 1] : l;
-                long residual = v - ClampedGradient((int)l, (int)t, (int)tl);
+                long w = x > 0 ? pixels[row + x - 1] : 0;
+                long n = y > 0 ? pixels[previous + x] : w;
+                long nw = x > 0 && y > 0 ? pixels[previous + x - 1] : w;
+                long residual = v - JxlMaProperty.ClampedGradient((int)w, (int)n, (int)nw);
                 int at = x * count + offset;
                 unchecked
                 {
@@ -364,35 +342,27 @@ internal sealed class JxlMaTree
     /// <summary>The prediction of a predictor without a tree, as the delta palette uses it.</summary>
     public static long PredictNoTree(int[] pixels, int width, int x, int y, JxlPredictor predictor, JxlWeightedPredictor? weighted)
     {
-        int i = y * width + x;
-        long l = x > 0 ? pixels[i - 1] : y > 0 ? pixels[i - width] : 0;
-        long t = y > 0 ? pixels[i - width] : l;
-        long tl = x > 0 && y > 0 ? pixels[i - 1 - width] : l;
-        long tr = x + 1 < width && y > 0 ? pixels[i + 1 - width] : t;
-        long ll = x > 1 ? pixels[i - 2] : l;
-        long tt = y > 1 ? pixels[i - 2 * width] : t;
-        long trr = x + 2 < width && y > 0 ? pixels[i + 2 - width] : tr;
-        long weightedPrediction = weighted?.Predict(x, y, width, t, l, tr, tl, tt, out _) ?? 0;
-        return PredictOne(predictor, l, t, tt, tl, tr, ll, trr, weightedPrediction);
+        var neighbours = JxlNeighbours.At(pixels, width, x, y);
+        long weightedPrediction = weighted?.Predict(x, y, neighbours, out _) ?? 0;
+        return Predict(predictor, neighbours, weightedPrediction);
     }
 
-    private static long PredictOne(JxlPredictor predictor, long left, long top, long topTop, long topLeft, long topRight, long leftLeft,
-        long topRightRight, long weighted) => predictor switch
+    private static long Predict(JxlPredictor predictor, in JxlNeighbours n, long weighted) => predictor switch
     {
         JxlPredictor.Zero => 0,
-        JxlPredictor.Left => left,
-        JxlPredictor.Top => top,
-        JxlPredictor.Select => Select(left, top, topLeft),
+        JxlPredictor.Left => n.W,
+        JxlPredictor.Top => n.N,
+        JxlPredictor.Select => Select(n.W, n.N, n.NW),
         JxlPredictor.Weighted => weighted,
-        JxlPredictor.Gradient => ClampedGradient((int)left, (int)top, (int)topLeft),
-        JxlPredictor.TopLeft => topLeft,
-        JxlPredictor.TopRight => topRight,
-        JxlPredictor.LeftLeft => leftLeft,
-        JxlPredictor.Average0 => (left + top) / 2,
-        JxlPredictor.Average1 => (left + topLeft) / 2,
-        JxlPredictor.Average2 => (topLeft + top) / 2,
-        JxlPredictor.Average3 => (top + topRight) / 2,
-        JxlPredictor.Average4 => (6 * top - 2 * topTop + 7 * left + leftLeft + topRightRight + 3 * topRight + 8) / 16,
+        JxlPredictor.Gradient => JxlMaProperty.ClampedGradient((int)n.W, (int)n.N, (int)n.NW),
+        JxlPredictor.TopLeft => n.NW,
+        JxlPredictor.TopRight => n.NE,
+        JxlPredictor.LeftLeft => n.WW,
+        JxlPredictor.Average0 => (n.W + n.N) / 2,
+        JxlPredictor.Average1 => (n.W + n.NW) / 2,
+        JxlPredictor.Average2 => (n.NW + n.N) / 2,
+        JxlPredictor.Average3 => (n.N + n.NE) / 2,
+        JxlPredictor.Average4 => (6 * n.N - 2 * n.NN + 7 * n.W + n.WW + n.NEE + 3 * n.NE + 8) / 16,
         _ => 0,
     };
 
@@ -401,15 +371,15 @@ internal sealed class JxlMaTree
         long p = a + b - c;
         return Math.Abs(p - a) < Math.Abs(p - b) ? a : b;
     }
-
-    /// <summary>n + w - l clamped to the range of n and w.</summary>
-    private static int ClampedGradient(int n, int w, int l)
-    {
-        int min = Math.Min(n, w);
-        int max = Math.Max(n, w);
-        int gradient = unchecked((int)((uint)n + (uint)w - (uint)l));
-        return l > max ? min : l < min ? max : gradient;
-    }
-
-    internal static int UnpackSigned(uint value) => unchecked((int)((value >> 1) ^ (((~value) & 1) - 1)));
 }
+
+/// <summary>A node of a decoded MA tree; a leaf has no property and keeps its context index in <see cref="Left"/>.</summary>
+internal readonly record struct JxlMaNode(int Property, int Split, int Left, int Right, JxlPredictor Predictor, long Offset, int Multiplier)
+{
+    public static JxlMaNode Decision(int property, int split, int firstChild) => new(property, split, firstChild, firstChild + 1, JxlPredictor.Zero, 0, 1);
+
+    public static JxlMaNode Leaf(int context, JxlPredictor predictor, long offset, int multiplier) => new(-1, 0, context, 0, predictor, offset, multiplier);
+}
+
+/// <summary>A leaf of a filtered tree: the entropy cluster and how the pixel is predicted and scaled.</summary>
+internal readonly record struct JxlMaLeaf(int Cluster, JxlPredictor Predictor, long Offset, int Multiplier);

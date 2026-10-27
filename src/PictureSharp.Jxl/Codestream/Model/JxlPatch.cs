@@ -12,6 +12,16 @@ internal enum JxlPatchBlendMode
     AlphaWeightedAddBelow = 7,
 }
 
+internal static class JxlPatchBlendModeExtensions
+{
+    extension(JxlPatchBlendMode mode)
+    {
+        /// <summary>Whether the mode weights the patch by an alpha channel.</summary>
+        public bool UsesAlpha => mode is JxlPatchBlendMode.BlendAbove or JxlPatchBlendMode.BlendBelow
+            or JxlPatchBlendMode.AlphaWeightedAddAbove or JxlPatchBlendMode.AlphaWeightedAddBelow;
+    }
+}
+
 internal readonly record struct JxlPatchBlending(JxlPatchBlendMode Mode, int AlphaChannel, bool Clamp);
 
 /// <summary>One placement of a reference-frame rectangle, with the blending of colour and of each extra channel.</summary>
@@ -24,5 +34,5 @@ internal sealed class JxlPatch(int reference, int referenceX, int referenceY, in
     public int Height { get; } = height;
     public int X { get; } = x;
     public int Y { get; } = y;
-    public IReadOnlyList<JxlPatchBlending> Blendings { get; } = Array.AsReadOnly((JxlPatchBlending[])blendings.Clone());
+    public IReadOnlyList<JxlPatchBlending> Blendings { get; } = blendings.Snapshot();
 }

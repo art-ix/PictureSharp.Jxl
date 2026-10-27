@@ -19,13 +19,12 @@ internal sealed class JxlPlane
         Width = width;
         Height = height;
         Stride = (int)stride;
-        long size = stride * rows;
-        Data = size <= Array.MaxLength ? new float[size] : throw JxlDescriptor.Unsupported($"a {width}x{height} plane is too large.");
+        Data = new float[stride * rows];
     }
 
-    public int Width { get; private set; }
+    public int Width { get; }
 
-    public int Height { get; private set; }
+    public int Height { get; }
 
     public int Stride { get; }
 
@@ -35,12 +34,22 @@ internal sealed class JxlPlane
 
     public Span<float> Row(int y) => Data.AsSpan(Offset(0, y), Width);
 
-    /// <summary>Shrinks the logical size, as libjxl crops a plane to the next stage's size.</summary>
-    public void Crop(int width, int height)
+    /// <summary>Copies the logical pixels row by row into <paramref name="target"/>, which may have another layout.</summary>
+    public void CopyTo(JxlPlane target, CancellationToken cancellationToken = default)
     {
-        if (width <= 0 || height <= 0) throw JxlDescriptor.Corrupt("Invalid plane crop.");
-        Width = Math.Min(Width, width);
-        Height = Math.Min(Height, height);
+        for (int y = 0; y < Height; y++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Row(y).CopyTo(target.Row(y));
+        }
+    }
+
+    /// <summary>A copy of the logical pixels without the spare capacity.</summary>
+    public JxlPlane Clone(CancellationToken cancellationToken = default)
+    {
+        var copy = new JxlPlane(Width, Height);
+        CopyTo(copy, cancellationToken);
+        return copy;
     }
 
     /// <summary>Fills <paramref name="borderX"/> columns and <paramref name="borderY"/> rows around the plane by mirroring.</summary>
@@ -66,7 +75,7 @@ internal sealed class JxlPlane
         }
     }
 
-    public static int MirrorIndex(int x, int size)
+    private static int MirrorIndex(int x, int size)
     {
         while (x < 0 || x >= size)
         {

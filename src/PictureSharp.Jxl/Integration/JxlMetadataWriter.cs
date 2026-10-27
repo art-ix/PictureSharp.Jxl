@@ -10,7 +10,8 @@ namespace PictureSharp.Formats.Jxl.Integration;
 /// </summary>
 internal static class JxlMetadataWriter
 {
-    private const float DescribedSrgbGamma = 0.45455f;
+    private static readonly JxlWhitePoint[] NamedWhitePoints = [JxlWhitePoint.D65, JxlWhitePoint.Dci, JxlWhitePoint.E];
+    private static readonly JxlPrimaries[] NamedPrimaries = [JxlPrimaries.Srgb, JxlPrimaries.P3, JxlPrimaries.Bt2100];
 
     /// <summary>The colour space an ICC profile declares (header bytes 16–19): RGB, gray, or null for any other.</summary>
     public static JxlColorSpace? IccColorSpace(ReadOnlySpan<byte> icc) => icc.Length < 20 ? null : icc.Slice(16, 4) switch
@@ -19,6 +20,10 @@ internal static class JxlMetadataWriter
         var space when space.SequenceEqual("GRAY"u8) => JxlColorSpace.Gray,
         _ => null,
     };
+
+    /// <summary>The RGB or gray colour space of an ICC profile; other profiles throw NotSupportedException.</summary>
+    public static JxlColorSpace RequireIccColorSpace(ReadOnlySpan<byte> icc, string message) =>
+        IccColorSpace(icc) ?? throw new NotSupportedException(message);
 
     /// <summary>
     /// The enumerated colour encoding of the colour description: sRGB for none or <see cref="ImageMetadata.SrgbRenderingIntent"/>,
@@ -50,9 +55,9 @@ internal static class JxlMetadataWriter
         {
             encoding = gamma switch
             {
-                DescribedSrgbGamma when otherPrimaries => encoding,
+                JxlMetadataReader.DescribedSrgbGamma when otherPrimaries => encoding,
                 1.0f => encoding with { TransferFunction = JxlTransferFunction.Linear },
-                1.0f / 2.6f => encoding with { TransferFunction = JxlTransferFunction.Dci },
+                JxlColorEncoding.DciGamma => encoding with { TransferFunction = JxlTransferFunction.Dci },
                 > 0 and <= 1 when gamma * JxlColorEncoding.MaxInverseGamma >= 1 =>
                     encoding with { Gamma = (uint)Math.Round(gamma * (double)JxlColorEncoding.GammaScale) },
                 _ => encoding,
@@ -60,30 +65,41 @@ internal static class JxlMetadataWriter
         }
 
         if (metadata.Chromaticities is not { } xy) return encoding;
-        encoding = (xy.WhiteX, xy.WhiteY) switch
-        {
-            var w when Near(w, 0.3127, 0.3290) => encoding,
-            var w when Near(w, 0.314, 0.351) => encoding with { WhitePoint = JxlWhitePoint.Dci },
-            var w when Near(w, 1.0 / 3, 1.0 / 3) => encoding with { WhitePoint = JxlWhitePoint.E },
-            _ => encoding with { WhitePoint = JxlWhitePoint.Custom, CustomWhitePoint = Point(xy.WhiteX, xy.WhiteY) },
-        };
-        if (gray) return encoding;
-        return Primaries(xy, 0.64, 0.33, 0.30, 0.60, 0.15, 0.06) ? encoding
-            : Primaries(xy, 0.680, 0.320, 0.265, 0.690, 0.150, 0.060) ? encoding with { Primaries = JxlPrimaries.P3 }
-            : Primaries(xy, 0.708, 0.292, 0.170, 0.797, 0.131, 0.046) ? encoding with { Primaries = JxlPrimaries.Bt2100 }
-            : encoding with
-            {
-                Primaries = JxlPrimaries.Custom,
-                CustomPrimaries = (Point(xy.RedX, xy.RedY), Point(xy.GreenX, xy.GreenY), Point(xy.BlueX, xy.BlueY)),
-            };
+        encoding = WithWhitePoint(encoding, new JxlXy(xy.WhiteX, xy.WhiteY));
+        return gray ? encoding
+            : WithPrimaries(encoding, new JxlPrimariesXy(new(xy.RedX, xy.RedY), new(xy.GreenX, xy.GreenY), new(xy.BlueX, xy.BlueY)));
     }
 
-    private static bool Near((float X, float Y) point, double x, double y) => Math.Abs(point.X - x) < 1e-4 && Math.Abs(point.Y - y) < 1e-4;
+    // The named white point within 1e-4 of the coordinates, else a custom one.
+    private static JxlColorEncoding WithWhitePoint(JxlColorEncoding encoding, JxlXy white)
+    {
+        foreach (JxlWhitePoint named in NamedWhitePoints)
+        {
+            if (Near(JxlColorEncoding.StandardXy(named)!.Value, white)) return encoding with { WhitePoint = named };
+        }
 
-    private static bool Primaries(CieChromaticities xy, double rx, double ry, double gx, double gy, double bx, double by) =>
-        Near((xy.RedX, xy.RedY), rx, ry) && Near((xy.GreenX, xy.GreenY), gx, gy) && Near((xy.BlueX, xy.BlueY), bx, by);
+        return encoding with { WhitePoint = JxlWhitePoint.Custom, CustomWhitePoint = JxlChromaticity.From(white) };
+    }
 
-    private static JxlChromaticity Point(float x, float y) => new((int)Math.Round(x * 1e6), (int)Math.Round(y * 1e6));
+    private static JxlColorEncoding WithPrimaries(JxlColorEncoding encoding, JxlPrimariesXy primaries)
+    {
+        foreach (JxlPrimaries named in NamedPrimaries)
+        {
+            JxlPrimariesXy standard = JxlColorEncoding.StandardXy(named)!.Value;
+            if (Near(standard.Red, primaries.Red) && Near(standard.Green, primaries.Green) && Near(standard.Blue, primaries.Blue))
+            {
+                return encoding with { Primaries = named };
+            }
+        }
+
+        return encoding with
+        {
+            Primaries = JxlPrimaries.Custom,
+            CustomPrimaries = (JxlChromaticity.From(primaries.Red), JxlChromaticity.From(primaries.Green), JxlChromaticity.From(primaries.Blue)),
+        };
+    }
+
+    private static bool Near(JxlXy a, JxlXy b) => Math.Abs(b.X - a.X) < 1e-4 && Math.Abs(b.Y - a.Y) < 1e-4;
 
     /// <summary>The codestream orientation: the EXIF orientation, 1 when it is unknown.</summary>
     public static uint Orientation(ImageMetadata metadata) =>
@@ -95,8 +111,12 @@ internal static class JxlMetadataWriter
         byte[] content = new byte[tiff.Length + 4];
         BinaryPrimitives.WriteUInt32BigEndian(content, 0);
         tiff.CopyTo(content, 4);
-        return new JxlBox("Exif", content, compress);
+        return new JxlBox(JxlBoxType.Exif, content, compress);
     }
 
-    public static JxlBox XmpBox(byte[] xmp, bool compress) => new("xml ", xmp, compress);
+    public static JxlBox XmpBox(byte[] xmp, bool compress) => new(JxlBoxType.Xmp, xmp, compress);
+
+    /// <summary>The Exif and xml boxes of the blocks that are present, in the order the encoder writes them.</summary>
+    public static JxlBox[] DescriptiveBoxes(byte[]? exif, byte[]? xmp, bool compress) =>
+        [.. exif is null ? [] : new[] { ExifBox(exif, compress) }, .. xmp is null ? [] : new[] { XmpBox(xmp, compress) }];
 }

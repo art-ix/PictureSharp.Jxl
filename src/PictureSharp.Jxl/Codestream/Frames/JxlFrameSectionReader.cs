@@ -22,23 +22,23 @@ internal static class JxlFrameSectionReader
         }
 
         JxlBitReader Section(long index) => new(codestream.Slice(start + toc.Offsets[(int)index], toc.Sizes[(int)index]));
-        var global = Section(0);
+        var global = Section(JxlFrameHeader.LfGlobalSection);
         decoder.DecodeLfGlobal(ref global);
         for (int group = 0; group < frame.DcGroups; group++)
         {
-            var section = Section(1 + group);
+            var section = Section(JxlFrameHeader.LfGroupSection(group));
             decoder.DecodeLfGroup(ref section, group);
         }
 
         decoder.FinishLf();
-        var hfGlobal = Section(1 + frame.DcGroups);
+        var hfGlobal = Section(frame.HfGlobalSection);
         decoder.DecodeHfGlobal(ref hfGlobal);
         for (int group = 0; group < frame.Groups; group++)
         {
             int[]? coefficients = decoder.BeginGroup(group);
             for (int pass = 0; pass < frame.Passes.Count; pass++)
             {
-                var section = Section(2 + frame.DcGroups + pass * frame.Groups + group);
+                var section = Section(frame.PassGroupSection(pass, group));
                 decoder.DecodePassGroup(ref section, pass, group, coefficients);
             }
 
@@ -60,8 +60,7 @@ internal static class JxlFrameSectionReader
         {
             JxlFrameHeader preview = JxlFrameHeaderReader.Read(ref reader, headers, preview: true);
             long previewStart = ReadToc(ref reader, codestream, preview, out JxlToc previewToc);
-            reader = new JxlBitReader(codestream);
-            reader.SkipBits((ulong)(previewStart + previewToc.TotalSize) * 8);
+            reader = After(codestream, previewStart, previewToc);
         }
 
         return reader;
@@ -83,6 +82,14 @@ internal static class JxlFrameSectionReader
         return reader;
     }
 
+    /// <summary>A reader at the frame after the one whose sections start at byte <paramref name="start"/>.</summary>
+    public static JxlBitReader After(JxlCodestream codestream, long start, JxlToc toc)
+    {
+        var reader = new JxlBitReader(codestream);
+        reader.SkipBits((ulong)(start + toc.TotalSize) * 8);
+        return reader;
+    }
+
     /// <summary>Reads the TOC and returns the byte offset of the first section; the sections must be present.</summary>
     public static long ReadToc(ref JxlBitReader reader, JxlCodestream codestream, JxlFrameHeader frame, out JxlToc toc)
     {
@@ -90,7 +97,7 @@ internal static class JxlFrameSectionReader
         long start = reader.BitPosition / 8;
         if (toc.TotalSize > codestream.Length - start)
         {
-            throw JxlDescriptor.Corrupt("Truncated codestream.");
+            throw JxlBitReader.Truncated();
         }
 
         return start;

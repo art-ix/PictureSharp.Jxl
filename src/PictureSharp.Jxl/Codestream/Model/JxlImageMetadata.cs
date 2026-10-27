@@ -53,12 +53,15 @@ internal sealed record JxlExtraChannelInfo
     /// <summary>log2 of the downsampling factor, 0–3.</summary>
     public uint DimShift { get; init; }
 
+    /// <summary>The upsampling factor implied by <see cref="DimShift"/>.</summary>
+    public uint Upsampling => 1u << (int)DimShift;
+
     public string Name { get; init; } = "";
 
     public bool AlphaAssociated { get; init; }
 
     /// <summary>Linear RGB and opacity of a spot colour channel.</summary>
-    public IReadOnlyList<float>? SpotColor { get; init => field = value is null ? null : Array.AsReadOnly(value.ToArray()); }
+    public IReadOnlyList<float>? SpotColor { get; init => field = value?.Snapshot(); }
 
     public uint CfaChannel { get; init; } = 1;
 }
@@ -87,7 +90,7 @@ internal sealed record JxlImageMetadata
 
     public bool Modular16BitBufferSufficient { get; init; } = true;
 
-    public IReadOnlyList<JxlExtraChannelInfo> ExtraChannels { get; init => field = Array.AsReadOnly(value.ToArray()); } = [];
+    public IReadOnlyList<JxlExtraChannelInfo> ExtraChannels { get; init => field = value.Snapshot(); } = [];
 
     /// <summary>Whether the colour channels are stored in XYB (lossy VarDCT/Modular), not in <see cref="Color"/>.</summary>
     public bool XybEncoded { get; init; } = true;

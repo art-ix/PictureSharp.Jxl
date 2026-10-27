@@ -11,7 +11,7 @@ internal sealed class JxlWeightedHeader(int p1C, int p2C, int p3Ca, int p3Cb, in
     public int P3Cd { get; } = p3Cd;
     public int P3Ce { get; } = p3Ce;
 
-    public IReadOnlyList<uint> Weights { get; } = Array.AsReadOnly((uint[])weights.Clone());
+    public IReadOnlyList<uint> Weights { get; } = weights.Snapshot();
 
     public static JxlWeightedHeader Default { get; } = new(16, 10, 7, 7, 7, 0, 0, [0xD, 0xC, 0xC, 0xC]);
 }

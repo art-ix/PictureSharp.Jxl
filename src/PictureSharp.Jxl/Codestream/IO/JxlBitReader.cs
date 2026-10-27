@@ -168,5 +168,14 @@ internal ref struct JxlBitReader
         offset = 0;
     }
 
-    private static ImageFormatException Truncated() => JxlDescriptor.Corrupt("Truncated codestream.");
+    /// <summary>Fails as truncated unless <paramref name="bits"/> more bits remain.</summary>
+    public readonly void EnsureRemaining(long bits)
+    {
+        if (bits > RemainingBits)
+        {
+            throw Truncated();
+        }
+    }
+
+    public static ImageFormatException Truncated() => JxlDescriptor.Corrupt("Truncated codestream.");
 }

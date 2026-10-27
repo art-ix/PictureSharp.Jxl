@@ -1,4 +1,5 @@
 using PictureSharp.Formats.Jxl.Codestream.IO;
+using static PictureSharp.Formats.Jxl.Codestream.Numerics.JxlIntMath;
 
 namespace PictureSharp.Formats.Jxl.Codestream.Entropy;
 
@@ -161,7 +162,7 @@ internal sealed class JxlPrefixCode
 
     private static JxlHuffmanEntry[] ReadSimpleCode(ref JxlBitReader reader, int alphabetSize)
     {
-        int maxBits = alphabetSize > 1 ? Log2Floor((uint)alphabetSize - 1) + 1 : 0;
+        int maxBits = CeilLog2(alphabetSize);
         int count = (int)reader.ReadBits(2) + 1;
         Span<ushort> symbols = stackalloc ushort[4];
         for (int i = 0; i < count; i++)
@@ -387,8 +388,6 @@ internal sealed class JxlPrefixCode
 
         return len - rootBits;
     }
-
-    internal static int Log2Floor(uint value) => 31 - System.Numerics.BitOperations.LeadingZeroCount(value);
 
     private static ImageFormatException Invalid() => JxlDescriptor.Corrupt("Invalid prefix code.");
 }

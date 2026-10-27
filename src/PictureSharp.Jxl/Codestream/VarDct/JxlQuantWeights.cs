@@ -59,7 +59,10 @@ internal sealed record JxlQuantEncoding(JxlQuantMode Mode)
 internal sealed class JxlQuantWeights
 {
     public const float AlmostZero = 1e-8f;
-    public const int Tables = 17;
+    public const int Tables = JxlFrameHeader.QuantTables;
+    private const int N = JxlFrameHeader.BlockDim;
+    // A placeholder for the DC weight, which AC dequantisation never uses.
+    private const float UnusedWeight = 0xBAD;
 
     // Blocks covered by each quantisation table, in the first and second dimension of its weights.
     private static ReadOnlySpan<byte> RequiredSizeX => [1, 1, 1, 1, 2, 4, 1, 1, 2, 1, 1, 8, 4, 16, 8, 32, 16];
@@ -69,16 +72,12 @@ internal sealed class JxlQuantWeights
     // AcStrategy → quantisation table.
     private static ReadOnlySpan<byte> StrategyTable => [0, 1, 2, 3, 4, 5, 6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 10, 10, 11, 12, 12, 13, 14, 14, 15, 16, 16];
 
-    private static readonly float Sqrt2 = 1.41421356237f;
-
     private static readonly JxlQuantEncoding[] Library = CreateLibrary();
 
     private readonly float[]?[] tables = new float[Tables][];
-    private JxlQuantEncoding[] encodings = [.. Enumerable.Repeat(new JxlQuantEncoding(JxlQuantMode.Library), Tables)];
+    private JxlQuantEncoding[] encodings = LibraryEncodings();
 
     public float[] DcQuant { get; } = [1.0f / 4096.0f, 1.0f / 512.0f, 1.0f / 256.0f];
-
-    public float[] InverseDcQuant { get; } = [4096.0f, 512.0f, 256.0f];
 
     /// <summary>Reads the DC quantisation steps from the LF global section (DequantMatrices::DecodeDC).</summary>
     public void ReadDc(ref JxlBitReader reader)
@@ -96,7 +95,6 @@ internal sealed class JxlQuantWeights
                 throw JxlDescriptor.Corrupt("Invalid DC quantisation factor.");
             }
 
-            InverseDcQuant[c] = 1.0f / DcQuant[c];
         }
     }
 
@@ -106,7 +104,7 @@ internal sealed class JxlQuantWeights
     /// </summary>
     public void Read(ref JxlBitReader reader, RawTableReader readRaw)
     {
-        encodings = [.. Enumerable.Repeat(new JxlQuantEncoding(JxlQuantMode.Library), Tables)];
+        encodings = LibraryEncodings();
         Array.Clear(tables);
         if (reader.ReadBool())
         {
@@ -118,6 +116,9 @@ internal sealed class JxlQuantWeights
             encodings[i] = ReadEncoding(ref reader, i, readRaw);
         }
     }
+
+    // Every table taken from the library.
+    private static JxlQuantEncoding[] LibraryEncodings() => [.. Enumerable.Repeat(new JxlQuantEncoding(JxlQuantMode.Library), Tables)];
 
     public delegate int[][] RawTableReader(ref JxlBitReader reader, int index, int width, int height);
 
@@ -143,14 +144,9 @@ internal sealed class JxlQuantWeights
                 return new JxlQuantEncoding(mode);
             case JxlQuantMode.Identity or JxlQuantMode.Dct2:
                 return new JxlQuantEncoding(mode) { Weights = ReadWeights(ref reader, mode == JxlQuantMode.Identity ? 3 : 6, check: true, scaled: 6) };
-            case JxlQuantMode.Dct4X8:
+            case JxlQuantMode.Dct4 or JxlQuantMode.Dct4X8:
             {
-                float[][] multipliers = ReadWeights(ref reader, 1, check: true, scaled: 0);
-                return new JxlQuantEncoding(mode) { Weights = multipliers, DctParams = JxlDctQuantParams.Read(ref reader) };
-            }
-            case JxlQuantMode.Dct4:
-            {
-                float[][] multipliers = ReadWeights(ref reader, 2, check: true, scaled: 0);
+                float[][] multipliers = ReadWeights(ref reader, mode == JxlQuantMode.Dct4 ? 2 : 1, check: true, scaled: 0);
                 return new JxlQuantEncoding(mode) { Weights = multipliers, DctParams = JxlDctQuantParams.Read(ref reader) };
             }
             case JxlQuantMode.Afv:
@@ -212,81 +208,41 @@ internal sealed class JxlQuantWeights
     /// <summary>The dequantisation multipliers (1 / weight) of a table (ComputeQuantTable).</summary>
     private static float[] Compute(JxlQuantEncoding encoding, int table)
     {
-        const int N = JxlFrameHeader.BlockDim;
         int rows = N * RequiredSizeX[table];
         int columns = N * RequiredSizeY[table];
-        int num = rows * columns;
-        float[] weights = new float[3 * num];
+        float[] weights = new float[3 * rows * columns];
         switch (encoding.Mode)
         {
             case JxlQuantMode.Identity:
-                for (int c = 0; c < 3; c++)
-                {
-                    weights.AsSpan(64 * c, 64).Fill(encoding.Weights[c][0]);
-                    weights[64 * c + 1] = encoding.Weights[c][1];
-                    weights[64 * c + 8] = encoding.Weights[c][1];
-                    weights[64 * c + 9] = encoding.Weights[c][2];
-                }
-
+                IdentityWeights(encoding.Weights, weights);
                 break;
             case JxlQuantMode.Dct2:
                 Dct2Weights(encoding.Weights, weights);
                 break;
             case JxlQuantMode.Dct4:
-            {
-                float[] weights4 = DctWeights(4, 4, encoding.DctParams!);
-                for (int c = 0; c < 3; c++)
-                {
-                    for (int y = 0; y < N; y++)
-                    {
-                        for (int x = 0; x < N; x++)
-                        {
-                            weights[c * num + y * N + x] = weights4[c * 16 + (y / 2) * 4 + (x / 2)];
-                        }
-                    }
-
-                    weights[c * num + 1] /= encoding.Weights[c][0];
-                    weights[c * num + N] /= encoding.Weights[c][0];
-                    weights[c * num + N + 1] /= encoding.Weights[c][1];
-                }
-
+                Dct4Weights(encoding, weights);
                 break;
-            }
             case JxlQuantMode.Dct4X8:
-            {
-                float[] weights4X8 = DctWeights(4, 8, encoding.DctParams!);
-                for (int c = 0; c < 3; c++)
-                {
-                    for (int y = 0; y < N; y++)
-                    {
-                        for (int x = 0; x < N; x++)
-                        {
-                            weights[c * num + y * N + x] = weights4X8[c * 32 + (y / 2) * 8 + x];
-                        }
-                    }
-
-                    weights[c * num + N] /= encoding.Weights[c][0];
-                }
-
+                Dct4X8Weights(encoding, weights);
                 break;
-            }
             case JxlQuantMode.Dct:
                 DctWeights(rows, columns, encoding.DctParams!).CopyTo(weights, 0);
                 break;
             case JxlQuantMode.Raw:
-                for (int i = 0; i < weights.Length; i++)
-                {
-                    weights[i] = 1.0f / (encoding.RawDenominator * encoding.RawTable![i]);
-                }
-
+                RawWeights(encoding, weights);
                 break;
             case JxlQuantMode.Afv:
-                AfvWeights(encoding, weights, num);
+                AfvWeights(encoding, weights, rows * columns);
                 break;
             default:
                 throw new InvalidOperationException("Library encodings are resolved before computing a table.");
         }
 
+        return Invert(weights);
+    }
+
+    private static float[] Invert(float[] weights)
+    {
         float[] result = new float[weights.Length];
         for (int i = 0; i < weights.Length; i++)
         {
@@ -301,12 +257,71 @@ internal sealed class JxlQuantWeights
         return result;
     }
 
+    private static void IdentityWeights(float[][] identity, float[] weights)
+    {
+        for (int c = 0; c < 3; c++)
+        {
+            weights.AsSpan(64 * c, 64).Fill(identity[c][0]);
+            weights[64 * c + 1] = identity[c][1];
+            weights[64 * c + 8] = identity[c][1];
+            weights[64 * c + 9] = identity[c][2];
+        }
+    }
+
+    // A 4×4 DCT table upsampled to 8×8, with the lowest frequencies divided by the multipliers.
+    private static void Dct4Weights(JxlQuantEncoding encoding, float[] weights)
+    {
+        const int num = N * N;
+        float[] weights4 = DctWeights(4, 4, encoding.DctParams!);
+        for (int c = 0; c < 3; c++)
+        {
+            for (int y = 0; y < N; y++)
+            {
+                for (int x = 0; x < N; x++)
+                {
+                    weights[c * num + y * N + x] = weights4[c * 16 + (y / 2) * 4 + (x / 2)];
+                }
+            }
+
+            weights[c * num + 1] /= encoding.Weights[c][0];
+            weights[c * num + N] /= encoding.Weights[c][0];
+            weights[c * num + N + 1] /= encoding.Weights[c][1];
+        }
+    }
+
+    // A 4×8 DCT table stretched vertically to 8×8, with the vertical lowest frequency divided by the multiplier.
+    private static void Dct4X8Weights(JxlQuantEncoding encoding, float[] weights)
+    {
+        const int num = N * N;
+        float[] weights4X8 = DctWeights(4, 8, encoding.DctParams!);
+        for (int c = 0; c < 3; c++)
+        {
+            for (int y = 0; y < N; y++)
+            {
+                for (int x = 0; x < N; x++)
+                {
+                    weights[c * num + y * N + x] = weights4X8[c * 32 + (y / 2) * 8 + x];
+                }
+            }
+
+            weights[c * num + N] /= encoding.Weights[c][0];
+        }
+    }
+
+    private static void RawWeights(JxlQuantEncoding encoding, float[] weights)
+    {
+        for (int i = 0; i < weights.Length; i++)
+        {
+            weights[i] = 1.0f / (encoding.RawDenominator * encoding.RawTable![i]);
+        }
+    }
+
     private static void Dct2Weights(float[][] dct2, float[] weights)
     {
         for (int c = 0; c < 3; c++)
         {
             int start = c * 64;
-            weights[start] = 0xBAD;
+            weights[start] = UnusedWeight;
             weights[start + 1] = weights[start + 8] = dct2[c][0];
             weights[start + 9] = dct2[c][1];
             for (int y = 0; y < 2; y++)
@@ -357,7 +372,7 @@ internal sealed class JxlQuantWeights
                 }
             }
 
-            float scale = (numBands - 1) / (Sqrt2 + 1e-6f);
+            float scale = (numBands - 1) / (JxlDct.Sqrt2 + 1e-6f);
             float columnScale = scale / (columns - 1);
             float rowScale = scale / (rows - 1);
             for (int y = 0; y < rows; y++)

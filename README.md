@@ -4,10 +4,10 @@ JPEG XL for [PictureSharp](https://github.com/art-ix/PictureSharp), in pure C# w
 Requires .NET 10+ and PictureSharp 0.8.5+.
 
 The package is attached to the private GitHub releases only (not nuget.org): put
-`PictureSharp.Jxl.0.6.0.nupkg` in a local NuGet feed next to nuget.org, then
+`PictureSharp.Jxl.0.6.1.nupkg` in a local NuGet feed next to nuget.org, then
 
 ```bash
-dotnet add package PictureSharp.Jxl --version 0.6.0
+dotnet add package PictureSharp.Jxl --version 0.6.1
 ```
 
 ## Usage
@@ -53,7 +53,7 @@ Pixels match djxl (libjxl 0.12.0): lossless images and the encoder's output exac
 images in an ICC profile match a double-precision colour conversion within 1, and `ToSrgb` matches djxl's sRGB
 rendering within the lossy tolerance.
 
-**Status:** early development (0.6.0): decoding, metadata reading and editing and lossless encoding are done.
+**Status:** early development (0.6.1): decoding, metadata reading and editing and lossless encoding are done.
 Next come lossy encoding with quality and effort controls (0.7.0). Not for production use yet; the API may change.
 CI runs on Linux, including a Native AOT build.
 

@@ -1,5 +1,4 @@
 using PictureSharp.Formats.Jxl.Codestream.Model;
-using static PictureSharp.Formats.Jxl.Codestream.IO.JxlU32;
 using static PictureSharp.Formats.Jxl.Codestream.Model.JxlLoopFilter;
 
 namespace PictureSharp.Formats.Jxl.Codestream.IO;
@@ -36,19 +35,19 @@ internal static class JxlLoopFilterReader
         {
             if (!modular && reader.ReadBool())
             {
-                filter = filter with { SharpnessLut = F16s(ref reader, SharpnessEntries) };
+                filter = filter with { SharpnessLut = JxlFields.F16Array(ref reader, SharpnessEntries) };
             }
 
             if (reader.ReadBool())
             {
-                float[] values = F16s(ref reader, 5);
+                float[] values = JxlFields.F16Array(ref reader, 5);
                 filter = filter with { ChannelScale = values[..3], Pass1ZeroFlush = values[3], Pass2ZeroFlush = values[4] };
             }
 
             if (reader.ReadBool())
             {
                 float quantMul = modular ? filter.QuantMul : JxlFields.F16(ref reader);
-                float[] values = F16s(ref reader, 3);
+                float[] values = JxlFields.F16Array(ref reader, 3);
                 filter = filter with { QuantMul = quantMul, Pass0SigmaScale = values[0], Pass2SigmaScale = values[1], BorderSadMul = values[2] };
             }
 
@@ -64,16 +63,5 @@ internal static class JxlLoopFilterReader
 
         JxlFields.SkipExtensions(ref reader);
         return filter;
-    }
-
-    private static float[] F16s(ref JxlBitReader reader, int count)
-    {
-        float[] values = new float[count];
-        for (int i = 0; i < count; i++)
-        {
-            values[i] = JxlFields.F16(ref reader);
-        }
-
-        return values;
     }
 }

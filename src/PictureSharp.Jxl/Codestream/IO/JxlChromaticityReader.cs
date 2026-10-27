@@ -1,6 +1,6 @@
 using PictureSharp.Formats.Jxl.Codestream.Model;
 using static PictureSharp.Formats.Jxl.Codestream.IO.JxlU32;
-using static PictureSharp.Formats.Jxl.Codestream.Model.JxlChromaticity;
+using static PictureSharp.Formats.Jxl.Codestream.Numerics.JxlIntMath;
 
 namespace PictureSharp.Formats.Jxl.Codestream.IO;
 
@@ -12,6 +12,6 @@ internal static class JxlChromaticityReader
     private static int Coordinate(ref JxlBitReader reader)
     {
         uint packed = JxlFields.U32(ref reader, Bits32(19), BitsOffset(19, 524288), BitsOffset(20, 1048576), BitsOffset(21, 2097152));
-        return (int)(packed >> 1) ^ -(int)(packed & 1);
+        return UnpackSigned(packed);
     }
 }

@@ -2,6 +2,7 @@ using PictureSharp.Formats.Jxl.Codestream.Buffers;
 using PictureSharp.Formats.Jxl.Codestream.Entropy;
 using PictureSharp.Formats.Jxl.Codestream.IO;
 using PictureSharp.Formats.Jxl.Codestream.Model;
+using static PictureSharp.Formats.Jxl.Codestream.Numerics.JxlIntMath;
 
 namespace PictureSharp.Formats.Jxl.Codestream.Frames;
 
@@ -89,13 +90,13 @@ internal static class JxlPatchReader
 
                     var blendMode = (JxlPatchBlendMode)mode;
                     int alpha = 0;
-                    if (UsesAlpha(blendMode) && extraChannels > 1)
+                    if (blendMode.UsesAlpha && extraChannels > 1)
                     {
                         uint channel = symbols.Read(AlphaChannelContext, ref reader);
                         alpha = channel < extraChannels ? (int)channel : throw JxlDescriptor.Corrupt("Invalid alpha channel for blending.");
                     }
 
-                    bool clamp = (UsesAlpha(blendMode) || blendMode == JxlPatchBlendMode.Mul) && symbols.Read(ClampContext, ref reader) != 0;
+                    bool clamp = (blendMode.UsesAlpha || blendMode == JxlPatchBlendMode.Mul) && symbols.Read(ClampContext, ref reader) != 0;
                     blendings[j] = new JxlPatchBlending(blendMode, alpha, clamp);
                 }
 
@@ -106,11 +107,4 @@ internal static class JxlPatchReader
         return symbols.IsFinalStateValid ? [.. patches] : throw JxlDescriptor.Corrupt("Invalid ANS stream of the patch dictionary.");
     }
 
-    /// <summary>Blends every patch onto the frame, clipped to its planes (PatchDictionary::AddOneRow).</summary>
-    private static bool UsesAlpha(JxlPatchBlendMode mode) => mode is JxlPatchBlendMode.BlendAbove or JxlPatchBlendMode.BlendBelow
-        or JxlPatchBlendMode.AlphaWeightedAddAbove or JxlPatchBlendMode.AlphaWeightedAddBelow;
-
-    private static int UnpackSigned(uint value) => (int)((value >> 1) ^ (((~value) & 1) - 1));
-
-    // PerformBlending for one pixel: extra channels first (with the alpha before blending), then colour.
 }

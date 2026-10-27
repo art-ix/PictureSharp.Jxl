@@ -3,32 +3,6 @@ using static PictureSharp.Formats.Jxl.Codestream.IO.JxlU32;
 
 namespace PictureSharp.Formats.Jxl.Codestream.Entropy;
 
-/// <summary>
-/// The hybrid integer split: tokens below <see cref="SplitToken"/> are values; larger ones carry the exponent and the
-/// top <see cref="MsbInToken"/> and bottom <see cref="LsbInToken"/> mantissa bits, the rest follow as raw bits.
-/// </summary>
-internal readonly record struct JxlHybridUint(int SplitExponent, int MsbInToken, int LsbInToken)
-{
-    public uint SplitToken => 1u << SplitExponent;
-
-    public uint Decode(uint token, ref JxlBitReader reader)
-    {
-        if (token < SplitToken)
-        {
-            return token;
-        }
-
-        int inToken = MsbInToken + LsbInToken;
-        // libjxl masks the bit count instead of failing; such values only occur in invalid streams.
-        int bits = (int)((uint)(SplitExponent - inToken) + ((token - SplitToken) >> inToken)) & 31;
-        uint low = token & ((1u << LsbInToken) - 1);
-        token >>= LsbInToken;
-        ulong raw = reader.ReadBits(bits);
-        ulong value = ((((1UL << MsbInToken) | (token & ((1u << MsbInToken) - 1))) << bits) | raw) << LsbInToken | low;
-        return (uint)value;
-    }
-}
-
 /// <summary>One alias table entry; see libjxl's AliasTable for the layout.</summary>
 internal readonly record struct JxlAliasEntry(int Cutoff, int RightValue, int Freq0, int Offsets1, int Freq1);
 
@@ -91,7 +65,7 @@ internal sealed class JxlEntropyCode
 
             minSymbol = JxlFields.U32(ref reader, Val(224), Val(512), Val(4096), BitsOffset(15, 8));
             minLength = JxlFields.U32(ref reader, Val(3), Val(4), BitsOffset(2, 5), BitsOffset(8, 9));
-            lengthConfig = ReadConfig(ref reader, 8);
+            lengthConfig = JxlHybridUint.Read(ref reader, 8);
             contexts++;
         }
 
@@ -107,7 +81,7 @@ internal sealed class JxlEntropyCode
         var configs = new JxlHybridUint[histograms];
         for (int i = 0; i < configs.Length; i++)
         {
-            configs[i] = ReadConfig(ref reader, logAlphaSize);
+            configs[i] = JxlHybridUint.Read(ref reader, logAlphaSize);
         }
 
         int[] degenerate = new int[histograms];
@@ -126,27 +100,6 @@ internal sealed class JxlEntropyCode
             DegenerateSymbols = degenerate,
         };
         return code;
-    }
-
-    private static JxlHybridUint ReadConfig(ref JxlBitReader reader, int logAlphaSize)
-    {
-        int splitExponent = (int)reader.ReadBits(CeilLog2(logAlphaSize + 1));
-        int msb = 0;
-        int lsb = 0;
-        if (splitExponent != logAlphaSize)
-        {
-            msb = (int)reader.ReadBits(CeilLog2(splitExponent + 1));
-            if (msb > splitExponent)
-            {
-                throw JxlDescriptor.Corrupt("Invalid hybrid integer configuration.");
-            }
-
-            lsb = (int)reader.ReadBits(CeilLog2(splitExponent - msb + 1));
-        }
-
-        return lsb + msb <= splitExponent
-            ? new JxlHybridUint(splitExponent, msb, lsb)
-            : throw JxlDescriptor.Corrupt("Invalid hybrid integer configuration.");
     }
 
     private static JxlPrefixCode[] ReadPrefixCodes(ref JxlBitReader reader, int histograms)
@@ -196,43 +149,57 @@ internal sealed class JxlEntropyCode
     {
         if (reader.ReadBool())
         {
-            // Simple: one symbol with all the probability, or two with an explicit split.
-            int symbols = (int)reader.ReadBits(1) + 1;
-            Span<int> values = stackalloc int[2];
-            for (int i = 0; i < symbols; i++)
-            {
-                values[i] = VarLenUint(ref reader, 3);
-            }
+            return ReadSimpleHistogram(ref reader);
+        }
 
-            int[] simple = new int[Math.Max(values[0], symbols == 2 ? values[1] : 0) + 1];
-            if (symbols == 1)
-            {
-                simple[values[0]] = AnsTabSize;
-                return simple;
-            }
+        return reader.ReadBool() ? FlatDistribution(VarLenUint(ref reader, 3) + 1) : ReadShiftedHistogram(ref reader);
+    }
 
-            if (values[0] == values[1])
-            {
-                throw InvalidHistogram();
-            }
+    /// <summary>The probabilities of <paramref name="alphabetSize"/> symbols spread as evenly as possible.</summary>
+    public static int[] FlatDistribution(int alphabetSize)
+    {
+        int[] flat = new int[alphabetSize];
+        for (int i = 0; i < flat.Length; i++)
+        {
+            flat[i] = AnsTabSize / alphabetSize + (i < AnsTabSize % alphabetSize ? 1 : 0);
+        }
 
-            simple[values[0]] = (int)reader.ReadBits(AnsLogTabSize);
-            simple[values[1]] = AnsTabSize - simple[values[0]];
+        return flat;
+    }
+
+    /// <summary>The number of explicit mantissa bits of a count of about 2^<paramref name="logCount"/> at a precision shift.</summary>
+    public static int CountPrecision(int logCount, int shift) => Math.Max(0, Math.Min(logCount, shift - ((AnsLogTabSize - logCount) >> 1)));
+
+    // One symbol with all the probability, or two with an explicit split.
+    private static int[] ReadSimpleHistogram(ref JxlBitReader reader)
+    {
+        int symbols = (int)reader.ReadBits(1) + 1;
+        Span<int> values = stackalloc int[2];
+        for (int i = 0; i < symbols; i++)
+        {
+            values[i] = VarLenUint(ref reader, 3);
+        }
+
+        int[] simple = new int[Math.Max(values[0], symbols == 2 ? values[1] : 0) + 1];
+        if (symbols == 1)
+        {
+            simple[values[0]] = AnsTabSize;
             return simple;
         }
 
-        if (reader.ReadBool())
+        if (values[0] == values[1])
         {
-            int alphabetSize = VarLenUint(ref reader, 3) + 1;
-            int[] flat = new int[alphabetSize];
-            for (int i = 0; i < flat.Length; i++)
-            {
-                flat[i] = AnsTabSize / alphabetSize + (i < AnsTabSize % alphabetSize ? 1 : 0);
-            }
-
-            return flat;
+            throw InvalidHistogram();
         }
 
+        simple[values[0]] = (int)reader.ReadBits(AnsLogTabSize);
+        simple[values[1]] = AnsTabSize - simple[values[0]];
+        return simple;
+    }
+
+    // A precision shift, then the log counts with runs, then the mantissa bits; the widest symbol takes the remainder.
+    private static int[] ReadShiftedHistogram(ref JxlBitReader reader)
+    {
         int log = 0;
         while (log < 3 && reader.ReadBool())
         {
@@ -246,9 +213,17 @@ internal sealed class JxlEntropyCode
         }
 
         int length = VarLenUint(ref reader, 3) + 3;
-        int[] counts = new int[length];
         int[] logCounts = new int[length];
         int[] same = new int[length];
+        int omitPosition = ReadLogCounts(ref reader, logCounts, same);
+        int[] counts = ExpandCounts(ref reader, logCounts, same, omitPosition, shift);
+        return counts[omitPosition] > 0 ? counts : throw InvalidHistogram();
+    }
+
+    // The log count + 1 of every symbol (-1: zero); a run marker sets the run length instead. Returns the omitted symbol.
+    private static int ReadLogCounts(ref JxlBitReader reader, int[] logCounts, int[] same)
+    {
+        int length = logCounts.Length;
         int omitLog = -1;
         int omitPosition = -1;
         for (int i = 0; i < length; i++)
@@ -277,6 +252,13 @@ internal sealed class JxlEntropyCode
             throw InvalidHistogram();
         }
 
+        return omitPosition;
+    }
+
+    private static int[] ExpandCounts(ref JxlBitReader reader, int[] logCounts, int[] same, int omitPosition, int shift)
+    {
+        int length = logCounts.Length;
+        int[] counts = new int[length];
         int total = 0;
         int previous = 0;
         int repeat = 0;
@@ -307,7 +289,7 @@ internal sealed class JxlEntropyCode
                 }
                 else
                 {
-                    int bitCount = Math.Max(0, Math.Min(code, shift - ((AnsLogTabSize - code) >> 1)));
+                    int bitCount = CountPrecision(code, shift);
                     counts[i] = (1 << code) + ((int)reader.ReadBits(bitCount) << (code - bitCount));
                 }
             }
@@ -316,7 +298,7 @@ internal sealed class JxlEntropyCode
         }
 
         counts[omitPosition] = AnsTabSize - total;
-        return counts[omitPosition] > 0 ? counts : throw InvalidHistogram();
+        return counts;
     }
 
     // (bits, log count + 1) indexed by 7 peeked bits.
@@ -338,12 +320,7 @@ internal sealed class JxlEntropyCode
     /// </summary>
     internal static void InitAliasTable(int[] distribution, int logAlphaSize, Span<JxlAliasEntry> table)
     {
-        int length = distribution.Length;
-        while (length > 0 && distribution[length - 1] == 0)
-        {
-            length--;
-        }
-
+        int length = distribution.AsSpan().LastIndexOfAnyExcept(0) + 1;
         if (length == 0)
         {
             distribution = [AnsTabSize];
@@ -370,12 +347,7 @@ internal sealed class JxlEntropyCode
 
         if (single >= 0)
         {
-            // The state never changes when decoding a single-symbol distribution.
-            for (int i = 0; i < tableSize; i++)
-            {
-                table[i] = new JxlAliasEntry(0, single, 0, entrySize * i, AnsTabSize);
-            }
-
+            FillSingleSymbol(table, single, entrySize);
             return;
         }
 
@@ -439,6 +411,15 @@ internal sealed class JxlEntropyCode
         }
     }
 
+    // The state never changes when decoding a single-symbol distribution.
+    private static void FillSingleSymbol(Span<JxlAliasEntry> table, int symbol, int entrySize)
+    {
+        for (int i = 0; i < table.Length; i++)
+        {
+            table[i] = new JxlAliasEntry(0, symbol, 0, entrySize * i, AnsTabSize);
+        }
+    }
+
     /// <summary>Reads the cluster of every context and returns the number of clusters; all must be used.</summary>
     public static int ReadContextMap(ref JxlBitReader reader, byte[] contextMap)
     {
@@ -473,7 +454,7 @@ internal sealed class JxlEntropyCode
 
             if (moveToFront)
             {
-                InverseMoveToFront(contextMap);
+                JxlMoveToFront.Inverse(contextMap);
             }
         }
 
@@ -487,27 +468,6 @@ internal sealed class JxlEntropyCode
         return used[..clusters].Contains(false) ? throw JxlDescriptor.Corrupt("Incomplete context map.") : clusters;
     }
 
-    private static void InverseMoveToFront(Span<byte> values)
-    {
-        Span<byte> order = stackalloc byte[256];
-        for (int i = 0; i < order.Length; i++)
-        {
-            order[i] = (byte)i;
-        }
-
-        for (int i = 0; i < values.Length; i++)
-        {
-            int index = values[i];
-            byte value = order[index];
-            values[i] = value;
-            if (index != 0)
-            {
-                order[..index].CopyTo(order[1..]);
-                order[0] = value;
-            }
-        }
-    }
-
     /// <summary>0, or a value of 1 + Bits(n) bits for n read in <paramref name="lengthBits"/> bits (DecodeVarLenUint8/16).</summary>
     private static int VarLenUint(ref JxlBitReader reader, int lengthBits)
     {
@@ -519,8 +479,6 @@ internal sealed class JxlEntropyCode
         int bits = (int)reader.ReadBits(lengthBits);
         return bits == 0 ? 1 : (int)reader.ReadBits(bits) + (1 << bits);
     }
-
-    private static int CeilLog2(int value) => value <= 1 ? 0 : JxlPrefixCode.Log2Floor((uint)value - 1) + 1;
 
     private static ImageFormatException InvalidHistogram() => JxlDescriptor.Corrupt("Invalid ANS histogram.");
 }

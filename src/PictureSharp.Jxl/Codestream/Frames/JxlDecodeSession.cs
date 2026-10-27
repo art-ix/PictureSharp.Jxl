@@ -31,8 +31,7 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
             JxlFrameHeader frame = JxlFrameHeaderReader.Read(ref reader, headers, preview: false);
             long start = JxlFrameSectionReader.ReadToc(ref reader, codestream, frame, out JxlToc toc);
             frames.Add(frame);
-            reader = new JxlBitReader(codestream);
-            reader.SkipBits((ulong)(start + toc.TotalSize) * 8);
+            reader = JxlFrameSectionReader.After(codestream, start, toc);
         }
 
         return frames;
@@ -45,7 +44,7 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
         cancellationToken.ThrowIfCancellationRequested();
         headers.Size.Validate();
         JxlImageMetadata metadata = headers.Metadata;
-        int alpha = JxlDecodeSupportPolicy.EnsureSupported(metadata);
+        int alpha = JxlDecodeSupportPolicy.EnsureImageSupported(metadata);
         var reader = JxlFrameSectionReader.FirstFrame(codestream, headers, cancellationToken, out byte[]? icc, maxIccBytes, reserveIcc);
         IccProfile = icc;
         JxlColorTarget target = renderSrgb ? JxlColorTarget.Srgb
@@ -55,7 +54,7 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
         {
             cancellationToken.ThrowIfCancellationRequested();
             JxlFrameHeader frame = JxlFrameHeaderReader.Read(ref reader, headers, preview: false);
-            JxlDecodeSupportPolicy.EnsureSupported(frame, headers, references);
+            JxlDecodeSupportPolicy.EnsureFrameSupported(frame, headers, references);
             long start = JxlFrameSectionReader.ReadToc(ref reader, codestream, frame, out JxlToc toc);
             // A reference frame saved after the colour transform can only serve blending, which is not supported.
             if (frame.Type != JxlFrameType.ReferenceOnly || frame.SaveBeforeColorTransform)
@@ -78,8 +77,7 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
                 }
             }
 
-            reader = new JxlBitReader(codestream);
-            reader.SkipBits((ulong)(start + toc.TotalSize) * 8);
+            reader = JxlFrameSectionReader.After(codestream, start, toc);
         }
     }
 }

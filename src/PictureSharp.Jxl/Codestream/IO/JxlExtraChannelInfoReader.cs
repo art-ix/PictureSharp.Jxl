@@ -28,13 +28,7 @@ internal static class JxlExtraChannelInfoReader
             case JxlExtraChannelType.Alpha:
                 return info with { AlphaAssociated = reader.ReadBool() };
             case JxlExtraChannelType.SpotColor:
-                float[] color = new float[4];
-                for (int i = 0; i < color.Length; i++)
-                {
-                    color[i] = JxlFields.F16(ref reader);
-                }
-
-                return info with { SpotColor = color };
+                return info with { SpotColor = JxlFields.F16Array(ref reader, 4) };
             case JxlExtraChannelType.Cfa:
                 return info with { CfaChannel = JxlFields.U32(ref reader, Val(1), Bits32(2), BitsOffset(4, 3), BitsOffset(8, 19)) };
             default:

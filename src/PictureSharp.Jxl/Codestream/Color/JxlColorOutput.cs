@@ -18,12 +18,12 @@ namespace PictureSharp.Formats.Jxl.Codestream.Color;
 /// </remarks>
 internal sealed class JxlColorOutput
 {
-    private static readonly float[] SrgbP = [(float)-5.135152395e-04, (float)5.287254571e-03, (float)3.903842876e-01, (float)1.474205315e+00, (float)7.352629620e-01];
-    private static readonly float[] SrgbQ = [(float)1.004519624e-02, (float)3.036675394e-01, (float)1.340816930e+00, (float)9.258482155e-01, (float)2.424867759e-02];
-    private static readonly float[] PqP = [(float)1.351392e-02, (float)-1.095778e+00, (float)5.522776e+01, (float)1.492516e+02, (float)4.838434e+01];
-    private static readonly float[] PqQ = [(float)1.012416e+00, (float)2.016708e+01, (float)9.263710e+01, (float)1.120607e+02, (float)2.590418e+01];
-    private static readonly float[] PqPLow = [(float)9.863406e-06, (float)3.881234e-01, (float)1.352821e+02, (float)6.889862e+04, (float)-2.864824e+05];
-    private static readonly float[] PqQLow = [(float)3.371868e+01, (float)1.477719e+03, (float)1.608477e+04, (float)-4.389884e+04, (float)-2.072546e+05];
+    private static ReadOnlySpan<float> SrgbP => [(float)-5.135152395e-04, (float)5.287254571e-03, (float)3.903842876e-01, (float)1.474205315e+00, (float)7.352629620e-01];
+    private static ReadOnlySpan<float> SrgbQ => [(float)1.004519624e-02, (float)3.036675394e-01, (float)1.340816930e+00, (float)9.258482155e-01, (float)2.424867759e-02];
+    private static ReadOnlySpan<float> PqP => [(float)1.351392e-02, (float)-1.095778e+00, (float)5.522776e+01, (float)1.492516e+02, (float)4.838434e+01];
+    private static ReadOnlySpan<float> PqQ => [(float)1.012416e+00, (float)2.016708e+01, (float)9.263710e+01, (float)1.120607e+02, (float)2.590418e+01];
+    private static ReadOnlySpan<float> PqPLow => [(float)9.863406e-06, (float)3.881234e-01, (float)1.352821e+02, (float)6.889862e+04, (float)-2.864824e+05];
+    private static ReadOnlySpan<float> PqQLow => [(float)3.371868e+01, (float)1.477719e+03, (float)1.608477e+04, (float)-4.389884e+04, (float)-2.072546e+05];
 
     private readonly JxlColorTransform transform;
     private readonly float[] inverseMatrix = new float[9];
@@ -54,7 +54,7 @@ internal sealed class JxlColorOutput
         }
 
         transfer = color.Gamma != 0 ? JxlTransferFunction.Unknown : color.TransferFunction;
-        inverseGamma = color.Gamma != 0 ? (float)(color.Gamma * 1e-7) : 1.0f / 2.6f;
+        inverseGamma = color.Gamma != 0 ? (float)(color.Gamma * 1e-7) : JxlColorEncoding.DciGamma;
         float intensity = metadata.ToneMapping.IntensityTarget;
         pqScale = intensity * (1.0f / 10000.0f);
         float[] inverse = [.. transformData.EffectiveOpsinInverseMatrix];
@@ -213,40 +213,27 @@ internal sealed class JxlColorOutput
 
     private static float[] SrgbToXyzD50()
     {
-        ReadOnlySpan<float> s = SrgbPrimaries;
-        return Multiply(AdaptToXyzD50((float)0.3127, (float)0.3290), PrimariesToXyz(s[0], s[1], s[2], s[3], s[4], s[5], (float)0.3127, (float)0.3290));
+        (float wx, float wy) = ((float)JxlColorEncoding.D65.X, (float)JxlColorEncoding.D65.Y);
+        return Multiply(AdaptToXyzD50(wx, wy), PrimariesToXyz(SrgbPrimaries, wx, wy));
     }
 
     private static float[] SrgbToOriginal(JxlColorEncoding color)
     {
         float[] srgbToXyzD50 = SrgbToXyzD50();
-        (float wx, float wy) = color.WhitePoint switch
-        {
-            JxlWhitePoint.D65 => ((float)0.3127, (float)0.3290),
-            JxlWhitePoint.Dci => ((float)0.314, (float)0.351),
-            JxlWhitePoint.E => ((float)(1.0 / 3), (float)(1.0 / 3)),
-            _ => ((float)color.CustomWhitePoint.XValue, (float)color.CustomWhitePoint.YValue),
-        };
-        float[] primaries = color.Primaries switch
-        {
-            JxlPrimaries.Srgb => [.. SrgbPrimaries],
-            JxlPrimaries.Bt2100 => [(float)0.708, (float)0.292, (float)0.170, (float)0.797, (float)0.131, (float)0.046],
-            JxlPrimaries.P3 => [(float)0.680, (float)0.320, (float)0.265, (float)0.690, (float)0.150, (float)0.060],
-            _ =>
-            [
-                (float)color.CustomPrimaries.Red.XValue, (float)color.CustomPrimaries.Red.YValue,
-                (float)color.CustomPrimaries.Green.XValue, (float)color.CustomPrimaries.Green.YValue,
-                (float)color.CustomPrimaries.Blue.XValue, (float)color.CustomPrimaries.Blue.YValue,
-            ],
-        };
-        float[] originalToXyz = PrimariesToXyz(primaries[0], primaries[1], primaries[2], primaries[3], primaries[4], primaries[5], wx, wy);
+        (float wx, float wy) = ((float)color.WhitePointXy.X, (float)color.WhitePointXy.Y);
+        (JxlXy red, JxlXy green, JxlXy blue) = color.PrimariesXy;
+        ReadOnlySpan<float> primaries = color.Primaries == JxlPrimaries.Srgb ? SrgbPrimaries
+            : [(float)red.X, (float)red.Y, (float)green.X, (float)green.Y, (float)blue.X, (float)blue.Y];
+        float[] originalToXyz = PrimariesToXyz(primaries, wx, wy);
         float[] xyzD50ToOriginal = Invert(Multiply(AdaptToXyzD50(wx, wy), originalToXyz));
         return Multiply(xyzD50ToOriginal, srgbToXyzD50);
     }
 
-    private static float[] PrimariesToXyz(float rx, float ry, float gx, float gy, float bx, float by, float wx, float wy)
+    // The primaries as red, green and blue xy pairs.
+    private static float[] PrimariesToXyz(ReadOnlySpan<float> xy, float wx, float wy)
     {
         float[] w = WhiteXyz(wx, wy);
+        (float rx, float ry, float gx, float gy, float bx, float by) = (xy[0], xy[1], xy[2], xy[3], xy[4], xy[5]);
         float[] primaries = [rx, gx, bx, ry, gy, by, 1.0f - rx - ry, 1.0f - gx - gy, 1.0f - bx - by];
         float[] xyz = Multiply3(Invert(primaries), w);
         return Multiply(primaries, [xyz[0], 0, 0, 0, xyz[1], 0, 0, 0, xyz[2]]);
@@ -307,13 +294,8 @@ internal sealed class JxlColorOutput
 
     private static float[] Invert(float[] m)
     {
-        double[] t =
-        [
-            (double)m[4] * m[8] - (double)m[5] * m[7], (double)m[2] * m[7] - (double)m[1] * m[8], (double)m[1] * m[5] - (double)m[2] * m[4],
-            (double)m[5] * m[6] - (double)m[3] * m[8], (double)m[0] * m[8] - (double)m[2] * m[6], (double)m[2] * m[3] - (double)m[0] * m[5],
-            (double)m[3] * m[7] - (double)m[4] * m[6], (double)m[1] * m[6] - (double)m[0] * m[7], (double)m[0] * m[4] - (double)m[1] * m[3],
-        ];
-        double determinant = m[0] * t[0] + m[1] * t[3] + m[2] * t[6];
+        double[] t = new double[9];
+        double determinant = JxlMatrix3.Adjugate([.. m.Select(value => (double)value)], t);
         if (Math.Abs(determinant) < 1e-10)
         {
             throw JxlDescriptor.Corrupt("Singular colour matrix.");

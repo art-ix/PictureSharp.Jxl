@@ -1,4 +1,3 @@
-using System.Buffers.Binary;
 using System.IO.Compression;
 
 namespace PictureSharp.Formats.Jxl.Container;
@@ -15,22 +14,21 @@ internal static class JxlContainerWriter
     private const int BrotliQuality = 11;
     private const int BrotliWindow = 22;
 
-    /// <summary>The signature and ftyp boxes (brand "jxl ", version 0, compatible with "jxl ").</summary>
-    public static ReadOnlySpan<byte> Header =>
-    [
-        0, 0, 0, 12, (byte)'J', (byte)'X', (byte)'L', (byte)' ', 13, 10, 0x87, 10,
-        0, 0, 0, 20, (byte)'f', (byte)'t', (byte)'y', (byte)'p', (byte)'j', (byte)'x', (byte)'l', (byte)' ', 0, 0, 0, 0,
-        (byte)'j', (byte)'x', (byte)'l', (byte)' ',
-    ];
+    // The ftyp content: brand "jxl ", version 0, compatible with "jxl ".
+    private static readonly byte[] FileTypeContent = [.. "jxl "u8, 0, 0, 0, 0, .. "jxl "u8];
 
-    /// <summary>A file of <paramref name="codestream"/> in a jxlc box after the metadata boxes; level 10 adds a jxll box.</summary>
-    public static byte[] Write(ReadOnlySpan<byte> codestream, IEnumerable<JxlBox> metadata, int level = 5)
+    /// <summary>
+    /// A file of <paramref name="codestream"/> in a jxlc box after the metadata boxes; a level other than
+    /// <see cref="JxlContainer.DefaultLevel"/> adds a jxll box.
+    /// </summary>
+    public static byte[] Write(ReadOnlySpan<byte> codestream, IEnumerable<JxlBox> metadata, int level = JxlContainer.DefaultLevel)
     {
-        var output = new MemoryStream();
-        output.Write(Header);
-        if (level != 5) WriteBox(output, new JxlBox("jxll", new[] { (byte)level }));
+        using var output = new MemoryStream();
+        output.Write(JxlDescriptor.ContainerSignature);
+        WriteBox(output, new JxlBox(JxlBoxType.FileType, FileTypeContent));
+        if (level != JxlContainer.DefaultLevel) WriteBox(output, new JxlBox(JxlBoxType.Level, new[] { (byte)level }));
         foreach (JxlBox box in metadata) WriteBox(output, box);
-        WriteBoxHeader(output, "jxlc", codestream.Length);
+        JxlBoxHeader.Write(output, JxlBoxType.Codestream, codestream.Length);
         output.Write(codestream);
         return output.ToArray();
     }
@@ -40,7 +38,7 @@ internal static class JxlContainerWriter
     {
         if (!box.Compress)
         {
-            WriteBoxHeader(output, box.Type, box.Content.Length);
+            JxlBoxHeader.Write(output, box.Type, box.Content.Length);
             output.Write(box.Content.Span);
             return;
         }
@@ -51,26 +49,8 @@ internal static class JxlContainerWriter
             throw new InvalidOperationException("Brotli compression failed.");
         }
 
-        WriteBoxHeader(output, "brob", 4L + written);
+        JxlBoxHeader.Write(output, JxlBoxType.Brotli, 4L + written);
         output.Write(System.Text.Encoding.Latin1.GetBytes(box.Type));
         output.Write(compressed, 0, written);
-    }
-
-    private static void WriteBoxHeader(Stream output, string type, long contentLength)
-    {
-        Span<byte> header = stackalloc byte[16];
-        byte[] name = System.Text.Encoding.Latin1.GetBytes(type);
-        if (contentLength + 8 <= uint.MaxValue)
-        {
-            BinaryPrimitives.WriteUInt32BigEndian(header, (uint)(contentLength + 8));
-            name.CopyTo(header[4..]);
-            output.Write(header[..8]);
-            return;
-        }
-
-        BinaryPrimitives.WriteUInt32BigEndian(header, 1);
-        name.CopyTo(header[4..]);
-        BinaryPrimitives.WriteUInt64BigEndian(header[8..], (ulong)(contentLength + 16));
-        output.Write(header);
     }
 }

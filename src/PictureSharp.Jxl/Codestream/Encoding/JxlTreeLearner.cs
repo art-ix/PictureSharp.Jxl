@@ -1,10 +1,16 @@
 using PictureSharp.Formats.Jxl.Codestream.Entropy;
 using PictureSharp.Formats.Jxl.Codestream.Model;
+using static PictureSharp.Formats.Jxl.Codestream.Numerics.JxlIntMath;
 
 namespace PictureSharp.Formats.Jxl.Codestream.Encoding;
 
 /// <summary>A node of an encoder MA tree: a split on <c>Property &gt; Split</c> (left) or a leaf (Property -1).</summary>
-internal record struct JxlTreeNode(int Property, int Split, int Left, int Right, JxlPredictor Predictor);
+internal readonly record struct JxlTreeNode(int Property, int Split, int Left, int Right, JxlPredictor Predictor)
+{
+    public bool IsLeaf => Property < 0;
+
+    public static JxlTreeNode Leaf(JxlPredictor predictor) => new(-1, 0, 0, 0, predictor);
+}
 
 /// <summary>
 /// Learns an MA tree from pixel samples: greedy splits on quantized properties that minimize the estimated coded
@@ -46,7 +52,7 @@ internal sealed class JxlTreeLearner
         for (int i = 0; i < properties.Length; i++) values[i].Add(pixelProperties[properties[i]]);
         for (int i = 0; i < predictors.Length; i++)
         {
-            uint token = JxlEntropyEncoder.Tokenize(SampleConfig, JxlTokens.PackSigned(residuals[i]), out int bits, out _);
+            uint token = SampleConfig.Encode(PackSigned(residuals[i]), out int bits, out _);
             tokens[i].Add((byte)Math.Min(token, 255));
             extraBits[i].Add((byte)bits);
         }
@@ -55,7 +61,7 @@ internal sealed class JxlTreeLearner
     /// <summary>The tree; a single leaf with the first predictor when there are no samples or no useful split.</summary>
     public List<JxlTreeNode> Learn(float threshold, CancellationToken cancellationToken)
     {
-        var tree = new List<JxlTreeNode> { new(-1, 0, 0, 0, predictors[0]) };
+        var tree = new List<JxlTreeNode> { JxlTreeNode.Leaf(predictors[0]) };
         int count = Count;
         if (count == 0) return tree;
 

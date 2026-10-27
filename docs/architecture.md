@@ -20,10 +20,10 @@ uses only PictureSharp's public SPI. All implementation types remain internal.
 | Codestream.Color | Output colour transforms, matrix/TRC ICC output targets, quantization/dither | Model, Buffers, Numerics |
 | Codestream.Metadata | ICC entropy stream, prediction decoding and its simplest prediction for writing | IO, Entropy |
 | Codestream.Frames | One-image session, frame scheduling, support policy, section readers | Codec modules above |
-| Codestream.Numerics | Scalar numerical primitives | None |
+| Codestream.Numerics | Scalar numerical primitives and integer helpers (`JxlIntMath`) | None; every module may use it |
 | Codestream.Encoding | Bit/field/header writers, ANS entropy encoder, MA tree learner, lossless Modular frame encoder, header rewriting | Model, Buffers, IO, Entropy, Modular, Metadata |
 
-`JxlDescriptor` is the shared exception/format boundary. The codec does not use
+`JxlDescriptor` is the shared exception/format boundary and holds the codestream and container signatures. The codec does not use
 PictureSharp images, contexts, options or pixels directly. The compiled module
 boundary test checks signatures, fields, locals and IL references, including
 compiler-generated lambdas. No dependency-injection container is needed.
@@ -76,6 +76,13 @@ the three Modular transform implementations, where two shared operations have
 multiple real implementations.
 
 ## Values and ownership
+
+- The format's vocabulary is typed where the code used to compute it by hand: `JxlFrameHeader` answers group
+  origins, TOC section indices and Modular stream ids; `JxlMaProperty`, `JxlNeighbours` and `JxlMaTreeContext` are
+  shared by `JxlMaTree` and the encoder, so predictions cannot drift; `JxlRctType`, `JxlVarblock`,
+  `JxlAcStrategySet`, `JxlBoxType`/`JxlBoxHeader` and the standard chromaticities on `JxlColorEncoding` replace packed
+  integers, strings and repeated constants. Field distributions read and written by both sides
+  (`JxlTransformFields`, `JxlHybridUint`) are defined once.
 
 - `JxlSizeHeader` and `JxlBitDepth` are validated readonly record structs. Their
   `Validate` methods reject the otherwise unavoidable `default(struct)` value at

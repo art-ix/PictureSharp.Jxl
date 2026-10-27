@@ -6,16 +6,16 @@ namespace PictureSharp.Formats.Jxl.Codestream.IO;
 /// </summary>
 internal sealed class JxlCodestream
 {
-    public JxlCodestream(params ReadOnlyMemory<byte>[] segments)
+    private readonly ReadOnlyMemory<byte>[] segments;
+
+    public JxlCodestream(params ReadOnlySpan<ReadOnlyMemory<byte>> segments)
     {
-        this.segments = (ReadOnlyMemory<byte>[])segments.Clone();
-        foreach (ReadOnlyMemory<byte> segment in this.segments)
+        this.segments = segments.ToArray();
+        foreach (ReadOnlyMemory<byte> segment in segments)
         {
             Length += segment.Length;
         }
     }
-
-    private readonly ReadOnlyMemory<byte>[] segments;
 
     public ReadOnlySpan<ReadOnlyMemory<byte>> Segments => segments;
 
@@ -27,7 +27,7 @@ internal sealed class JxlCodestream
     {
         if (offset < 0 || length < 0 || offset > Length - length)
         {
-            throw JxlDescriptor.Corrupt("Truncated codestream.");
+            throw JxlBitReader.Truncated();
         }
 
         var slices = new List<ReadOnlyMemory<byte>>();

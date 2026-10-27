@@ -7,7 +7,7 @@ namespace PictureSharp.Formats.Jxl.Codestream.Frames;
 internal static class JxlDecodeSupportPolicy
 {
     /// <summary>Checks the image-level features and returns the index of the alpha extra channel, or -1.</summary>
-    public static int EnsureSupported(JxlImageMetadata metadata)
+    public static int EnsureImageSupported(JxlImageMetadata metadata)
     {
         metadata.BitDepth.Validate();
         foreach (JxlExtraChannelInfo channel in metadata.ExtraChannels) channel.BitDepth.Validate();
@@ -48,7 +48,7 @@ internal static class JxlDecodeSupportPolicy
         return alpha;
     }
 
-    public static void EnsureSupported(JxlFrameHeader frame, JxlHeaders headers, JxlReferenceFrames references)
+    public static void EnsureFrameSupported(JxlFrameHeader frame, JxlHeaders headers, JxlReferenceFrames references)
     {
         if (frame.Type == JxlFrameType.SkipProgressive || (frame.Type == JxlFrameType.Regular && !frame.IsLast))
         {
@@ -60,18 +60,18 @@ internal static class JxlDecodeSupportPolicy
             throw JxlDescriptor.Corrupt("The last frame is not a regular frame.");
         }
 
-        if ((frame.Flags & (JxlFrameFlags.Noise | JxlFrameFlags.Splines)) != 0)
+        if (frame.HasNoise || frame.HasSplines)
         {
             throw JxlDescriptor.Unsupported("noise and splines are not rendered yet.");
         }
 
-        if ((frame.Flags & JxlFrameFlags.Patches) != 0 && frame.Upsampling != 1
+        if (frame.HasPatches && frame.Upsampling != 1
             && frame.ExtraChannelUpsampling.Any(factor => factor != frame.Upsampling))
         {
             throw JxlDescriptor.Corrupt("Patches need extra channels upsampled like the colour channels.");
         }
 
-        if ((frame.Flags & JxlFrameFlags.UseDcFrame) != 0 && !references.HasDc(frame.DcLevel))
+        if (frame.UsesDcFrame && !references.HasDc(frame.DcLevel))
         {
             throw JxlDescriptor.Corrupt("A frame uses a DC frame that was not decoded.");
         }
@@ -83,7 +83,7 @@ internal static class JxlDecodeSupportPolicy
             throw JxlDescriptor.Unsupported("cropped or blended frames are not decoded yet.");
         }
 
-        if (frame.Encoding == JxlFrameEncoding.VarDct && !frame.Is444 && (frame.Flags & JxlFrameFlags.SkipAdaptiveDcSmoothing) == 0)
+        if (frame.Encoding == JxlFrameEncoding.VarDct && !frame.Is444 && !frame.SkipsAdaptiveDcSmoothing)
         {
             throw JxlDescriptor.Corrupt("Chroma subsampling requires adaptive DC smoothing to be disabled.");
         }

@@ -24,7 +24,8 @@ internal sealed class JxlContainer
     /// <summary>libjxl's limit on buffered out-of-order jxlp boxes.</summary>
     public const int MaxParts = 1 << 20;
 
-    private static ReadOnlySpan<byte> Signature => [0, 0, 0, 12, (byte)'J', (byte)'X', (byte)'L', (byte)' ', 13, 10, 0x87, 10];
+    /// <summary>The conformance level of a file without a jxll box.</summary>
+    public const int DefaultLevel = 5;
 
     private JxlContainer(JxlCodestream codestream, bool boxed, uint version, int level, List<JxlMetadataBox>? metadata = null)
     {
@@ -45,39 +46,37 @@ internal sealed class JxlContainer
     /// <summary>The ftyp minor version: 0, or 1 when jxlp boxes may appear out of order.</summary>
     public uint FileFormatVersion { get; }
 
-    /// <summary>The conformance level from the jxll box, 5 when absent.</summary>
+    /// <summary>The conformance level from the jxll box, <see cref="DefaultLevel"/> when absent.</summary>
     public int Level { get; }
 
     public static JxlContainer Parse(ReadOnlyMemory<byte> data, bool includeMetadata = false, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         ReadOnlySpan<byte> bytes = data.Span;
-        if (bytes is [0xFF, 0x0A, ..])
+        if (bytes.StartsWith(JxlDescriptor.CodestreamSignature))
         {
-            return new JxlContainer(new JxlCodestream(data), false, 0, 5);
+            return new JxlContainer(new JxlCodestream(data), false, 0, DefaultLevel);
         }
 
-        if (!bytes.StartsWith(Signature))
+        if (!bytes.StartsWith(JxlDescriptor.ContainerSignature))
         {
             throw JxlDescriptor.Corrupt("Not a codestream or container.");
         }
 
-        ReadOnlyMemory<byte>? whole = null;
+        ReadOnlyMemory<byte>? jxlcPayload = null;
         var parts = new List<Part>();
         List<JxlMetadataBox>? metadata = includeMetadata ? [] : null;
         bool lastPartSeen = false;
         uint version = 0;
-        int level = 5;
-        int count = 1;
-        long position = Signature.Length;
-        while (position < bytes.Length)
+        int level = DefaultLevel;
+        int boxCount = 1;
+        foreach (JxlBoxHeader box in new JxlBoxEnumerator(bytes, JxlDescriptor.ContainerSignature.Length))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            Box box = ReadBox(bytes, position);
-            count++;
-            if (box.Is("JXL "))
+            boxCount++;
+            if (box.Type == JxlBoxType.Signature)
             {
-                if (whole is not null || lastPartSeen)
+                if (jxlcPayload is not null || lastPartSeen)
                 {
                     break;
                 }
@@ -85,7 +84,7 @@ internal sealed class JxlContainer
                 throw JxlDescriptor.Corrupt("Signature box inside the file.");
             }
 
-            if ((count == 2) != box.Is("ftyp"))
+            if ((boxCount == 2) != (box.Type == JxlBoxType.FileType))
             {
                 throw JxlDescriptor.Corrupt("The ftyp box must be the second box.");
             }
@@ -93,76 +92,37 @@ internal sealed class JxlContainer
             ReadOnlyMemory<byte> content = data.Slice((int)box.ContentStart, (int)box.ContentLength);
             switch (box.Type)
             {
-                case "ftyp":
+                case JxlBoxType.FileType:
                     version = FileType(content.Span);
                     break;
-                case "jxll":
+                case JxlBoxType.Level:
                     level = content.Length >= 1 ? content.Span[0] : throw JxlDescriptor.Corrupt("Empty level box.");
                     break;
-                case "jxlc":
-                    if (whole is not null || parts.Count > 0)
-                    {
-                        throw JxlDescriptor.Corrupt("A file has one jxlc box and no jxlp boxes besides it.");
-                    }
-
-                    whole = content;
+                case JxlBoxType.Codestream:
+                    EnsureSingleCodestream(jxlcPayload is not null || parts.Count > 0);
+                    jxlcPayload = content;
                     break;
-                case "jxlp":
-                    if (whole is not null)
-                    {
-                        throw JxlDescriptor.Corrupt("A file has one jxlc box and no jxlp boxes besides it.");
-                    }
-
-                    if (content.Length < 4)
-                    {
-                        throw JxlDescriptor.Corrupt("A jxlp box is too small to contain its index.");
-                    }
-
-                    if (parts.Count == MaxParts)
-                    {
-                        throw JxlDescriptor.Corrupt("Too many jxlp boxes.");
-                    }
-
-                    uint index = BinaryPrimitives.ReadUInt32BigEndian(content.Span);
-                    var part = new Part(index & 0x7FFF_FFFF, (index & 0x8000_0000) != 0, content[4..]);
-                    if (version == 0 && part.Counter != parts.Count)
-                    {
-                        throw JxlDescriptor.Corrupt(
-                            $"The jxlp box index {part.Counter} is out of order (expected {parts.Count}); out-of-order boxes require file format version 1.");
-                    }
-
+                case JxlBoxType.CodestreamPart:
+                    EnsureSingleCodestream(jxlcPayload is not null);
+                    Part part = ReadPart(content, parts.Count, version);
                     lastPartSeen |= part.IsLast;
                     parts.Add(part);
                     break;
-                case "brob":
-                    if (content.Length < 4)
-                    {
-                        throw JxlDescriptor.Corrupt("A brob box is too small to contain its type.");
-                    }
-
-                    string inner = System.Text.Encoding.Latin1.GetString(content.Span[..4]);
-                    // libjxl skips such a box and then finds no codestream; report the cause instead.
-                    if (inner is "jxlc" or "jxlp" or "brob")
-                    {
-                        throw JxlDescriptor.Corrupt($"Box type '{inner}' cannot be Brotli-compressed.");
-                    }
-
-                    if (inner is "Exif" or "xml ") metadata?.Add(new(inner, content[4..], true));
+                case JxlBoxType.Brotli:
+                    if (ReadBrotliBox(content) is { } compressed) metadata?.Add(compressed);
                     break;
-                case "Exif" or "xml ":
+                case JxlBoxType.Exif or JxlBoxType.Xmp:
                     metadata?.Add(new(box.Type, content, false));
                     break;
             }
-
-            position = box.End;
         }
 
-        if (count < 2)
+        if (boxCount < 2)
         {
             throw JxlDescriptor.Corrupt("Missing ftyp box.");
         }
 
-        if (whole is { } single)
+        if (jxlcPayload is { } single)
         {
             return new JxlContainer(new JxlCodestream(single), true, version, level, metadata);
         }
@@ -172,24 +132,68 @@ internal sealed class JxlContainer
             : new JxlContainer(new JxlCodestream(Order(parts, cancellationToken)), true, version, level, metadata);
     }
 
-    /// <summary>
-    /// The boxes of a container that <see cref="Parse"/> accepted, up to a second signature box: type, the brob payload
-    /// type (else null), and the box's start, content start and end offsets.
-    /// </summary>
-    public static List<(string Type, string? Inner, long Start, long ContentStart, long End)> Boxes(ReadOnlySpan<byte> bytes)
+    /// <summary>The boxes of a container that <see cref="Parse"/> accepted, up to a second signature box.</summary>
+    public static List<JxlBoxEntry> Boxes(ReadOnlySpan<byte> bytes)
     {
-        var boxes = new List<(string, string?, long, long, long)>();
-        long position = 0;
-        while (position < bytes.Length)
+        var boxes = new List<JxlBoxEntry>();
+        foreach (JxlBoxHeader box in new JxlBoxEnumerator(bytes, 0))
         {
-            Box box = ReadBox(bytes, position);
-            if (box.Is("JXL ") && position > 0) break;
-            string? inner = box.Is("brob") ? System.Text.Encoding.Latin1.GetString(bytes.Slice((int)box.ContentStart, 4)) : null;
-            boxes.Add((box.Type, inner, position, box.ContentStart, box.End));
-            position = box.End;
+            if (box.Type == JxlBoxType.Signature && box.Start > 0) break;
+            string? brotliType = box.Type == JxlBoxType.Brotli ? JxlBoxHeader.FourCc(bytes[(int)box.ContentStart..]) : null;
+            boxes.Add(new JxlBoxEntry(box, brotliType));
         }
 
         return boxes;
+    }
+
+    private static void EnsureSingleCodestream(bool hasOther)
+    {
+        if (hasOther)
+        {
+            throw JxlDescriptor.Corrupt("A file has one jxlc box and no jxlp boxes besides it.");
+        }
+    }
+
+    // A jxlp box: a 31-bit counter, the last-part flag and a piece of the codestream.
+    private static Part ReadPart(ReadOnlyMemory<byte> content, int index, uint version)
+    {
+        if (content.Length < 4)
+        {
+            throw JxlDescriptor.Corrupt("A jxlp box is too small to contain its index.");
+        }
+
+        if (index == MaxParts)
+        {
+            throw JxlDescriptor.Corrupt("Too many jxlp boxes.");
+        }
+
+        uint counter = BinaryPrimitives.ReadUInt32BigEndian(content.Span);
+        var part = new Part(counter & 0x7FFF_FFFF, (counter & 0x8000_0000) != 0, content[4..]);
+        if (version == 0 && part.Counter != index)
+        {
+            throw JxlDescriptor.Corrupt(
+                $"The jxlp box index {part.Counter} is out of order (expected {index}); out-of-order boxes require file format version 1.");
+        }
+
+        return part;
+    }
+
+    // A brob box: Exif and xml payloads are indexed without their inner type; other metadata is skipped.
+    private static JxlMetadataBox? ReadBrotliBox(ReadOnlyMemory<byte> content)
+    {
+        if (content.Length < 4)
+        {
+            throw JxlDescriptor.Corrupt("A brob box is too small to contain its type.");
+        }
+
+        string inner = JxlBoxHeader.FourCc(content.Span);
+        // libjxl skips such a box and then finds no codestream; report the cause instead.
+        if (inner is JxlBoxType.Codestream or JxlBoxType.CodestreamPart or JxlBoxType.Brotli)
+        {
+            throw JxlDescriptor.Corrupt($"Box type '{inner}' cannot be Brotli-compressed.");
+        }
+
+        return inner is JxlBoxType.Exif or JxlBoxType.Xmp ? new JxlMetadataBox(inner, content[4..], true) : null;
     }
 
     // Counters must be unique and contiguous from 0, and only the highest one may be marked last.
@@ -238,53 +242,6 @@ internal sealed class JxlContainer
         return version <= 1
             ? version
             : throw JxlDescriptor.Corrupt($"Unknown file format version {version} (known versions: 0, 1).");
-    }
-
-    // ISO/IEC 14496-12 box header: 32-bit size (1 = 64-bit size follows, 0 = to the end of the file) and type.
-    private static Box ReadBox(ReadOnlySpan<byte> bytes, long position)
-    {
-        long available = bytes.Length - position;
-        if (available < 8)
-        {
-            throw JxlDescriptor.Corrupt("Truncated box header.");
-        }
-
-        ReadOnlySpan<byte> header = bytes[(int)position..];
-        ulong size = BinaryPrimitives.ReadUInt32BigEndian(header);
-        string type = System.Text.Encoding.Latin1.GetString(header.Slice(4, 4));
-        int headerSize = 8;
-        if (size == 1)
-        {
-            if (available < 16)
-            {
-                throw JxlDescriptor.Corrupt("Truncated box header.");
-            }
-
-            size = BinaryPrimitives.ReadUInt64BigEndian(header[8..]);
-            headerSize = 16;
-        }
-
-        if (size == 0)
-        {
-            size = (ulong)available;
-        }
-        else if (size < (ulong)headerSize)
-        {
-            throw JxlDescriptor.Corrupt($"Invalid box size {size}.");
-        }
-        else if (size > (ulong)available)
-        {
-            throw JxlDescriptor.Corrupt($"Truncated '{type}' box.");
-        }
-
-        return new Box(type, position + headerSize, (long)size - headerSize);
-    }
-
-    private readonly record struct Box(string Type, long ContentStart, long ContentLength)
-    {
-        public long End => ContentStart + ContentLength;
-
-        public bool Is(string type) => Type == type;
     }
 
     private readonly record struct Part(uint Counter, bool IsLast, ReadOnlyMemory<byte> Content);

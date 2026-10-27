@@ -9,7 +9,7 @@ internal static class JxlGroupHeaderReader
     {
         bool global = reader.ReadBool();
         JxlWeightedHeader weighted = JxlWeightedHeaderReader.Read(ref reader);
-        uint count = JxlFields.U32(ref reader, JxlU32.Val(0), JxlU32.Val(1), JxlU32.BitsOffset(4, 2), JxlU32.BitsOffset(8, 18));
+        uint count = JxlFields.U32(ref reader, JxlTransformFields.TransformCount);
         var transforms = new JxlTransform[count];
         for (int i = 0; i < transforms.Length; i++)
         {

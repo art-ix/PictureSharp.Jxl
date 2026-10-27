@@ -1,5 +1,6 @@
 using PictureSharp.Formats.Jxl.Codestream.Entropy;
 using PictureSharp.Formats.Jxl.Codestream.Model;
+using static PictureSharp.Formats.Jxl.Codestream.Numerics.JxlIntMath;
 
 namespace PictureSharp.Formats.Jxl.Codestream.Modular;
 
@@ -8,7 +9,7 @@ namespace PictureSharp.Formats.Jxl.Codestream.Modular;
 /// carry three extra fractional bits. Ported from libjxl v0.12.0 lib/jxl/modular/encoding/context_predict.h
 /// (weighted::State), BSD-3-Clause; the integer widths and wrap-arounds follow libjxl.
 /// </summary>
-internal sealed class JxlWeightedPredictor
+internal sealed class JxlWeightedPredictor(JxlWeightedHeader header, int width)
 {
     private const int ExtraBits = 3;
     private const long Round = ((1 << ExtraBits) >> 1) - 1;
@@ -16,24 +17,19 @@ internal sealed class JxlWeightedPredictor
     // (1 << 24) / (i + 1): division by 1–64 as a multiplication.
     private static readonly uint[] DivLookup = [.. Enumerable.Range(0, 64).Select(i => (uint)((1 << 24) / (i + 1)))];
 
-    private readonly JxlWeightedHeader header;
-    private readonly uint[][] predictionErrors;
-    private readonly int[] errors;
+    private readonly int width = width;
+    // Two rows of errors, each padded by one position on both sides.
+    private readonly int rowStride = width + 2;
+    private readonly uint[][] predictionErrors = [ErrorRows(width), ErrorRows(width), ErrorRows(width), ErrorRows(width)];
+    private readonly int[] errors = new int[(width + 2) * 2];
     private readonly long[] predictions = new long[4];
     private long prediction;
 
-    public JxlWeightedPredictor(JxlWeightedHeader header, int width)
-    {
-        this.header = header;
-        predictionErrors = [new uint[(width + 2) * 2], new uint[(width + 2) * 2], new uint[(width + 2) * 2], new uint[(width + 2) * 2]];
-        errors = new int[(width + 2) * 2];
-    }
-
     /// <summary>Predicts the pixel at (x, y) from its neighbours; <paramref name="maxError"/> is the WP property.</summary>
-    public long Predict(int x, int y, int width, long n, long w, long ne, long nw, long nn, out int maxError)
+    public long Predict(int x, int y, in JxlNeighbours neighbours, out int maxError)
     {
-        int current = (y & 1) != 0 ? 0 : width + 2;
-        int previous = (y & 1) != 0 ? width + 2 : 0;
+        int current = (y & 1) != 0 ? 0 : rowStride;
+        int previous = (y & 1) != 0 ? rowStride : 0;
         int positionN = previous + x;
         int positionNe = x < width - 1 ? positionN + 1 : positionN;
         int positionNw = x > 0 ? positionN - 1 : positionN;
@@ -44,11 +40,11 @@ internal sealed class JxlWeightedPredictor
             weights[i] = ErrorWeight(unchecked(errorsOf[positionN] + errorsOf[positionNe] + errorsOf[positionNw]), header.Weights[i]);
         }
 
-        n = AddBits(n);
-        w = AddBits(w);
-        ne = AddBits(ne);
-        nw = AddBits(nw);
-        nn = AddBits(nn);
+        long n = AddBits(neighbours.N);
+        long w = AddBits(neighbours.W);
+        long ne = AddBits(neighbours.NE);
+        long nw = AddBits(neighbours.NW);
+        long nn = AddBits(neighbours.NN);
 
         long errorW = x == 0 ? 0 : errors[current + x - 1];
         long errorN = errors[positionN];
@@ -89,10 +85,10 @@ internal sealed class JxlWeightedPredictor
         return (prediction + Round) >> ExtraBits;
     }
 
-    public void Update(long value, int x, int y, int width)
+    public void Update(long value, int x, int y)
     {
-        int current = (y & 1) != 0 ? 0 : width + 2;
-        int previous = (y & 1) != 0 ? width + 2 : 0;
+        int current = (y & 1) != 0 ? 0 : rowStride;
+        int previous = (y & 1) != 0 ? rowStride : 0;
         value = AddBits(value);
         errors[current + x] = unchecked((int)(prediction - value));
         for (int i = 0; i < 4; i++)
@@ -103,6 +99,8 @@ internal sealed class JxlWeightedPredictor
             predictionErrors[i][previous + x + 1] = unchecked(predictionErrors[i][previous + x + 1] + error);
         }
     }
+
+    private static uint[] ErrorRows(int width) => new uint[(width + 2) * 2];
 
     private static long AddBits(long value) => unchecked(value << ExtraBits);
 
@@ -121,7 +119,7 @@ internal sealed class JxlWeightedPredictor
             sum = unchecked(sum + weight);
         }
 
-        int log = JxlPrefixCode.Log2Floor(sum);
+        int log = Log2Floor(sum);
         sum = 0;
         for (int i = 0; i < 4; i++)
         {

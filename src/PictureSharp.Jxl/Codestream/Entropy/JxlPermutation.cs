@@ -1,4 +1,5 @@
 using PictureSharp.Formats.Jxl.Codestream.IO;
+using static PictureSharp.Formats.Jxl.Codestream.Numerics.JxlIntMath;
 
 namespace PictureSharp.Formats.Jxl.Codestream.Entropy;
 
@@ -38,13 +39,13 @@ internal static class JxlPermutation
     }
 
     // The token of HybridUintConfig(0, 0, 0), capped: 0 for 0, else 1 + floor(log2(value)).
-    private static int Context(uint value) => Math.Min(value == 0 ? 0 : JxlPrefixCode.Log2Floor(value) + 1, Contexts - 1);
+    private static int Context(uint value) => Math.Min(value == 0 ? 0 : Log2Floor(value) + 1, Contexts - 1);
 
     /// <summary>Lehmer code to permutation with an implicit order-statistics tree.</summary>
     private static int[] DecodeLehmerCode(uint[] code)
     {
         int n = code.Length;
-        int log2 = n <= 1 ? 0 : JxlPrefixCode.Log2Floor((uint)n - 1) + 1;
+        int log2 = CeilLog2(n);
         int padded = 1 << log2;
         uint[] tree = new uint[padded];
         for (int i = 0; i < padded; i++)

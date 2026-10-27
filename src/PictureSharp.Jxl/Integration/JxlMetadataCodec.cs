@@ -21,9 +21,7 @@ internal sealed class JxlMetadataCodec : IImageFormatMetadataCodec
         JxlFrameSectionReader.ReadIcc(container.Codestream, headers, context.CancellationToken, out byte[]? icc,
             context.Options.MaxMetadataBytes, context.ReserveMetadata);
         var metadata = new ImageMetadata();
-        JxlMetadataReader.ApplyColour(metadata, headers.Metadata.Color, icc, context.Options);
-        JxlMetadataReader.ApplyDescriptive(metadata, container.MetadataBoxes, context);
-        JxlMetadataReader.ApplyOrientation(metadata, headers.Metadata.Orientation);
+        JxlMetadataReader.ApplyAll(metadata, headers.Metadata.Color, icc, container.MetadataBoxes, headers.Metadata.Orientation, context);
         return metadata;
     }
 

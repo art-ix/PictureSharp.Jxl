@@ -1,6 +1,7 @@
 using PictureSharp.Formats.Jxl.Codestream.Buffers;
 using PictureSharp.Formats.Jxl.Codestream.Color;
 using PictureSharp.Formats.Jxl.Codestream.Model;
+using static PictureSharp.Formats.Jxl.Codestream.Numerics.JxlIntMath;
 
 namespace PictureSharp.Formats.Jxl.Codestream.Rendering;
 
@@ -9,68 +10,26 @@ internal sealed class JxlFrameRenderer(JxlFrameHeader frame, JxlHeaders headers,
     JxlReferenceFrames references, float[]? epfSigma, CancellationToken cancellationToken, JxlColorTarget? colorTarget = null)
 {
     private JxlImageMetadata Metadata => headers.Metadata;
+
     private int Width => (int)frame.XSize;
+
     private int Height => (int)frame.YSize;
+
     /// <summary>The render pipeline stages of PreparePipeline that this decoder supports, in libjxl's order.</summary>
     public JxlPlane[] Render(JxlPlane[] color, JxlPlane[] extra, bool colorTransform)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        JxlLoopFilter filter = frame.LoopFilter;
-        bool restore = filter.Gaborish || filter.EpfIterations > 0;
-        if (color.Length == 1 && (restore || frame.Upsampling != 1 || patches.Length > 0 || !colorTransform))
-        {
-            color = [color[0], Copy(color[0]), Copy(color[0])];
-        }
-
+        color = ExpandGray(color, colorTransform);
         if (frame.ColorTransform == JxlColorTransform.YCbCr)
         {
-            for (int c = 0; c < color.Length; c++)
-            {
-                if (frame.HShift(c) != 0)
-                {
-                    color[c] = JxlRenderPipeline.UpsampleChromaHorizontally(color[c], Width, cancellationToken);
-                }
-
-                if (frame.VShift(c) != 0)
-                {
-                    color[c] = JxlRenderPipeline.UpsampleChromaVertically(color[c], Height, cancellationToken);
-                }
-            }
+            UpsampleChroma(color);
         }
 
-        // Each filter writes into the planes the previous one read.
-        JxlPlane[]? spare = null;
-        if (filter.Gaborish)
-        {
-            (color, spare) = (JxlRenderPipeline.Gaborish(color, filter, spare, cancellationToken), color);
-        }
-
-        if (filter.EpfIterations > 0)
-        {
-            int xBlocks = (int)frame.XSizeBlocks;
-            float[] sigma = epfSigma ?? Enumerable.Repeat(JxlRenderPipeline.InvSigmaNum / filter.SigmaForModular, xBlocks * (int)frame.YSizeBlocks).ToArray();
-            if (filter.EpfIterations >= 3)
-            {
-                (color, spare) = (JxlRenderPipeline.Epf0(color, filter, sigma, xBlocks, spare, cancellationToken), color);
-            }
-
-            (color, spare) = (JxlRenderPipeline.Epf1(color, filter, sigma, xBlocks, spare, cancellationToken), color);
-            if (filter.EpfIterations >= 2)
-            {
-                (color, spare) = (JxlRenderPipeline.Epf2(color, filter, sigma, xBlocks, spare, cancellationToken), color);
-            }
-        }
-
-        int width = (int)frame.Width;
-        int height = (int)frame.Height;
+        color = Restore(color);
         bool lateExtraUpsampling = frame.Upsampling != 1 && frame.ExtraChannelUpsampling.All(factor => factor == frame.Upsampling);
-        for (int i = 0; i < extra.Length; i++)
+        if (!lateExtraUpsampling)
         {
-            uint factor = frame.ExtraChannelUpsampling[i];
-            if (factor != 1 && !lateExtraUpsampling)
-            {
-                extra[i] = Upsample(extra[i], factor, width, height);
-            }
+            UpsampleExtraChannels(extra);
         }
 
         if (patches.Length > 0)
@@ -80,15 +39,7 @@ internal sealed class JxlFrameRenderer(JxlFrameHeader frame, JxlHeaders headers,
 
         if (frame.Upsampling != 1)
         {
-            for (int c = 0; c < color.Length; c++)
-            {
-                color[c] = Upsample(color[c], frame.Upsampling, width, height);
-            }
-
-            for (int i = 0; lateExtraUpsampling && i < extra.Length; i++)
-            {
-                extra[i] = Upsample(extra[i], frame.Upsampling, width, height);
-            }
+            UpsampleAll(color, lateExtraUpsampling ? extra : []);
         }
 
         if (colorTransform && color.Length == 3)
@@ -99,24 +50,98 @@ internal sealed class JxlFrameRenderer(JxlFrameHeader frame, JxlHeaders headers,
         return color;
     }
 
+    // A gray plane becomes three when a later stage works on colour channels.
+    private JxlPlane[] ExpandGray(JxlPlane[] color, bool colorTransform)
+    {
+        JxlLoopFilter filter = frame.LoopFilter;
+        bool restore = filter.Gaborish || filter.EpfIterations > 0;
+        return color.Length == 1 && (restore || frame.Upsampling != 1 || patches.Length > 0 || !colorTransform)
+            ? [color[0], color[0].Clone(cancellationToken), color[0].Clone(cancellationToken)]
+            : color;
+    }
+
+    private void UpsampleChroma(JxlPlane[] color)
+    {
+        for (int c = 0; c < color.Length; c++)
+        {
+            if (frame.HShift(c) != 0)
+            {
+                color[c] = JxlRenderPipeline.UpsampleChromaHorizontally(color[c], Width, cancellationToken);
+            }
+
+            if (frame.VShift(c) != 0)
+            {
+                color[c] = JxlRenderPipeline.UpsampleChromaVertically(color[c], Height, cancellationToken);
+            }
+        }
+    }
+
+    // Gaborish, then the EPF stages; each filter writes into the planes the previous one read.
+    private JxlPlane[] Restore(JxlPlane[] color)
+    {
+        JxlLoopFilter filter = frame.LoopFilter;
+        JxlPlane[]? spare = null;
+        if (filter.Gaborish)
+        {
+            (color, spare) = (JxlRenderPipeline.Gaborish(color, filter, spare, cancellationToken), color);
+        }
+
+        if (filter.EpfIterations == 0)
+        {
+            return color;
+        }
+
+        int xBlocks = (int)frame.XSizeBlocks;
+        float[] sigma = epfSigma ?? ModularSigma(filter, xBlocks * (int)frame.YSizeBlocks);
+        if (filter.EpfIterations >= 3)
+        {
+            (color, spare) = (JxlRenderPipeline.Epf0(color, filter, sigma, xBlocks, spare, cancellationToken), color);
+        }
+
+        (color, spare) = (JxlRenderPipeline.Epf1(color, filter, sigma, xBlocks, spare, cancellationToken), color);
+        if (filter.EpfIterations >= 2)
+        {
+            color = JxlRenderPipeline.Epf2(color, filter, sigma, xBlocks, spare, cancellationToken);
+        }
+
+        return color;
+    }
+
+    // Modular frames filter every block with the same sigma.
+    private static float[] ModularSigma(JxlLoopFilter filter, int blocks)
+    {
+        float[] sigma = new float[blocks];
+        Array.Fill(sigma, JxlRenderPipeline.InvSigmaNum / filter.SigmaForModular);
+        return sigma;
+    }
+
+    private void UpsampleExtraChannels(JxlPlane[] extra)
+    {
+        for (int i = 0; i < extra.Length; i++)
+        {
+            uint factor = frame.ExtraChannelUpsampling[i];
+            if (factor != 1)
+            {
+                extra[i] = Upsample(extra[i], factor, (int)frame.Width, (int)frame.Height);
+            }
+        }
+    }
+
+    private void UpsampleAll(JxlPlane[] color, JxlPlane[] extra)
+    {
+        foreach (JxlPlane[] planes in (JxlPlane[][])[color, extra])
+        {
+            for (int c = 0; c < planes.Length; c++)
+            {
+                planes[c] = Upsample(planes[c], frame.Upsampling, (int)frame.Width, (int)frame.Height);
+            }
+        }
+    }
+
     private JxlPlane Upsample(JxlPlane plane, uint factor, int width, int height)
     {
         int shift = CeilLog2(factor);
         return JxlRenderPipeline.Upsample(plane, shift, headers.TransformData.UpsamplingWeights(shift), width, height, cancellationToken);
     }
 
-    private JxlPlane Copy(JxlPlane plane)
-    {
-        var copy = new JxlPlane(plane.Width, plane.Height);
-        for (int y = 0; y < plane.Height; y++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            plane.Row(y).CopyTo(copy.Row(y));
-        }
-
-        return copy;
-    }
-
-
-    private static int CeilLog2(uint value) => value <= 1 ? 0 : System.Numerics.BitOperations.Log2(value - 1) + 1;
 }

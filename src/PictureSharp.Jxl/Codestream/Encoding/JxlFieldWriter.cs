@@ -30,6 +30,9 @@ internal static class JxlFieldWriter
         writer.Write(distributions[best].Bits, value - distributions[best].Offset);
     }
 
+    public static void U32(JxlBitWriter writer, uint value, JxlU32Distribution distribution) =>
+        U32(writer, value, distribution.D0, distribution.D1, distribution.D2, distribution.D3);
+
     public static void U64(JxlBitWriter writer, ulong value)
     {
         if (value == 0)

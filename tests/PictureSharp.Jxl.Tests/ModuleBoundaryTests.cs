@@ -63,7 +63,8 @@ public sealed class ModuleBoundaryTests
     private static string Module(Type type) => (type.Namespace ?? "").Replace(Prefix, "", StringComparison.Ordinal)
         .Replace("Codestream.", "", StringComparison.Ordinal).Split('.')[0];
 
-    private static bool Allowed(string source, string target) => source == target || source switch
+    // Numerics depends on nothing, so every module may use its scalar helpers.
+    private static bool Allowed(string source, string target) => source == target || target == "Numerics" || source switch
     {
         "Model" or "Numerics" => false,
         "IO" => target is "Model",

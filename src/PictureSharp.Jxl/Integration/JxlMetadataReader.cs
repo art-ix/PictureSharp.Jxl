@@ -10,6 +10,9 @@ namespace PictureSharp.Formats.Jxl.Integration;
 /// </summary>
 internal static class JxlMetadataReader
 {
+    /// <summary>The gamma that describes sRGB-family curves with other primaries, as for PNG and HEIF.</summary>
+    public const float DescribedSrgbGamma = 0.45455f;
+
     /// <summary>
     /// The ICC profile when the samples are in it (<see cref="JxlColorEncoding.WantIcc"/>), or the enumerated colour
     /// as chromaticities and gamma. sRGB, the default, gets none, and PQ/HLG cannot be described.
@@ -27,12 +30,7 @@ internal static class JxlMetadataReader
         }
 
         EnsureConvertible(encoding, options);
-        if (encoding.Gamma == 0 && encoding.TransferFunction is JxlTransferFunction.Pq or JxlTransferFunction.Hlg)
-        {
-            return;
-        }
-
-        if (encoding.ColorSpace is not (JxlColorSpace.Rgb or JxlColorSpace.Gray))
+        if (encoding.IsHdr || encoding.ColorSpace is not (JxlColorSpace.Rgb or JxlColorSpace.Gray))
         {
             return;
         }
@@ -42,9 +40,9 @@ internal static class JxlMetadataReader
         float? gamma = encoding.Gamma != 0 ? encoding.Gamma / (float)JxlColorEncoding.GammaScale : encoding.TransferFunction switch
         {
             JxlTransferFunction.Linear => 1.0f,
-            JxlTransferFunction.Dci => 1.0f / 2.6f,
-            // sRGB-family curves as 1/2.2, as for PNG and HEIF; sRGB itself needs no description.
-            JxlTransferFunction.Srgb or JxlTransferFunction.Bt709 => srgbPrimaries ? null : 0.45455f,
+            JxlTransferFunction.Dci => JxlColorEncoding.DciGamma,
+            // sRGB itself needs no description.
+            JxlTransferFunction.Srgb or JxlTransferFunction.Bt709 => srgbPrimaries ? null : DescribedSrgbGamma,
             _ => null,
         };
         if (!srgbPrimaries)
@@ -58,11 +56,19 @@ internal static class JxlMetadataReader
         }
     }
 
+    /// <summary>The colour, the descriptive blocks and the orientation, in the order that lets the orientation win.</summary>
+    public static void ApplyAll(ImageMetadata metadata, JxlColorEncoding encoding, byte[]? icc, IReadOnlyList<JxlMetadataBox> boxes,
+        uint orientation, ImageDecodeContext context)
+    {
+        ApplyColour(metadata, encoding, icc, context.Options);
+        ApplyDescriptive(metadata, boxes, context);
+        ApplyOrientation(metadata, orientation);
+    }
+
     /// <summary>Rejects a conversion to sRGB of PQ or HLG (HDR) samples, which needs tone mapping.</summary>
     public static void EnsureConvertible(JxlColorEncoding encoding, DecoderOptions options)
     {
-        if (options.ColorConversion != ColorConversionMode.None && !encoding.WantIcc && encoding.Gamma == 0
-            && encoding.TransferFunction is JxlTransferFunction.Pq or JxlTransferFunction.Hlg)
+        if (options.ColorConversion != ColorConversionMode.None && !encoding.WantIcc && encoding.IsHdr)
         {
             throw new NotSupportedException("JPEG XL images with PQ or HLG transfer functions cannot be converted to sRGB.");
         }
@@ -70,28 +76,11 @@ internal static class JxlMetadataReader
 
     private static CieChromaticities Chromaticities(JxlColorEncoding encoding)
     {
-        (double wx, double wy) = encoding.WhitePoint switch
-        {
-            JxlWhitePoint.D65 => (0.3127, 0.3290),
-            JxlWhitePoint.Dci => (0.314, 0.351),
-            JxlWhitePoint.E => (1.0 / 3, 1.0 / 3),
-            _ => (encoding.CustomWhitePoint.XValue, encoding.CustomWhitePoint.YValue),
-        };
-        double[] p = encoding.Primaries switch
-        {
-            JxlPrimaries.Srgb => [0.64, 0.33, 0.30, 0.60, 0.15, 0.06],
-            JxlPrimaries.Bt2100 => [0.708, 0.292, 0.170, 0.797, 0.131, 0.046],
-            JxlPrimaries.P3 => [0.680, 0.320, 0.265, 0.690, 0.150, 0.060],
-            _ =>
-            [
-                encoding.CustomPrimaries.Red.XValue, encoding.CustomPrimaries.Red.YValue,
-                encoding.CustomPrimaries.Green.XValue, encoding.CustomPrimaries.Green.YValue,
-                encoding.CustomPrimaries.Blue.XValue, encoding.CustomPrimaries.Blue.YValue,
-            ],
-        };
+        (JxlXy white, (JxlXy red, JxlXy green, JxlXy blue)) = (encoding.WhitePointXy, encoding.PrimariesXy);
         try
         {
-            return new CieChromaticities((float)wx, (float)wy, (float)p[0], (float)p[1], (float)p[2], (float)p[3], (float)p[4], (float)p[5]);
+            return new CieChromaticities((float)white.X, (float)white.Y, (float)red.X, (float)red.Y, (float)green.X, (float)green.Y,
+                (float)blue.X, (float)blue.Y);
         }
         catch (ArgumentException exception)
         {
@@ -106,7 +95,7 @@ internal static class JxlMetadataReader
         bool xmp = false;
         foreach (JxlMetadataBox box in boxes)
         {
-            bool isExif = box.Type == "Exif";
+            bool isExif = box.Type == JxlBoxType.Exif;
             if (isExif ? exif : xmp)
             {
                 continue;

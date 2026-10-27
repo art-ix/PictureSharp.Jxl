@@ -1,10 +1,10 @@
-using System.Numerics;
 using PictureSharp.Formats.Jxl.Codestream.Buffers;
 using PictureSharp.Formats.Jxl.Codestream.Entropy;
 using PictureSharp.Formats.Jxl.Codestream.IO;
 using PictureSharp.Formats.Jxl.Codestream.Model;
 using PictureSharp.Formats.Jxl.Codestream.Modular;
 using PictureSharp.Formats.Jxl.Codestream.Numerics;
+using static PictureSharp.Formats.Jxl.Codestream.Numerics.JxlIntMath;
 
 namespace PictureSharp.Formats.Jxl.Codestream.VarDct;
 
@@ -21,13 +21,19 @@ internal sealed class JxlVarDctFrame
     private const int ColorTileBlocks = 8;
     private const int QuantMax = 256;
     private const int BlockSize = JxlAcStrategy.BlockSize;
-    private const byte Invalid = 0xFF;
+    private const int DefaultColorFactor = 84;
+    // Chroma-from-luma DC factors are stored as bytes around this value.
+    private const int ColorFactorDcOffset = 128;
+
+    // Channels are decoded Y first, then X and B; Modular images store them as Y, X, B.
+    private static ReadOnlySpan<int> YFirstOrder => [1, 0, 2];
 
     private readonly JxlFrameHeader frame;
     private readonly CancellationToken cancellationToken;
     private readonly JxlQuantWeights matrices;
-    private readonly IReadOnlyList<float> quantBiases;
+    private readonly float[] quantBiases;
     private readonly int bitDepth;
+    private readonly bool is444;
     private readonly int[] hShift = new int[3];
     private readonly int[] vShift = new int[3];
     private readonly int xTiles;
@@ -40,7 +46,7 @@ internal sealed class JxlVarDctFrame
     private JxlEntropyCode[] codes = [];
     private int histograms;
     private float invGlobalScale;
-    private float colorScale = 1.0f / 84;
+    private float colorScale = 1.0f / DefaultColorFactor;
     private float baseCorrelationX;
     private float baseCorrelationB = 1.0f;
 
@@ -49,7 +55,7 @@ internal sealed class JxlVarDctFrame
         this.frame = frame;
         this.cancellationToken = cancellationToken;
         this.matrices = matrices;
-        this.quantBiases = quantBiases;
+        this.quantBiases = [.. quantBiases];
         bitDepth = (int)metadata.BitDepth.BitsPerSample;
         XBlocks = (int)frame.XSizeBlocks;
         YBlocks = (int)frame.YSizeBlocks;
@@ -59,10 +65,11 @@ internal sealed class JxlVarDctFrame
             vShift[c] = frame.VShift(c);
         }
 
+        is444 = frame.Is444;
         xTiles = DivCeil(XBlocks, ColorTileBlocks);
         int blocks = XBlocks * YBlocks;
-        Strategies = new byte[blocks];
-        Array.Fill(Strategies, Invalid);
+        Varblocks = new JxlVarblock[blocks];
+        Array.Fill(Varblocks, JxlVarblock.Unassigned);
         QuantField = new int[blocks];
         Sharpness = new byte[blocks];
         DcBuckets = new byte[blocks];
@@ -75,7 +82,7 @@ internal sealed class JxlVarDctFrame
         for (int c = 0; c < 3; c++)
         {
             Planes[c] = new JxlPlane(DivCeil((int)frame.XSize, 1 << hShift[c]), DivCeil((int)frame.YSize, 1 << vShift[c]),
-                (XBlocks >> hShift[c]) * 8, (YBlocks >> vShift[c]) * 8);
+                (XBlocks >> hShift[c]) * JxlFrameHeader.BlockDim, (YBlocks >> vShift[c]) * JxlFrameHeader.BlockDim);
         }
     }
 
@@ -83,8 +90,8 @@ internal sealed class JxlVarDctFrame
 
     public int YBlocks { get; }
 
-    /// <summary>Per block: strategy &lt;&lt; 1 | (first block of its varblock), or 0xFF before AC metadata.</summary>
-    public byte[] Strategies { get; }
+    /// <summary>Per block: its varblock, or unassigned before the AC metadata.</summary>
+    public JxlVarblock[] Varblocks { get; }
 
     /// <summary>The AC quantisation of the first block of every varblock, 1 to 256.</summary>
     public int[] QuantField { get; }
@@ -104,7 +111,7 @@ internal sealed class JxlVarDctFrame
     /// <summary>The quantiser scale (global scale / 65536) that EPF needs.</summary>
     public float QuantScale { get; private set; }
 
-    public uint UsedStrategies { get; private set; }
+    public JxlAcStrategySet UsedStrategies { get; private set; }
 
     /// <summary>Reads the quantiser, the block context map and the DC chroma-from-luma factors (DecodeGlobalDCInfo).</summary>
     public void ReadGlobal(ref JxlBitReader reader)
@@ -125,7 +132,8 @@ internal sealed class JxlVarDctFrame
         int yToBDc = 0;
         if (!reader.ReadBool())
         {
-            uint colorFactor = JxlFields.U32(ref reader, JxlU32.Val(84), JxlU32.Val(256), JxlU32.BitsOffset(8, 2), JxlU32.BitsOffset(16, 258));
+            uint colorFactor = JxlFields.U32(ref reader, JxlU32.Val(DefaultColorFactor), JxlU32.Val(256), JxlU32.BitsOffset(8, 2),
+                JxlU32.BitsOffset(16, 258));
             colorScale = 1.0f / colorFactor;
             baseCorrelationX = JxlFields.F16(ref reader);
             baseCorrelationB = JxlFields.F16(ref reader);
@@ -134,8 +142,8 @@ internal sealed class JxlVarDctFrame
                 throw JxlDescriptor.Corrupt("Chroma-from-luma base correlation is out of range.");
             }
 
-            yToXDc = (int)reader.ReadBits(8) - 128;
-            yToBDc = (int)reader.ReadBits(8) - 128;
+            yToXDc = (int)reader.ReadBits(8) - ColorFactorDcOffset;
+            yToBDc = (int)reader.ReadBits(8) - ColorFactorDcOffset;
         }
 
         dcFactors[0] = YToXRatio(yToXDc);
@@ -148,11 +156,21 @@ internal sealed class JxlVarDctFrame
 
     private float YToBRatio(int factor) => baseCorrelationB + factor * colorScale;
 
+    // The index of colour channel c (X, Y, B) in a Modular image, which stores Y first.
+    private static int CodedIndex(int c) => c < 2 ? c ^ 1 : c;
+
+    // The block of channel c at (bx, by) of a group in its subsampled grid; false where the channel has no block.
+    private bool TryChannelBlock(int c, int bx, int by, out int sbx, out int sby)
+    {
+        sbx = bx >> hShift[c];
+        sby = by >> vShift[c];
+        return sbx << hShift[c] == bx && sby << vShift[c] == by;
+    }
+
     private (int X0, int Y0, int Width, int Height) DcGroupRect(int group)
     {
         int dimension = frame.GroupDimension;
-        int x0 = (int)(group % frame.XDcGroups) * dimension;
-        int y0 = (int)(group / frame.XDcGroups) * dimension;
+        (int x0, int y0) = frame.DcGroupOrigin(group, dimension);
         return (x0, y0, Math.Min(dimension, XBlocks - x0), Math.Min(dimension, YBlocks - y0));
     }
 
@@ -184,12 +202,12 @@ internal sealed class JxlVarDctFrame
         var channels = new JxlChannel[3];
         for (int c = 0; c < 3; c++)
         {
-            channels[c < 2 ? c ^ 1 : c] = new JxlChannel(width >> hShift[c], height >> vShift[c]);
+            channels[CodedIndex(c)] = new JxlChannel(width >> hShift[c], height >> vShift[c]);
         }
 
         var image = new JxlModularImage(bitDepth, [.. channels]);
-        JxlModularStream.Decode(ref reader, image, 1 + group, tree, undoTransforms: true, cancellationToken: cancellationToken);
-        if (hShift.All(shift => shift == 0) && vShift.All(shift => shift == 0))
+        JxlModularStream.Decode(ref reader, image, JxlFrameHeader.VarDctDcStream(group), tree, undoTransforms: true, cancellationToken: cancellationToken);
+        if (is444)
         {
             float facX = mulDc[0] * mul;
             float facY = mulDc[1] * mul;
@@ -214,10 +232,10 @@ internal sealed class JxlVarDctFrame
         }
         else
         {
-            foreach (int c in (ReadOnlySpan<int>)[1, 0, 2])
+            foreach (int c in YFirstOrder)
             {
                 float factor = mulDc[c] * mul;
-                JxlChannel channel = channels[c < 2 ? c ^ 1 : c];
+                JxlChannel channel = channels[CodedIndex(c)];
                 for (int y = 0; y < channel.Height; y++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
@@ -231,6 +249,12 @@ internal sealed class JxlVarDctFrame
             }
         }
 
+        // With a single DC context every bucket stays zero.
+        if (BlockContexts.DcContexts <= 1)
+        {
+            return;
+        }
+
         for (int y = 0; y < height; y++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -240,8 +264,7 @@ internal sealed class JxlVarDctFrame
             int row = (y0 + y) * XBlocks + x0;
             for (int x = 0; x < width; x++)
             {
-                DcBuckets[row + x] = BlockContexts.DcContexts <= 1 ? (byte)0
-                    : (byte)BlockContexts.DcBucket(qx[x >> hShift[0]], qy[x >> hShift[1]], qb[x >> hShift[2]]);
+                DcBuckets[row + x] = (byte)BlockContexts.DcBucket(qx[x >> hShift[0]], qy[x >> hShift[1]], qb[x >> hShift[2]]);
             }
         }
     }
@@ -251,16 +274,16 @@ internal sealed class JxlVarDctFrame
     {
         (int x0, int y0, int width, int height) = DcGroupRect(group);
         int count = (int)reader.ReadBits(CeilLog2(width * height)) + 1;
-        int tileX0 = x0 >> 3;
-        int tileY0 = y0 >> 3;
-        int tileWidth = (width + 7) >> 3;
-        int tileHeight = (height + 7) >> 3;
+        int tileX0 = x0 / ColorTileBlocks;
+        int tileY0 = y0 / ColorTileBlocks;
+        int tileWidth = DivCeil(width, ColorTileBlocks);
+        int tileHeight = DivCeil(height, ColorTileBlocks);
         var image = new JxlModularImage(bitDepth,
         [
             new JxlChannel(tileWidth, tileHeight, 3, 3), new JxlChannel(tileWidth, tileHeight, 3, 3), new JxlChannel(count, 2),
             new JxlChannel(width, height),
         ]);
-        JxlModularStream.Decode(ref reader, image, (int)(1 + 2 * frame.DcGroups + group), tree, undoTransforms: true, cancellationToken: cancellationToken);
+        JxlModularStream.Decode(ref reader, image, frame.AcMetadataStream(group), tree, undoTransforms: true, cancellationToken: cancellationToken);
         for (int y = 0; y < tileHeight; y++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -275,11 +298,10 @@ internal sealed class JxlVarDctFrame
 
         Span<int> types = image.Channels[2].Row(0);
         Span<int> quants = image.Channels[2].Row(1);
-        bool is444 = hShift.All(shift => shift == 0) && vShift.All(shift => shift == 0);
         int xLimit = Math.Min(XBlocks, x0 + width);
         int yLimit = Math.Min(YBlocks, y0 + height);
         int num = 0;
-        uint used = 0;
+        JxlAcStrategySet used = default;
         for (int iy = 0; iy < height; iy++)
         {
             int y = y0 + iy;
@@ -294,7 +316,7 @@ internal sealed class JxlVarDctFrame
                 }
 
                 Sharpness[index] = (byte)sharpness[ix];
-                if (Strategies[index] != Invalid)
+                if (Varblocks[index].IsAssigned)
                 {
                     continue;
                 }
@@ -305,47 +327,53 @@ internal sealed class JxlVarDctFrame
                 }
 
                 var type = (JxlAcStrategyType)types[num];
-                used |= 1u << (int)type;
-                int blocksX = JxlAcStrategy.BlocksX(type);
-                int blocksY = JxlAcStrategy.BlocksY(type);
-                if ((blocksX > 1 || blocksY > 1) && !is444)
-                {
-                    throw JxlDescriptor.Corrupt("AC strategy not compatible with chroma subsampling.");
-                }
-
-                if (x + blocksX > (x / GroupBlocks + 1) * GroupBlocks || x + blocksX > xLimit
-                    || y + blocksY > (y / GroupBlocks + 1) * GroupBlocks || y + blocksY > yLimit)
-                {
-                    throw JxlDescriptor.Corrupt("AC strategy overflows its group.");
-                }
-
-                for (int by = 0; by < blocksY; by++)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    for (int bx = 0; bx < blocksX; bx++)
-                    {
-                        int position = index + by * XBlocks + bx;
-                        if (Strategies[position] != Invalid)
-                        {
-                            throw JxlDescriptor.Corrupt("Invalid AC strategy: block overlap.");
-                        }
-
-                        Strategies[position] = (byte)(((int)type << 1) | (by == 0 && bx == 0 ? 1 : 0));
-                    }
-                }
-
-                QuantField[index] = 1 + Math.Max(0, Math.Min(QuantMax - 1, quants[num]));
+                used = used.With(type);
+                PlaceVarblock(type, x, y, xLimit, yLimit);
+                QuantField[index] = 1 + Math.Clamp(quants[num], 0, QuantMax - 1);
                 num++;
             }
         }
 
-        UsedStrategies |= used;
+        UsedStrategies = UsedStrategies.Union(used);
+    }
+
+    // Marks the blocks a varblock covers; it must stay inside its group and the LF group and not overlap another.
+    private void PlaceVarblock(JxlAcStrategyType type, int x, int y, int xLimit, int yLimit)
+    {
+        int blocksX = type.BlocksX;
+        int blocksY = type.BlocksY;
+        if ((blocksX > 1 || blocksY > 1) && !is444)
+        {
+            throw JxlDescriptor.Corrupt("AC strategy not compatible with chroma subsampling.");
+        }
+
+        if (x + blocksX > (x / GroupBlocks + 1) * GroupBlocks || x + blocksX > xLimit
+            || y + blocksY > (y / GroupBlocks + 1) * GroupBlocks || y + blocksY > yLimit)
+        {
+            throw JxlDescriptor.Corrupt("AC strategy overflows its group.");
+        }
+
+        int index = y * XBlocks + x;
+        for (int by = 0; by < blocksY; by++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            for (int bx = 0; bx < blocksX; bx++)
+            {
+                int position = index + by * XBlocks + bx;
+                if (Varblocks[position].IsAssigned)
+                {
+                    throw JxlDescriptor.Corrupt("Invalid AC strategy: block overlap.");
+                }
+
+                Varblocks[position] = JxlVarblock.Create(type, by == 0 && bx == 0);
+            }
+        }
     }
 
     /// <summary>Adaptive DC smoothing, between the last LF group and the first pass group (AdaptiveDCSmoothing).</summary>
     public void SmoothDc()
     {
-        if ((frame.Flags & (JxlFrameFlags.SkipAdaptiveDcSmoothing | JxlFrameFlags.UseDcFrame)) != 0 || XBlocks <= 2 || YBlocks <= 2)
+        if (frame.SkipsAdaptiveDcSmoothing || frame.UsesDcFrame || XBlocks <= 2 || YBlocks <= 2)
         {
             return;
         }
@@ -409,8 +437,7 @@ internal sealed class JxlVarDctFrame
 
     private (int X0, int Y0, int Width, int Height) BlockGroupRect(int group)
     {
-        int x0 = (int)(group % frame.XGroups) * GroupBlocks;
-        int y0 = (int)(group / frame.XGroups) * GroupBlocks;
+        (int x0, int y0) = frame.GroupOrigin(group, GroupBlocks);
         return (x0, y0, Math.Min(GroupBlocks, XBlocks - x0), Math.Min(GroupBlocks, YBlocks - y0));
     }
 
@@ -446,64 +473,25 @@ internal sealed class JxlVarDctFrame
             int row = (y0 + by) * XBlocks + x0;
             for (int bx = 0; bx < width; bx++)
             {
-                byte strategy = Strategies[row + bx];
-                if ((strategy & 1) == 0)
+                JxlVarblock varblock = Varblocks[row + bx];
+                if (!varblock.IsFirst)
                 {
                     continue;
                 }
 
-                var type = (JxlAcStrategyType)(strategy >> 1);
-                int log2Covered = JxlAcStrategy.Log2Blocks(type);
-                int covered = 1 << log2Covered;
-                int size = covered * BlockSize;
-                int bucket = JxlAcStrategy.Order(type);
-                foreach (int c in (ReadOnlySpan<int>)[1, 0, 2])
+                JxlAcStrategyType type = varblock.Type;
+                int size = BlockSize << type.Log2Blocks;
+                foreach (int c in YFirstOrder)
                 {
-                    int sbx = bx >> hShift[c];
-                    int sby = by >> vShift[c];
-                    if (sbx << hShift[c] != bx || sby << vShift[c] != by)
+                    if (!TryChannelBlock(c, bx, by, out int sbx, out int sby))
                     {
                         continue;
                     }
 
-                    int[] counts = nonZeros[c];
-                    int predicted = sbx == 0 ? (sby == 0 ? 32 : counts[(sby - 1) * GroupBlocks])
-                        : sby == 0 ? counts[sby * GroupBlocks + sbx - 1]
-                        : (counts[(sby - 1) * GroupBlocks + sbx] + counts[sby * GroupBlocks + sbx - 1] + 1) / 2;
-                    int blockContext = contexts.Context(DcBuckets[row + bx], QuantField[(y0 + by) * XBlocks + x0 + sbx], bucket, c);
-                    int nonZero = (int)symbols.Read(contexts.NonZeroContext(predicted, blockContext) + contextOffset, ref reader);
-                    if (nonZero < 0 || nonZero > size - covered)
-                    {
-                        throw JxlDescriptor.Corrupt("Invalid AC: too many non-zero coefficients.");
-                    }
-
-                    for (int y = 0; y < JxlAcStrategy.BlocksY(type); y++)
-                    {
-                        cancellationToken.ThrowIfCancellationRequested();
-                        for (int x = 0; x < JxlAcStrategy.BlocksX(type); x++)
-                        {
-                            counts[(sby + y) * GroupBlocks + sbx + x] = (nonZero + covered - 1) >> log2Covered;
-                        }
-                    }
-
-                    int histogramOffset = contextOffset + contexts.ZeroDensityContextsOffset(blockContext);
-                    int coefficientOffset = JxlAcStrategy.OrderOffset(bucket, c);
-                    Span<int> block = coefficients.AsSpan(c * area + offset, size);
-                    int previous = nonZero > size / 16 ? 0 : 1;
-                    for (int k = covered; k < size && nonZero != 0; k++)
-                    {
-                        int context = histogramOffset + JxlBlockContextMap.ZeroDensityContext(nonZero, k, log2Covered, previous);
-                        uint token = symbols.Read(context, ref reader);
-                        int value = (int)(token >> 1) ^ -(int)(token & 1);
-                        block[order[coefficientOffset + k]] += unchecked(value << shift);
-                        previous = token != 0 ? 1 : 0;
-                        nonZero -= previous;
-                    }
-
-                    if (nonZero != 0)
-                    {
-                        throw JxlDescriptor.Corrupt("Invalid AC: non-zero coefficients left at the end of a block.");
-                    }
+                    int blockContext = contexts.Context(DcBuckets[row + bx], QuantField[(y0 + by) * XBlocks + x0 + sbx], type.OrderBucket, c);
+                    int nonZero = ReadNonZeros(ref reader, symbols, nonZeros[c], type, sbx, sby, contexts, blockContext, contextOffset);
+                    ReadBlockCoefficients(ref reader, symbols, type, c, nonZero, contextOffset + contexts.ZeroDensityContextsOffset(blockContext),
+                        order, shift, coefficients.AsSpan(c * area + offset, size));
                 }
 
                 offset += size;
@@ -516,19 +504,64 @@ internal sealed class JxlVarDctFrame
         }
     }
 
+    // The number of non-zero coefficients, predicted from the blocks above and to the left; the count per covered block
+    // becomes the prediction of later blocks.
+    private int ReadNonZeros(ref JxlBitReader reader, JxlSymbolReader symbols, int[] counts, JxlAcStrategyType type, int sbx, int sby,
+        JxlBlockContextMap contexts, int blockContext, int contextOffset)
+    {
+        int log2Covered = type.Log2Blocks;
+        int covered = 1 << log2Covered;
+        int predicted = sbx == 0 ? (sby == 0 ? 32 : counts[(sby - 1) * GroupBlocks])
+            : sby == 0 ? counts[sby * GroupBlocks + sbx - 1]
+            : (counts[(sby - 1) * GroupBlocks + sbx] + counts[sby * GroupBlocks + sbx - 1] + 1) / 2;
+        int nonZero = (int)symbols.Read(contexts.NonZeroContext(predicted, blockContext) + contextOffset, ref reader);
+        if (nonZero < 0 || nonZero > (BlockSize << log2Covered) - covered)
+        {
+            throw JxlDescriptor.Corrupt("Invalid AC: too many non-zero coefficients.");
+        }
+
+        for (int y = 0; y < type.BlocksY; y++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            for (int x = 0; x < type.BlocksX; x++)
+            {
+                counts[(sby + y) * GroupBlocks + sbx + x] = (nonZero + covered - 1) >> log2Covered;
+            }
+        }
+
+        return nonZero;
+    }
+
+    // Adds the coefficients of one channel of a varblock in coefficient order, until all non-zeros are read.
+    private static void ReadBlockCoefficients(ref JxlBitReader reader, JxlSymbolReader symbols, JxlAcStrategyType type, int c, int nonZero,
+        int histogramOffset, int[] order, int shift, Span<int> block)
+    {
+        int log2Covered = type.Log2Blocks;
+        int covered = 1 << log2Covered;
+        int size = block.Length;
+        int coefficientOffset = JxlAcStrategy.OrderOffset(type.OrderBucket, c);
+        int previous = nonZero > size / 16 ? 0 : 1;
+        for (int k = covered; k < size && nonZero != 0; k++)
+        {
+            int context = histogramOffset + JxlBlockContextMap.ZeroDensityContext(nonZero, k, log2Covered, previous);
+            uint token = symbols.Read(context, ref reader);
+            block[order[coefficientOffset + k]] += unchecked(UnpackSigned(token) << shift);
+            previous = token != 0 ? 1 : 0;
+            nonZero -= previous;
+        }
+
+        if (nonZero != 0)
+        {
+            throw JxlDescriptor.Corrupt("Invalid AC: non-zero coefficients left at the end of a block.");
+        }
+    }
+
     /// <summary>Dequantises the varblocks of a group, adds chroma from luma and the DC, and transforms them to pixels.</summary>
     public void RenderGroup(int group, int[] coefficients)
     {
         (int x0, int y0, int width, int height) = BlockGroupRect(group);
         int area = width * height * BlockSize;
-        int maxSize = 0;
-        for (int s = 0; s < JxlAcStrategy.Count; s++)
-        {
-            if ((UsedStrategies & (1u << s)) != 0)
-            {
-                maxSize = Math.Max(maxSize, BlockSize << JxlAcStrategy.Log2Blocks((JxlAcStrategyType)s));
-            }
-        }
+        int maxSize = UsedStrategies.MaxCoefficients;
 
         float[] block = new float[3 * maxSize];
         float[] scratch = new float[JxlDct.ScratchSize(maxSize)];
@@ -541,14 +574,14 @@ internal sealed class JxlVarDctFrame
             int tileRow = absoluteY / ColorTileBlocks * xTiles;
             for (int bx = 0; bx < width; bx++)
             {
-                byte strategy = Strategies[row + bx];
-                if ((strategy & 1) == 0)
+                JxlVarblock varblock = Varblocks[row + bx];
+                if (!varblock.IsFirst)
                 {
                     continue;
                 }
 
-                var type = (JxlAcStrategyType)(strategy >> 1);
-                int size = BlockSize << JxlAcStrategy.Log2Blocks(type);
+                JxlAcStrategyType type = varblock.Type;
+                int size = BlockSize << type.Log2Blocks;
                 int tile = tileRow + (x0 + bx) / ColorTileBlocks;
                 Dequantize(type, QuantField[row + bx], YToXRatio(YToX[tile]), YToBRatio(YToB[tile]), coefficients, area, offset, size, block);
                 for (int c = 0; c < 3; c++)
@@ -557,17 +590,15 @@ internal sealed class JxlVarDctFrame
                     JxlDct.LowestFrequenciesFromDc(type, dc[c].AsSpan(dcIndex), XBlocks, block.AsSpan(c * size, size), scratch);
                 }
 
-                foreach (int c in (ReadOnlySpan<int>)[1, 0, 2])
+                foreach (int c in YFirstOrder)
                 {
-                    int sbx = bx >> hShift[c];
-                    int sby = by >> vShift[c];
-                    if (sbx << hShift[c] != bx || sby << vShift[c] != by)
+                    if (!TryChannelBlock(c, bx, by, out int sbx, out int sby))
                     {
                         continue;
                     }
 
                     JxlPlane plane = Planes[c];
-                    int pixel = plane.Offset(((x0 >> hShift[c]) + sbx) * 8, ((y0 >> vShift[c]) + sby) * 8);
+                    int pixel = plane.Offset(((x0 >> hShift[c]) + sbx) * JxlFrameHeader.BlockDim, ((y0 >> vShift[c]) + sby) * JxlFrameHeader.BlockDim);
                     JxlDct.TransformToPixels(type, block.AsSpan(c * size, size), plane.Data.AsSpan(pixel), plane.Stride, scratch);
                 }
 
@@ -614,8 +645,4 @@ internal sealed class JxlVarDctFrame
 
         return JxlFastMath.Fma(-quantBiases[3], 1.0f / q, q);
     }
-
-    private static int DivCeil(int value, int divisor) => (value + divisor - 1) / divisor;
-
-    public static int CeilLog2(long value) => value <= 1 ? 0 : 64 - BitOperations.LeadingZeroCount((ulong)(value - 1));
 }
