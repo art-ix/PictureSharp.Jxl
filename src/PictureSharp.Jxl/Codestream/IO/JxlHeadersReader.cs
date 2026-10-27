@@ -16,8 +16,13 @@ internal static class JxlHeadersReader
         }
 
         JxlSizeHeader size = JxlSizeHeaderReader.Read(ref reader);
+        long metadataStart = reader.BitPosition;
         JxlImageMetadata metadata = JxlImageMetadataReader.Read(ref reader);
-        var headers = new JxlHeaders(size, metadata, JxlCustomTransformDataReader.Read(ref reader, metadata.XybEncoded));
+        long transformStart = reader.BitPosition;
+        var headers = new JxlHeaders(size, metadata, JxlCustomTransformDataReader.Read(ref reader, metadata.XybEncoded))
+        {
+            MetadataBits = (metadataStart, transformStart, reader.BitPosition),
+        };
         if (!metadata.Color.WantIcc)
         {
             reader.JumpToByteBoundary();

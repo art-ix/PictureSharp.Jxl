@@ -8,8 +8,8 @@ uses only PictureSharp's public SPI. All implementation types remain internal.
 
 | Module | Responsibility | Other codec modules it may use |
 | --- | --- | --- |
-| Integration | SPI adapter, ImageInfo mapping, straight-alpha Rgba32 output, metadata mapping and the metadata codec | Container and codec modules |
-| Container | Box validation, codestream assembly, optional metadata index, bounded brob decompression | IO |
+| Integration | SPI adapters (decoder, encoder, metadata codec), ImageInfo mapping, straight-alpha Rgba32 output, metadata mapping in both directions and metadata rewriting | Container and codec modules |
+| Container | Box validation, codestream assembly, optional metadata index, bounded brob decompression, box writing and brob compression | IO |
 | Codestream.Model | Immutable header/transform descriptions and small validated values | None |
 | Codestream.IO | Borrowed segmented input, bit/field reading, header readers | Model |
 | Codestream.Entropy | Prefix/ANS/LZ77 symbol decoding | IO |
@@ -18,9 +18,10 @@ uses only PictureSharp's public SPI. All implementation types remain internal.
 | Codestream.VarDct | Coefficients, transforms, quantization, EPF sigma derivation | Model, IO, Entropy, Modular, Buffers, Rendering, Numerics |
 | Codestream.Rendering | Ordered restoration, resampling and patch application | Model, Buffers, Color, Numerics |
 | Codestream.Color | Output colour transforms, matrix/TRC ICC output targets, quantization/dither | Model, Buffers, Numerics |
-| Codestream.Metadata | ICC entropy stream and prediction decoding | IO, Entropy |
+| Codestream.Metadata | ICC entropy stream, prediction decoding and its simplest prediction for writing | IO, Entropy |
 | Codestream.Frames | One-image session, frame scheduling, support policy, section readers | Codec modules above |
 | Codestream.Numerics | Scalar numerical primitives | None |
+| Codestream.Encoding | Bit/field/header writers, ANS entropy encoder, MA tree learner, lossless Modular frame encoder, header rewriting | Model, Buffers, IO, Entropy, Modular, Metadata |
 
 `JxlDescriptor` is the shared exception/format boundary. The codec does not use
 PictureSharp images, contexts, options or pixels directly. The compiled module
@@ -52,6 +53,22 @@ compiler-generated lambdas. No dependency-injection container is needed.
    any step fails. PictureSharp applies orientation on request.
 8. `JxlMetadataCodec` (Image.ReadMetadata) parses the container and headers, decodes
    only the ICC stream and maps the same metadata without reading frames.
+
+## Encode flow
+
+1. `JxlEncoder` copies the root frame into integer planes (gray when R = G = B, alpha when any pixel is not
+   opaque) and maps the metadata with `JxlMetadataWriter`: the ICC profile or the colour description to a
+   `JxlColorEncoding`, the EXIF orientation to the codestream orientation.
+2. `JxlCodestreamWriter` writes the signature, SizeHeader, ImageMetadata, default transform data and the ICC
+   stream, then `JxlModularEncoder` writes the frame: palette or RCT, the stream layout (global stream and
+   256×256 groups), samples for `JxlTreeLearner`, tokens per stream, one `JxlEntropyEncoder` for all streams,
+   then frame header, TOC and sections. Encoding reuses the decoder's descriptions (`JxlImageMetadata`,
+   `JxlTransform`, `JxlChannel`) and its weighted predictor, and computes properties exactly as `JxlMaTree`.
+3. `JxlContainerWriter` adds the Exif and xml boxes (optionally brob) when there are any.
+4. `JxlMetadataRewriter` (EditMetadata) rewrites ImageMetadata and the ICC stream by bit positions the header
+   reader records, copies the transform data bits and all frame bytes, and replaces only the changed boxes.
+
+The encoder is stateless and single-threaded; each call owns its planes and tokens.
 
 The public decoder is stateless and can be shared. Sessions and frame decoders are
 single-use. Mathematical kernels remain static. Explicit interfaces are used for
@@ -85,8 +102,8 @@ working-memory budget and broader pooling require a later, measured change.
 
 ## Extension points and unchanged capabilities
 
-0.5.0 added `JxlFormat.MetadataCodec` as its only public API change; there are
-still no public options. XYB frames are rendered to a `JxlColorTarget`: the image's
+0.5.0 added `JxlFormat.MetadataCodec`; 0.6.0 added `JxlFormat.Encoder`,
+`JxlEncoderOptions` (`CompressMetadata`) and `JxlImageExtensions` (`SaveAsJxl`, `ToJxl`). XYB frames are rendered to a `JxlColorTarget`: the image's
 colour space (its ICC profile when `JxlIccTarget` can use it) or, for
 `ColorConversion = ToSrgb`, sRGB, chosen once per decode session. The scalar numerical behavior of earlier versions is fixed.
 
@@ -96,17 +113,17 @@ colour space (its ICC profile when `JxlIccTarget` can use it) or, for
   materializes a payload, charging every byte through a callback before it exists
   (Brotli output as it grows). The ICC stream is decoded by `JxlIccStream` with the
   same callback and an explicit size limit. Codec modules receive `Action<long>`
-  and limits, never the PictureSharp context. Metadata writing (0.6.0) belongs in
-  separate writers; `Rewrite` keeps the SPI's NotSupportedException until then.
+  and limits, never the PictureSharp context. Writing and rewriting use separate
+  writers (`JxlMetadataWriter`, `JxlContainerWriter`, `JxlMetadataRewriter`).
 - **Colour correctness:** the rendered result carries its actual `ColorEncoding`
   and grayscale flag. `WantIcc` in that encoding means the samples are in the
   profile: unconverted output and XYB rendered through a `JxlIccTarget`. The XYB
   fallback for lookup-table profiles reports sRGB and the adapter attaches no
   profile, so converted sRGB samples are never labelled with the original one.
   A full CMS (lookup-table profiles) would extend `JxlIccTarget`, not the adapter.
-- **Encoding:** add a separate encoder session and writers that consume shared
-  descriptions. Introduce `JxlEncoderOptions : EncoderOptions`, the typed encoder
-  SPI and convenience extensions together with a functioning encoder.
+- **Encoding:** lossy VarDCT (0.7.0) adds a frame encoder beside `JxlModularEncoder`
+  and options for quality and effort; the header, entropy and container writers are
+  shared. Parallel groups need per-group token streams, which the layout already has.
 - **Animation:** extend session composition and map displayed frames, durations
   and looping onto PictureSharp's existing frame model. Reference/DC frames are
   not displayed frames. Until supported, animation still throws explicitly.

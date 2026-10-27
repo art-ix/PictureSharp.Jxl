@@ -8,9 +8,10 @@ keep it at most 600 lines by condensing the oldest entries.
 - Use public SPI only; no core project reference, copied internals, reflection,
   InternalsVisibleTo, native libraries, P/Invoke or unsafe code in the library.
 - Public API: PictureSharp.Formats.Jxl. Implementation types stay internal.
-- Keep 0.5.x honest: Decode handles still single-image codestreams (VarDCT, Modular, patches, DC
+- Keep 0.6.x honest: Decode handles still single-image codestreams (VarDCT, Modular, patches, DC
   frames) and throws NotSupportedException for every other valid feature until it is implemented.
-  Metadata is read (ICC, EXIF, XMP, brob via the BCL BrotliDecoder), not written or edited.
+  The encoder writes lossless 8-bit Modular only; metadata is read, written and edited (ICC, EXIF,
+  XMP, brob via the BCL Brotli codecs). Encoder output must decode exactly with djxl.
 - Preserve nullable, warnings as errors, XML docs, trimming and Native AOT compatibility.
 - Future decoders reserve pixels/metadata before allocation and honor cancellation.
   Corrupt data: ImageFormatException; unsupported features: NotSupportedException.

@@ -35,7 +35,7 @@ public sealed class JxlFormatTests
     }
 
     [Test]
-    public async Task Registration_UsesSharedDescriptor_IdentifiesAndReadsMetadata()
+    public async Task Registration_UsesSharedDescriptor_IdentifiesReadsAndEditsMetadata()
     {
         IImageFormatModule module = new JxlFormat();
         var configuration = ImageConfiguration.Default.ToBuilder().AddFormat(module).Build();
@@ -47,8 +47,8 @@ public sealed class JxlFormatTests
         await Assert.That(configuration.FromExtension("photo.JXL")).IsSameReferenceAs(ImageFormat.Jxl);
         await Assert.That(configuration.FromMimeType("image/jxl")).IsSameReferenceAs(ImageFormat.Jxl);
         await Assert.That(configuration.CanDecode(ImageFormat.Jxl)).IsTrue();
-        await Assert.That(configuration.CanEncode(ImageFormat.Jxl)).IsFalse();
-        await Assert.That(module.Encoder).IsNull();
+        await Assert.That(configuration.CanEncode(ImageFormat.Jxl)).IsTrue();
+        await Assert.That(module.Encoder!.CreateDefaultOptions()).IsTypeOf<JxlEncoderOptions>();
         await Assert.That(module.MetadataCodec).IsNotNull();
         var options = new DecoderOptions { Configuration = configuration };
         byte[] data = JxlTestData.Minimal();
@@ -59,8 +59,9 @@ public sealed class JxlFormatTests
         await Assert.That(() => Image.Load(data, options)).Throws<ImageFormatException>();
         // Metadata needs only the headers; this image has none (sRGB, no boxes, orientation 1).
         await Assert.That(Image.ReadMetadata((ReadOnlyMemory<byte>)data, options).IsEmpty).IsTrue();
-        await Assert.That(() => Image.EditMetadata((ReadOnlyMemory<byte>)data, metadata => metadata.Xmp = "<x/>"u8.ToArray(), options))
-            .Throws<NotSupportedException>();
+        // Editing needs only the headers too: the XMP box turns the codestream into a container.
+        byte[] edited = Image.EditMetadata((ReadOnlyMemory<byte>)data, metadata => metadata.Xmp = "<x/>"u8.ToArray(), options);
+        await Assert.That(Image.ReadMetadata((ReadOnlyMemory<byte>)edited, options).Xmp).IsEquivalentTo("<x/>"u8.ToArray());
     }
 
     [Test]
@@ -74,8 +75,8 @@ public sealed class JxlFormatTests
             ImageConfiguration.Default = previous.ToBuilder().AddFormat(new JxlFormat()).Build();
             using var image = new Image(1, 1);
             using var output = new MemoryStream();
-            await Assert.That(() => image.Save(output, ImageFormat.Jxl)).Throws<NotSupportedException>();
-            await Assert.That(output.Length).IsEqualTo(0);
+            image.Save(output, ImageFormat.Jxl);
+            await Assert.That(Image.DetectFormat(output.ToArray())).IsSameReferenceAs(ImageFormat.Jxl);
             foreach (byte[] signature in new byte[][] { [0xFF, 0x0A], Container })
             {
                 File.WriteAllBytes(path, signature);

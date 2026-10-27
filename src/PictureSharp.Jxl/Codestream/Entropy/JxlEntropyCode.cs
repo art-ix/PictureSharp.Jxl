@@ -336,7 +336,7 @@ internal sealed class JxlEntropyCode
     /// Builds the alias table of a distribution: every entry covers <c>AnsTabSize >> logAlphaSize</c> slots split
     /// between its own symbol (below the cutoff) and one other symbol.
     /// </summary>
-    private static void InitAliasTable(int[] distribution, int logAlphaSize, Span<JxlAliasEntry> table)
+    internal static void InitAliasTable(int[] distribution, int logAlphaSize, Span<JxlAliasEntry> table)
     {
         int length = distribution.Length;
         while (length > 0 && distribution[length - 1] == 0)

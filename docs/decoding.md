@@ -77,7 +77,7 @@ libjxl uses hardware approximate reciprocals in dequantisation.
 - HLG transfer with XYB (HDR);
 - CMYK (Black) and spot colour channels; premultiplied or float alpha.
 
-Not implemented: encoding and metadata editing. CanEncode returns false.
+Encoding (lossless) and metadata editing are described in the [encoding guide](encoding.md).
 
 Corrupt or truncated data throws `ImageFormatException`; recognized features that are not
 supported throw `NotSupportedException`.
@@ -105,7 +105,7 @@ supported throw `NotSupportedException`.
 ICC, EXIF and XMP bytes are charged against `DecoderOptions.MaxMetadataBytes` before they are
 materialized; Brotli output is charged as it grows, so a decompression bomb stops at the limit with
 `ImageFormatException`. With `IgnoreMetadata` nothing is charged or reported (the orientation still is).
-`Image.EditMetadata` throws `NotSupportedException`.
+`Image.EditMetadata` is described in the [encoding guide](encoding.md).
 
 ### Conversion to sRGB
 

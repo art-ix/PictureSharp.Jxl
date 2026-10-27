@@ -8,7 +8,7 @@ namespace PictureSharp.Formats.Jxl.Integration;
 /// <summary>
 /// Image.ReadMetadata without decoding frames: the file's ICC profile (decoded from the codestream) or colour
 /// description, EXIF, XMP and orientation. Unlike Decode it reports the profile of XYB images rendered as sRGB.
-/// Rewriting (EditMetadata) is not supported yet, so Rewrite keeps the interface's NotSupportedException.
+/// Rewrite (EditMetadata) keeps the frames and is described on <see cref="JxlMetadataRewriter"/>.
 /// </summary>
 internal sealed class JxlMetadataCodec : IImageFormatMetadataCodec
 {
@@ -26,4 +26,7 @@ internal sealed class JxlMetadataCodec : IImageFormatMetadataCodec
         JxlMetadataReader.ApplyOrientation(metadata, headers.Metadata.Orientation);
         return metadata;
     }
+
+    public byte[] Rewrite(ReadOnlyMemory<byte> data, ImageMetadata original, ImageMetadata metadata, ImageDecodeContext context) =>
+        JxlMetadataRewriter.Rewrite(data, original, metadata, context);
 }

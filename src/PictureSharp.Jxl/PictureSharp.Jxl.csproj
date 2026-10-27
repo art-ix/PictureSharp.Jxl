@@ -6,12 +6,12 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <PackageId>PictureSharp.Jxl</PackageId>
-    <Description>Pure C# JPEG XL plugin for PictureSharp. Version 0.5.1 detects and identifies JPEG XL files (raw codestream and container), decodes still lossy (VarDCT, XYB) and lossless (Modular) images, including recompressed JPEGs, patches and progressive files, and reads the ICC profile, EXIF and XMP (also Brotli-compressed); with ColorConversion = ToSrgb lossy images are rendered straight to sRGB; encoding is not implemented yet.</Description>
+    <Description>Pure C# JPEG XL plugin for PictureSharp. Version 0.6.0 detects and identifies JPEG XL files (raw codestream and container), decodes still lossy (VarDCT, XYB) and lossless (Modular) images, including recompressed JPEGs, patches and progressive files, encodes images losslessly (8-bit Modular, about as small as cjxl -e 7), and reads, writes and edits the ICC profile, EXIF and XMP (also Brotli-compressed).</Description>
     <PackageTags>picturesharp;image;jxl;jpegxl</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/art-ix/picturesharp.jxl</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageReleaseNotes>0.5.1: ColorConversion = ToSrgb renders lossy (XYB) images straight to sRGB in floating point, as djxl --color_space=sRGB does, so wide-gamut photos are quantized once and no longer differ by several levels near the edge of sRGB; this also covers ICC profiles with lookup tables. Images without XYB are still converted by PictureSharp. No public API changes; no encoding or animation support.</PackageReleaseNotes>
+    <PackageReleaseNotes>0.6.0: lossless encoding (SaveAsJxl, ToJxl, JxlEncoderOptions): 8-bit Modular with palette or reversible colour transform, a learned MA tree and ANS, exact round trips including the colour of transparent pixels; ICC, EXIF, XMP (optionally Brotli-compressed), colour description and orientation are written. Image.EditMetadata rewrites metadata without touching the frames. No lossy encoding or animation support yet.</PackageReleaseNotes>
   </PropertyGroup>
   <ItemGroup><PackageReference Include="PictureSharp" Version="$(PictureSharpVersion)" /></ItemGroup>
   <ItemGroup>

@@ -172,6 +172,26 @@ internal sealed class JxlContainer
             : new JxlContainer(new JxlCodestream(Order(parts, cancellationToken)), true, version, level, metadata);
     }
 
+    /// <summary>
+    /// The boxes of a container that <see cref="Parse"/> accepted, up to a second signature box: type, the brob payload
+    /// type (else null), and the box's start, content start and end offsets.
+    /// </summary>
+    public static List<(string Type, string? Inner, long Start, long ContentStart, long End)> Boxes(ReadOnlySpan<byte> bytes)
+    {
+        var boxes = new List<(string, string?, long, long, long)>();
+        long position = 0;
+        while (position < bytes.Length)
+        {
+            Box box = ReadBox(bytes, position);
+            if (box.Is("JXL ") && position > 0) break;
+            string? inner = box.Is("brob") ? System.Text.Encoding.Latin1.GetString(bytes.Slice((int)box.ContentStart, 4)) : null;
+            boxes.Add((box.Type, inner, position, box.ContentStart, box.End));
+            position = box.End;
+        }
+
+        return boxes;
+    }
+
     // Counters must be unique and contiguous from 0, and only the highest one may be marked last.
     private static ReadOnlyMemory<byte>[] Order(List<Part> parts, CancellationToken cancellationToken)
     {

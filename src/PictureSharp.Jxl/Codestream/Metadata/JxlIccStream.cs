@@ -78,7 +78,7 @@ internal static class JxlIccStream
                 Array.Resize(ref encoded, Math.Min(size, encoded.Length * 2));
             }
 
-            int context = i <= 128 ? 0 : 1 + ByteKind1(encoded[i - 1]) + ByteKind2(encoded[i - 2]) * 8;
+            int context = Context(encoded, i);
             encoded[i] = (byte)symbols.Read(context, ref reader);
             if (i == PreambleSize - 1 && size > PreambleSize)
             {
@@ -312,6 +312,57 @@ internal static class JxlIccStream
 
         if (pos != size || result.Length != result.Capacity) throw Corrupt();
         return result.Bytes;
+    }
+
+    /// <summary>
+    /// The simplest valid input of <see cref="Unpredict"/> for <paramref name="icc"/>: the header predicted as
+    /// UnpredictICC does, no tag list and one insert command for the rest. libjxl's PredictICC also models tags.
+    /// </summary>
+    public static byte[] Predict(ReadOnlySpan<byte> icc)
+    {
+        var commands = new List<byte>();
+        var data = new List<byte>();
+        Span<byte> header = stackalloc byte[HeaderSize];
+        InitialHeaderPrediction.CopyTo(header);
+        BinaryPrimitives.WriteUInt32BigEndian(header, (uint)icc.Length);
+        int headerLength = Math.Min(HeaderSize, icc.Length);
+        for (int i = 0; i < headerLength; i++)
+        {
+            PredictHeader(icc[..i], header, i);
+            data.Add((byte)(icc[i] - header[i]));
+        }
+
+        if (icc.Length > HeaderSize)
+        {
+            WriteVarInt(commands, 0);
+            commands.Add(CommandInsert);
+            WriteVarInt(commands, (ulong)(icc.Length - HeaderSize));
+            data.AddRange(icc[HeaderSize..]);
+        }
+
+        var result = new List<byte>();
+        WriteVarInt(result, (ulong)icc.Length);
+        WriteVarInt(result, (ulong)commands.Count);
+        result.AddRange(commands);
+        result.AddRange(data);
+        return [.. result];
+    }
+
+    /// <summary>The entropy context of encoded byte <paramref name="i"/>, from the two bytes before it.</summary>
+    public static int Context(ReadOnlySpan<byte> encoded, int i) =>
+        i <= 128 ? 0 : 1 + ByteKind1(encoded[i - 1]) + ByteKind2(encoded[i - 2]) * 8;
+
+    public static int Contexts => IccContexts;
+
+    private static void WriteVarInt(List<byte> output, ulong value)
+    {
+        while (value >= 0x80)
+        {
+            output.Add((byte)(value | 0x80));
+            value >>= 7;
+        }
+
+        output.Add((byte)value);
     }
 
     // A count of bytes that must remain in the data stream.

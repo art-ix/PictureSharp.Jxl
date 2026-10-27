@@ -76,6 +76,7 @@ public sealed class ModuleBoundaryTests
         "VarDct" => target is "Model" or "Buffers" or "IO" or "Entropy" or "Modular" or "Rendering" or "Numerics",
         "Metadata" => target is "IO" or "Entropy",
         "Frames" => target is "Model" or "Buffers" or "IO" or "Entropy" or "Modular" or "VarDct" or "Rendering" or "Metadata" or "Color",
+        "Encoding" => target is "Model" or "Buffers" or "IO" or "Entropy" or "Modular" or "Metadata",
         _ => false
     };
 

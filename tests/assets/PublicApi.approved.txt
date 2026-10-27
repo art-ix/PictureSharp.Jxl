@@ -1,13 +1,36 @@
+PictureSharp.Formats.Jxl.JxlEncoderOptions
+  Boolean CompressMetadata
+  Boolean Equals(PictureSharp.EncoderOptions)
+  Boolean Equals(PictureSharp.Formats.Jxl.JxlEncoderOptions)
+  Boolean Equals(System.Object)
+  Boolean get_CompressMetadata()
+  Boolean op_Equality(PictureSharp.Formats.Jxl.JxlEncoderOptions, PictureSharp.Formats.Jxl.JxlEncoderOptions)
+  Boolean op_Inequality(PictureSharp.Formats.Jxl.JxlEncoderOptions, PictureSharp.Formats.Jxl.JxlEncoderOptions)
+  Int32 GetHashCode()
+  PictureSharp.Formats.Jxl.JxlEncoderOptions <Clone>$()
+  PictureSharp.ImageFormat Format
+  PictureSharp.ImageFormat get_Format()
+  System.String ToString()
+  Void .ctor()
+  Void set_CompressMetadata(Boolean)
 PictureSharp.Formats.Jxl.JxlFormat
   Boolean IsSupported(System.ReadOnlySpan`1[System.Byte])
   Int32 HeaderSize
   Int32 get_HeaderSize()
   PictureSharp.Formats.IImageFormatDecoder Decoder
   PictureSharp.Formats.IImageFormatDecoder get_Decoder()
+  PictureSharp.Formats.IImageFormatEncoder Encoder
+  PictureSharp.Formats.IImageFormatEncoder get_Encoder()
   PictureSharp.Formats.IImageFormatMetadataCodec MetadataCodec
   PictureSharp.Formats.IImageFormatMetadataCodec get_MetadataCodec()
   PictureSharp.ImageFormat Format
   PictureSharp.ImageFormat get_Format()
   Void .ctor()
+PictureSharp.Formats.Jxl.JxlImageExtensions
+  Byte[] ToJxl(PictureSharp.Image, PictureSharp.Formats.Jxl.JxlEncoderOptions)
+  System.Threading.Tasks.Task SaveAsJxlAsync(PictureSharp.Image, System.IO.Stream, PictureSharp.Formats.Jxl.JxlEncoderOptions, System.Threading.CancellationToken)
+  System.Threading.Tasks.Task SaveAsJxlAsync(PictureSharp.Image, System.String, PictureSharp.Formats.Jxl.JxlEncoderOptions, System.Threading.CancellationToken)
+  Void SaveAsJxl(PictureSharp.Image, System.IO.Stream, PictureSharp.Formats.Jxl.JxlEncoderOptions)
+  Void SaveAsJxl(PictureSharp.Image, System.String, PictureSharp.Formats.Jxl.JxlEncoderOptions)
 PictureSharp.Formats.Jxl.JxlImageFormatExtensions
   PictureSharp.ImageFormat get_Jxl()

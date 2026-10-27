@@ -1,4 +1,4 @@
-PictureSharp.Jxl 0.5.1
+PictureSharp.Jxl 0.6.0
 
 No native libraries are bundled. PictureSharp is a NuGet dependency distributed
 separately under MIT. Project scaffolding and test patterns are adapted from
@@ -62,6 +62,19 @@ sources. The modular refactoring preserves their algorithms and source attributi
   Codestream/Rendering/JxlPatches.cs: lib/jxl/dec_patch_dictionary.cc,
   blending.cc, alpha.cc
 - Codestream/Color/JxlDither.cs: lib/jxl/render_pipeline/stage_write.cc
+- Codestream/Encoding/JxlBitWriter.cs and JxlFieldWriter.cs: lib/jxl/enc_bit_writer.cc,
+  fields.cc (U32/U64/F16 coders)
+- Codestream/Encoding/JxlHeaderWriter.cs: lib/jxl/headers.cc, image_metadata.cc,
+  color_encoding_internal.cc, frame_header.cc, loop_filter.cc, toc.cc (field order)
+- Codestream/Encoding/JxlEntropyEncoder.cs: lib/jxl/enc_ans.cc (histogram coding,
+  ANS state machine, hybrid integer tokens), enc_cluster.cc, enc_context_map.cc
+- Codestream/Encoding/JxlTreeLearner.cs: lib/jxl/modular/encoding/enc_ma.cc
+  (FindBestSplit, property quantization)
+- Codestream/Encoding/JxlModularEncoder.cs: lib/jxl/enc_modular.cc,
+  modular/encoding/enc_encoding.cc (TokenizeTree), modular/transform/enc_rct.cc,
+  enc_palette.cc
+- Codestream/Metadata/JxlIccStream.cs (Predict): lib/jxl/enc_icc_codec.cc
+- Container/JxlContainerWriter.cs: lib/jxl/encode.cc (box order)
 
 libjxl is distributed under the following license:
 

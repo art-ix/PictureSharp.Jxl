@@ -19,4 +19,10 @@ internal sealed record JxlHeaders(JxlSizeHeader Size, JxlImageMetadata Metadata,
     /// follows; otherwise the byte-aligned start of the first frame.
     /// </summary>
     public long EndBitPosition { get; init; }
+
+    /// <summary>
+    /// Where ImageMetadata starts, where CustomTransformData starts and where it ends, in bits: metadata editing rewrites
+    /// the first and copies the second.
+    /// </summary>
+    public (long Metadata, long TransformData, long TransformDataEnd) MetadataBits { get; init; }
 }

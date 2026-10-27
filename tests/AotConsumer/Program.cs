@@ -4,7 +4,7 @@ using PictureSharp.Formats.Jxl;
 ImageConfiguration.Default = ImageConfiguration.Default.ToBuilder().AddFormat(new JxlFormat()).Build();
 // tests/assets/corpus/tiny-1x1.jxl: a 1×1 lossless RGB codestream.
 byte[] data = [0xFF, 0x0A, 0x00, 0x10, 0x10, 0x09, 0x08, 0x00, 0x01, 0x00, 0x18, 0x00, 0x4B, 0x18, 0x8B, 0x15, 0x82, 0x01];
-if (Image.DetectFormat(data) != ImageFormat.Jxl || ImageConfiguration.Default.CanEncode(ImageFormat.Jxl))
+if (Image.DetectFormat(data) != ImageFormat.Jxl || !ImageConfiguration.Default.CanEncode(ImageFormat.Jxl))
     throw new InvalidOperationException("Registration or detection failed.");
 ImageInfo info = Image.Identify(data);
 if (info.Format != ImageFormat.Jxl || info.Width != 1 || info.Height != 1 || info.Color.BitsPerSample != 8 || info.Color.HasAlpha
@@ -57,4 +57,18 @@ ImageMetadata metadata = Image.ReadMetadata((ReadOnlyMemory<byte>)container);
 // The codestream orientation (1) overrides the EXIF tag (6).
 if (!metadata.ExifProfile.TryGetValue(ExifTag.Make, out string? make) || make != "AOT" || metadata.Orientation != ExifOrientation.TopLeft)
     throw new InvalidOperationException("Brotli-compressed EXIF was not read.");
-Console.WriteLine("Package consumer: registration, detection, Identify, lossless and lossy decoding and metadata passed.");
+// Lossless encoding keeps every sample, including the colour of transparent pixels, and the metadata.
+using (var source = new Image(37, 21))
+{
+    Span<Rgba32> pixels = source.GetPixelMemory().Span;
+    for (int i = 0; i < pixels.Length; i++) pixels[i] = new Rgba32((byte)(i * 7), (byte)(i * 13), (byte)(i >> 2), (byte)(i % 3 == 0 ? 0 : i));
+    source.Metadata.Xmp = "<x/>"u8.ToArray();
+    byte[] encoded = source.ToJxl(new JxlEncoderOptions { CompressMetadata = true });
+    using var decoded = Image.Load(encoded);
+    if (!decoded.GetPixelMemory().Span.SequenceEqual(source.GetPixelMemory().Span) || !decoded.Metadata.Xmp!.AsSpan().SequenceEqual("<x/>"u8))
+        throw new InvalidOperationException("Lossless encoding did not round-trip.");
+    byte[] edited = Image.EditMetadata((ReadOnlyMemory<byte>)encoded, edit => edit.Orientation = ExifOrientation.RightTop);
+    if (Image.Identify(edited).Orientation != ExifOrientation.RightTop)
+        throw new InvalidOperationException("Editing the metadata failed.");
+}
+Console.WriteLine("Package consumer: registration, detection, Identify, decoding, encoding and metadata passed.");
