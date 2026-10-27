@@ -1,4 +1,4 @@
-# 0.7.3 — faster scalar decoding and encoding
+## Faster scalar decoding and encoding
 
 First step of the speed work towards 0.8.0, still without SIMD. Output is byte-identical to 0.7.2: decoded pixels,
 encoded files and transcoded JPEGs, checked on 1142 decode, encode and transcoding results.

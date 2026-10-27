@@ -1,4 +1,4 @@
-# 0.7.4 — faster lossless decoding
+## Faster lossless decoding
 
 Second step of the scalar speed work towards 0.8.0. Output is byte-identical to 0.7.2: decoded pixels, encoded files
 and transcoded JPEGs.

@@ -1,4 +1,4 @@
-# 0.7.1 — lossless JPEG transcoding
+## Lossless JPEG transcoding
 
 `JxlTranscoder.FromJpeg` archives an original JPEG as JPEG XL using its integer DCT coefficients.
 `JxlTranscoder.ToJpeg` reconstructs the original file byte for byte, including its metadata and scan/marker layout.

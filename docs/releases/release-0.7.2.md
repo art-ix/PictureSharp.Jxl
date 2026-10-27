@@ -1,4 +1,4 @@
-# 0.7.2 — file path overloads for JPEG transcoding
+## File path overloads for JPEG transcoding
 
 First public release of PictureSharp.Jxl.
 
