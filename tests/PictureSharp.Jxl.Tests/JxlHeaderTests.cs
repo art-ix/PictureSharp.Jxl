@@ -1,5 +1,5 @@
-using PictureSharp.Formats.Jxl.Codestream;
-using PictureSharp.Formats.Jxl.Container;
+using PictureSharp.Formats.Jxl.Codestream.IO;
+using PictureSharp.Formats.Jxl.Codestream.Model;
 using static PictureSharp.Formats.Jxl.Tests.JxlTestData;
 
 namespace PictureSharp.Formats.Jxl.Tests;
@@ -47,7 +47,7 @@ public sealed class JxlHeaderTests
         return w.ToArray();
     }
 
-    private static JxlHeaders Read(byte[] codestream) => JxlHeaders.Read(new JxlCodestream(codestream));
+    private static JxlHeaders Read(byte[] codestream) => JxlHeadersReader.Read(new JxlCodestream(codestream));
 
     [Test]
     public async Task MinimalCodestream_HasDefaults()
@@ -134,8 +134,8 @@ public sealed class JxlHeaderTests
             .Bool(false).Enum(5).Bool(false).U32(0).U32(0).U32(0).U32(2, 4, 4)
             // Depth, all default but the type.
             .Bool(false).Enum(1).Bool(false).U32(0).U32(1).U32(0));
-        JxlExtraChannelInfo[] channels = Read(data).Metadata.ExtraChannels;
-        await Assert.That(channels.Length).IsEqualTo(4);
+        IReadOnlyList<JxlExtraChannelInfo> channels = Read(data).Metadata.ExtraChannels;
+        await Assert.That(channels.Count).IsEqualTo(4);
         await Assert.That((channels[0].Type, channels[0].BitDepth.BitsPerSample, channels[0].Name, channels[0].AlphaAssociated))
             .IsEqualTo((JxlExtraChannelType.Alpha, 16u, "a", true));
         await Assert.That((channels[1].Type, channels[1].DimShift)).IsEqualTo((JxlExtraChannelType.SpotColor, 1u));
@@ -280,7 +280,7 @@ public sealed class JxlHeaderTests
             }
         });
         JxlCustomTransformData transform = Read(data).TransformData;
-        await Assert.That(transform.OpsinInverseMatrix!.Length).IsEqualTo(9);
+        await Assert.That(transform.OpsinInverseMatrix!.Count).IsEqualTo(9);
         await Assert.That(transform.QuantBiases![3]).IsEqualTo(15 / 16f);
         await Assert.That(transform.Upsampling4Weights).IsNull();
         await Assert.That(transform.Upsampling8Weights![209]).IsEqualTo((float)(Half)(-224 / 512.0));

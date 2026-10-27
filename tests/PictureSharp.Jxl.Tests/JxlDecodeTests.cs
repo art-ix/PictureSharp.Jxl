@@ -1,7 +1,9 @@
+using PictureSharp.Formats.Jxl.Codestream.Frames;
+using PictureSharp.Formats.Jxl.Codestream.IO;
+using PictureSharp.Formats.Jxl.Codestream.Model;
+using PictureSharp.Formats.Jxl.Container;
 using System.Security.Cryptography;
 using System.Text.Json;
-using PictureSharp.Formats.Jxl.Codestream;
-using PictureSharp.Formats.Jxl.Container;
 using static PictureSharp.Formats.Jxl.Tests.JxlTestData;
 
 namespace PictureSharp.Formats.Jxl.Tests;
@@ -87,7 +89,7 @@ public sealed class JxlDecodeTests
         static List<JxlFrameHeader> Frames(string name)
         {
             JxlCodestream codestream = JxlContainer.Parse(File.ReadAllBytes(CorpusPath(name))).Codestream;
-            return JxlFrameDecoder.ReadFrameHeaders(codestream, JxlHeaders.Read(codestream));
+            return JxlDecodeSession.ReadFrameHeaders(codestream, JxlHeadersReader.Read(codestream));
         }
 
         List<JxlFrameHeader> patches = Frames("lossy-patches.jxl");

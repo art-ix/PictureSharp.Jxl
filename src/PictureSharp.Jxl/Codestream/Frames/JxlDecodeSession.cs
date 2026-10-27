@@ -1,0 +1,72 @@
+using PictureSharp.Formats.Jxl.Codestream.Buffers;
+using PictureSharp.Formats.Jxl.Codestream.IO;
+using PictureSharp.Formats.Jxl.Codestream.Model;
+
+namespace PictureSharp.Formats.Jxl.Codestream.Frames;
+
+/// <summary>Owns the reference/DC frames of one decode; never shared between calls.</summary>
+internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders headers, CancellationToken cancellationToken = default)
+{
+    private readonly JxlReferenceFrames references = new();
+    private bool started;
+
+    /// <summary>The headers of every frame after the preview, in codestream order, up to the last one.</summary>
+    public static List<JxlFrameHeader> ReadFrameHeaders(JxlCodestream codestream, JxlHeaders headers, CancellationToken cancellationToken = default)
+    {
+        var frames = new List<JxlFrameHeader>();
+        var reader = JxlFrameSectionReader.FirstFrame(codestream, headers, cancellationToken);
+        while (frames.Count == 0 || !frames[^1].IsLast)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            JxlFrameHeader frame = JxlFrameHeaderReader.Read(ref reader, headers, preview: false);
+            long start = JxlFrameSectionReader.ReadToc(ref reader, codestream, frame, out JxlToc toc);
+            frames.Add(frame);
+            reader = new JxlBitReader(codestream);
+            reader.SkipBits((ulong)(start + toc.TotalSize) * 8);
+        }
+
+        return frames;
+    }
+
+    public JxlDecodedImage Decode()
+    {
+        if (started) throw new InvalidOperationException("A decode session can only be consumed once.");
+        started = true;
+        cancellationToken.ThrowIfCancellationRequested();
+        headers.Size.Validate();
+        JxlImageMetadata metadata = headers.Metadata;
+        int alpha = JxlDecodeSupportPolicy.EnsureSupported(metadata);
+        var reader = JxlFrameSectionReader.FirstFrame(codestream, headers, cancellationToken);
+        // Reference frames (patch sources) and DC frames come first; the last frame is the image.
+        while (true)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            JxlFrameHeader frame = JxlFrameHeaderReader.Read(ref reader, headers, preview: false);
+            JxlDecodeSupportPolicy.EnsureSupported(frame, headers, references);
+            long start = JxlFrameSectionReader.ReadToc(ref reader, codestream, frame, out JxlToc toc);
+            // A reference frame saved after the colour transform can only serve blending, which is not supported.
+            if (frame.Type != JxlFrameType.ReferenceOnly || frame.SaveBeforeColorTransform)
+            {
+                var decoder = new JxlFrameDecoder(frame, headers, references, cancellationToken);
+                JxlFrameSectionReader.DecodeSections(codestream, frame, start, toc, decoder);
+                if (frame.Type == JxlFrameType.Regular)
+                {
+                    return decoder.Finish(alpha);
+                }
+
+                JxlReferenceFrame saved = decoder.Store();
+                if (frame.Type == JxlFrameType.Dc)
+                {
+                    references.StoreDc(frame.DcLevel, saved);
+                }
+                else
+                {
+                    references.StoreReference(frame.SaveAsReference, saved, frame.SaveBeforeColorTransform);
+                }
+            }
+
+            reader = new JxlBitReader(codestream);
+            reader.SkipBits((ulong)(start + toc.TotalSize) * 8);
+        }
+    }
+}

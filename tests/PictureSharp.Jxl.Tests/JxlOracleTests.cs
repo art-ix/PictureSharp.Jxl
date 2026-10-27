@@ -1,8 +1,9 @@
+using PictureSharp.Formats.Jxl.Codestream.IO;
+using PictureSharp.Formats.Jxl.Codestream.Model;
+using PictureSharp.Formats.Jxl.Container;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
-using PictureSharp.Formats.Jxl.Codestream;
-using PictureSharp.Formats.Jxl.Container;
 using static PictureSharp.Formats.Jxl.Tests.JxlTestData;
 
 namespace PictureSharp.Formats.Jxl.Tests;
@@ -57,7 +58,7 @@ public sealed partial class JxlOracleTests
                 JxlHeaders headers;
                 try
                 {
-                    headers = JxlHeaders.Read(JxlContainer.Parse(damaged).Codestream);
+                    headers = JxlHeadersReader.Read(JxlContainer.Parse(damaged).Codestream);
                 }
                 catch (ImageFormatException exception)
                 {

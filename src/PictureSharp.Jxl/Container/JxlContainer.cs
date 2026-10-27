@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using PictureSharp.Formats.Jxl.Codestream.IO;
 
 namespace PictureSharp.Formats.Jxl.Container;
 
@@ -15,7 +16,7 @@ namespace PictureSharp.Formats.Jxl.Container;
 /// buffers early parts). Duplicate counters, gaps and parts after the last one are errors. Like libjxl, a sequence
 /// without a part marked last is accepted; a codestream that is really incomplete then fails as truncated.</item>
 /// </list>
-/// Metadata boxes (Exif, xml, jumb, brob, jbrd, jxli, jhgm and unknown types) are skipped. A second signature box
+/// Metadata payloads are not decoded. Exif/xml slices may be collected on request; other metadata is skipped. A second signature box
 /// after a complete codestream ends the file, as in libjxl.
 /// </summary>
 internal sealed class JxlContainer
@@ -25,15 +26,18 @@ internal sealed class JxlContainer
 
     private static ReadOnlySpan<byte> Signature => [0, 0, 0, 12, (byte)'J', (byte)'X', (byte)'L', (byte)' ', 13, 10, 0x87, 10];
 
-    private JxlContainer(JxlCodestream codestream, bool boxed, uint version, int level)
+    private JxlContainer(JxlCodestream codestream, bool boxed, uint version, int level, List<JxlMetadataBox>? metadata = null)
     {
         Codestream = codestream;
         IsBoxed = boxed;
+        MetadataBoxes = metadata is null ? Array.Empty<JxlMetadataBox>() : metadata.AsReadOnly();
         FileFormatVersion = version;
         Level = level;
     }
 
     public JxlCodestream Codestream { get; }
+
+    public IReadOnlyList<JxlMetadataBox> MetadataBoxes { get; }
 
     /// <summary>Whether the file uses the box container rather than a bare codestream.</summary>
     public bool IsBoxed { get; }
@@ -44,8 +48,9 @@ internal sealed class JxlContainer
     /// <summary>The conformance level from the jxll box, 5 when absent.</summary>
     public int Level { get; }
 
-    public static JxlContainer Parse(ReadOnlyMemory<byte> data)
+    public static JxlContainer Parse(ReadOnlyMemory<byte> data, bool includeMetadata = false, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         ReadOnlySpan<byte> bytes = data.Span;
         if (bytes is [0xFF, 0x0A, ..])
         {
@@ -59,6 +64,7 @@ internal sealed class JxlContainer
 
         ReadOnlyMemory<byte>? whole = null;
         var parts = new List<Part>();
+        List<JxlMetadataBox>? metadata = includeMetadata ? [] : null;
         bool lastPartSeen = false;
         uint version = 0;
         int level = 5;
@@ -66,6 +72,7 @@ internal sealed class JxlContainer
         long position = Signature.Length;
         while (position < bytes.Length)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             Box box = ReadBox(bytes, position);
             count++;
             if (box.Is("JXL "))
@@ -140,6 +147,10 @@ internal sealed class JxlContainer
                         throw JxlDescriptor.Corrupt($"Box type '{inner}' cannot be Brotli-compressed.");
                     }
 
+                    if (inner is "Exif" or "xml ") metadata?.Add(new(inner, content[4..], true));
+                    break;
+                case "Exif" or "xml ":
+                    metadata?.Add(new(box.Type, content, false));
                     break;
             }
 
@@ -153,21 +164,22 @@ internal sealed class JxlContainer
 
         if (whole is { } single)
         {
-            return new JxlContainer(new JxlCodestream(single), true, version, level);
+            return new JxlContainer(new JxlCodestream(single), true, version, level, metadata);
         }
 
         return parts.Count == 0
             ? throw JxlDescriptor.Corrupt("Container without a codestream box.")
-            : new JxlContainer(new JxlCodestream(Order(parts)), true, version, level);
+            : new JxlContainer(new JxlCodestream(Order(parts, cancellationToken)), true, version, level, metadata);
     }
 
     // Counters must be unique and contiguous from 0, and only the highest one may be marked last.
-    private static ReadOnlyMemory<byte>[] Order(List<Part> parts)
+    private static ReadOnlyMemory<byte>[] Order(List<Part> parts, CancellationToken cancellationToken)
     {
         var ordered = new ReadOnlyMemory<byte>[parts.Count];
         var seen = new bool[parts.Count];
         foreach (Part part in parts)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (part.Counter >= parts.Count)
             {
                 throw JxlDescriptor.Corrupt($"The jxlp box index {part.Counter} leaves a gap in the codestream.");

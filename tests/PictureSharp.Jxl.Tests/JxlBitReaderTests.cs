@@ -1,6 +1,5 @@
-using PictureSharp.Formats.Jxl.Codestream;
-using PictureSharp.Formats.Jxl.Container;
-using static PictureSharp.Formats.Jxl.Codestream.JxlU32;
+using PictureSharp.Formats.Jxl.Codestream.IO;
+using static PictureSharp.Formats.Jxl.Codestream.IO.JxlU32;
 
 namespace PictureSharp.Formats.Jxl.Tests;
 

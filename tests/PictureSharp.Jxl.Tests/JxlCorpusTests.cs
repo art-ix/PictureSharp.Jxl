@@ -1,6 +1,7 @@
-using System.Text.Json;
-using PictureSharp.Formats.Jxl.Codestream;
+using PictureSharp.Formats.Jxl.Codestream.IO;
+using PictureSharp.Formats.Jxl.Codestream.Model;
 using PictureSharp.Formats.Jxl.Container;
+using System.Text.Json;
 using static PictureSharp.Formats.Jxl.Tests.JxlTestData;
 
 namespace PictureSharp.Formats.Jxl.Tests;
@@ -46,11 +47,11 @@ public sealed class JxlCorpusTests
     {
         JsonElement expected = Oracle.GetProperty(name);
         JxlContainer container = JxlContainer.Parse(File.ReadAllBytes(CorpusPath(name)));
-        JxlHeaders headers = JxlHeaders.Read(container.Codestream);
+        JxlHeaders headers = JxlHeadersReader.Read(container.Codestream);
         JxlImageMetadata metadata = headers.Metadata;
         await Assert.That(container.IsBoxed).IsEqualTo(expected.GetProperty("boxes").GetArrayLength() > 0);
         await Assert.That(metadata.BitDepth.FloatingPoint).IsEqualTo(expected.GetProperty("float").GetBoolean());
-        await Assert.That(metadata.ExtraChannels.Length).IsEqualTo(expected.GetProperty("extraChannels").GetInt32());
+        await Assert.That(metadata.ExtraChannels.Count).IsEqualTo(expected.GetProperty("extraChannels").GetInt32());
         await Assert.That(metadata.ToneMapping.IntensityTarget).IsEqualTo(expected.GetProperty("intensityTarget").GetSingle());
         JxlColorEncoding color = metadata.Color;
         await Assert.That(color.WantIcc).IsEqualTo(expected.GetProperty("icc").GetBoolean());
@@ -98,7 +99,7 @@ public sealed class JxlCorpusTests
     [Test]
     public async Task OutOfOrderParts_GiveTheSameCodestream()
     {
-        byte[] Joined(string name) => [.. JxlContainer.Parse(File.ReadAllBytes(CorpusPath(name))).Codestream.Segments.SelectMany(s => s.ToArray())];
+        byte[] Joined(string name) => [.. JxlContainer.Parse(File.ReadAllBytes(CorpusPath(name))).Codestream.Segments.ToArray().SelectMany(s => s.ToArray())];
         JxlContainer swapped = JxlContainer.Parse(File.ReadAllBytes(CorpusPath("jxlp-v1-out-of-order.jxl")));
         await Assert.That(swapped.FileFormatVersion).IsEqualTo(1u);
         await Assert.That(Joined("jxlp-v1-out-of-order.jxl")).IsEquivalentTo(Joined("jxlp-v1.jxl"));
@@ -118,7 +119,7 @@ public sealed class JxlCorpusTests
         {
             try
             {
-                JxlHeaders.Read(JxlContainer.Parse(input).Codestream);
+                JxlHeadersReader.Read(JxlContainer.Parse(input).Codestream);
             }
             catch (ImageFormatException)
             {

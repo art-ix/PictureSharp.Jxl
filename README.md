@@ -42,7 +42,7 @@ Pixels match djxl (libjxl 0.12.0): lossless images exactly, lossy ones within 1 
 management and metadata (0.5.0), then lossless and lossy encoding. Not for production use yet; the API may change.
 CI runs on Linux, including a Native AOT build.
 
-Guides: [decoding](docs/decoding.md) · [release notes](docs/releases)
+Guides: [architecture](docs/architecture.md) · [decoding](docs/decoding.md) · [release notes](docs/releases)
 
 ## License
 

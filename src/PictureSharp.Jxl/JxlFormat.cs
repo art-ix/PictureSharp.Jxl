@@ -1,3 +1,5 @@
+using PictureSharp.Formats.Jxl.Integration;
+
 namespace PictureSharp.Formats.Jxl;
 
 /// <summary>

@@ -8,57 +8,59 @@ PictureSharp.Heif and PictureSharp.Tiff, Copyright (c) 2026 Artur Pelzak, MIT (s
 libjxl v0.12.0 (commit a7a9c787341cf703dede03c2009fa460cae5e5df)
 https://github.com/libjxl/libjxl
 
-The following parts are scalar C# ports of libjxl sources and keep their origin
-in source comments:
-- src/PictureSharp.Jxl/Codestream/JxlBitReader.cs: lib/jxl/dec_bit_reader.h
-- src/PictureSharp.Jxl/Codestream/JxlFields.cs: lib/jxl/fields.cc, fields.h,
-  frame_header.h (U32, U64, F16, Enum, extensions, name strings)
-- src/PictureSharp.Jxl/Codestream/JxlSizeHeader.cs: lib/jxl/headers.cc
-- src/PictureSharp.Jxl/Codestream/JxlImageMetadata.cs and
-  JxlCustomTransformData.cs: lib/jxl/image_metadata.cc
-- src/PictureSharp.Jxl/Codestream/JxlColorEncoding.cs:
-  lib/jxl/color_encoding_internal.cc, lib/jxl/cms/color_encoding_cms.h
-- src/PictureSharp.Jxl/Codestream/JxlHeaders.cs and Container/JxlContainer.cs:
-  header order, box rules and jxlp ordering of lib/jxl/decode.cc
-- src/PictureSharp.Jxl/Codestream/JxlPrefixCode.cs: lib/jxl/dec_huffman.cc,
-  huffman_table.cc
-- src/PictureSharp.Jxl/Codestream/JxlEntropyCode.cs and JxlSymbolReader.cs:
+The following parts under src/PictureSharp.Jxl are scalar C# ports of libjxl
+sources. The modular refactoring preserves their algorithms and source attribution:
+- Codestream/IO/JxlBitReader.cs: lib/jxl/dec_bit_reader.h
+- Codestream/IO/JxlFields.cs: lib/jxl/fields.cc, fields.h, frame_header.h
+- Codestream/Model size/preview/animation descriptors and their IO readers:
+  lib/jxl/headers.cc
+- Codestream/Model image metadata/custom transform descriptors and their IO
+  readers: lib/jxl/image_metadata.cc, cms/opsin_params.h, quantizer.h
+- Codestream/Model colour descriptors and their IO readers:
+  lib/jxl/color_encoding_internal.cc, cms/color_encoding_cms.h
+- Codestream/IO/JxlHeadersReader.cs and Container/JxlContainer.cs:
+  lib/jxl/decode.cc (header order, box rules, jxlp ordering)
+- Codestream/Entropy/JxlPrefixCode.cs: lib/jxl/dec_huffman.cc, huffman_table.cc
+- Codestream/Entropy/JxlEntropyCode.cs and JxlSymbolReader.cs:
   lib/jxl/dec_ans.cc, dec_ans.h, ans_common.cc, ans_common.h, dec_context_map.cc,
   inverse_mtf-inl.h
-- src/PictureSharp.Jxl/Codestream/JxlFrameHeader.cs: lib/jxl/frame_header.cc,
-  frame_header.h, frame_dimensions.h, loop_filter.cc, loop_filter.h, toc.cc
-- src/PictureSharp.Jxl/Codestream/JxlPermutation.cs: lib/jxl/coeff_order.cc,
-  lehmer_code.h
-- src/PictureSharp.Jxl/Codestream/JxlMaTree.cs, JxlModularStream.cs and
-  JxlWeightedPredictor.cs: lib/jxl/modular/encoding/dec_ma.cc, encoding.cc,
-  encoding.h, context_predict.h
-- src/PictureSharp.Jxl/Codestream/JxlModularImage.cs:
+- Codestream/Model frame/filter/pass/blending descriptors and their IO readers:
+  lib/jxl/frame_header.cc, frame_header.h, frame_dimensions.h, loop_filter.cc,
+  loop_filter.h
+- Codestream/Frames/JxlTocReader.cs and Codestream/Entropy/JxlPermutation.cs:
+  lib/jxl/toc.cc, coeff_order.cc, lehmer_code.h
+- Codestream/Modular/JxlMaTree.cs, JxlModularStream.cs, JxlWeightedPredictor.cs,
+  JxlGroupHeaderReader.cs and the corresponding Model/IO headers:
+  lib/jxl/modular/encoding/dec_ma.cc, encoding.cc, encoding.h, context_predict.h
+- Codestream/Modular/JxlModularImage.cs, JxlTransformReader.cs, Transforms/,
+  Codestream/Model/JxlTransform.cs and Codestream/Buffers/JxlChannel.cs:
   lib/jxl/modular/modular_image.cc, transform/transform.cc, rct.cc, palette.cc,
   palette.h, squeeze.cc, squeeze.h, squeeze_params.cc
-- src/PictureSharp.Jxl/Codestream/JxlFrameDecoder.cs: lib/jxl/dec_frame.cc,
-  dec_modular.cc, dec_cache.cc, icc_codec.cc, icc_codec_common.cc
-- src/PictureSharp.Jxl/Codestream/JxlAcStrategy.cs: lib/jxl/ac_strategy.cc,
-  ac_strategy.h, ac_context.h, coeff_order.cc, coeff_order.h, entropy_coder.cc
-- src/PictureSharp.Jxl/Codestream/JxlQuantWeights.cs: lib/jxl/quant_weights.cc,
-  quant_weights.h
-- src/PictureSharp.Jxl/Codestream/JxlDct.cs and JxlDctTables.cs: lib/jxl/dct-inl.h,
+- Codestream/Frames decode/session/section components and
+  Codestream/Rendering/JxlFrameRenderer.cs:
+  lib/jxl/dec_frame.cc, dec_modular.cc, dec_cache.cc
+- Codestream/Metadata/JxlIccStream.cs: lib/jxl/icc_codec.cc, icc_codec_common.cc
+- Codestream/VarDct/JxlAcStrategy.cs: lib/jxl/ac_strategy.cc, ac_strategy.h,
+  ac_context.h, coeff_order.cc, coeff_order.h, entropy_coder.cc
+- Codestream/VarDct/JxlQuantWeights.cs: lib/jxl/quant_weights.cc, quant_weights.h
+- Codestream/VarDct/JxlDct.cs and JxlDctTables.cs: lib/jxl/dct-inl.h,
   dct_scales.h, dec_transforms-inl.h, transpose-inl.h
-- src/PictureSharp.Jxl/Codestream/JxlVarDct.cs: lib/jxl/dec_group.cc,
+- Codestream/VarDct/JxlVarDct.cs and JxlEpfSigma.cs: lib/jxl/dec_group.cc,
   dec_modular.cc, compressed_dc.cc, quantizer.cc, quantizer-inl.h,
-  chroma_from_luma.cc, chroma_from_luma.h, passes_state.cc
-- src/PictureSharp.Jxl/Codestream/JxlRenderPipeline.cs:
+  chroma_from_luma.cc, chroma_from_luma.h, passes_state.cc, dec_frame.cc
+- Codestream/Rendering/JxlRenderPipeline.cs and Codestream/Buffers/JxlPlane.cs:
   lib/jxl/render_pipeline/simple_render_pipeline.cc, stage_chroma_upsampling.cc,
   stage_gaborish.cc, stage_epf.cc, stage_upsampling.cc, lib/jxl/epf.cc
-- src/PictureSharp.Jxl/Codestream/JxlColorOutput.cs: lib/jxl/dec_xyb.cc,
-  dec_xyb-inl.h, render_pipeline/stage_xyb.cc, stage_ycbcr.cc,
-  stage_from_linear.cc, cms/transfer_functions-inl.h, cms/jxl_cms_internal.h,
-  cms/opsin_params.h, base/matrix_ops.h
-- src/PictureSharp.Jxl/Codestream/JxlFastMath.cs: lib/jxl/base/fast_math-inl.h,
+- Codestream/Color/JxlColorOutput.cs: lib/jxl/dec_xyb.cc, dec_xyb-inl.h,
+  render_pipeline/stage_xyb.cc, stage_ycbcr.cc, stage_from_linear.cc,
+  cms/transfer_functions-inl.h, cms/jxl_cms_internal.h, cms/opsin_params.h,
+  base/matrix_ops.h
+- Codestream/Numerics/JxlFastMath.cs: lib/jxl/base/fast_math-inl.h,
   base/rational_polynomial-inl.h
-- src/PictureSharp.Jxl/Codestream/JxlPatches.cs: lib/jxl/dec_patch_dictionary.cc,
+- Codestream/Frames/JxlPatchReader.cs, Codestream/Model/JxlPatch.cs and
+  Codestream/Rendering/JxlPatches.cs: lib/jxl/dec_patch_dictionary.cc,
   blending.cc, alpha.cc
-- src/PictureSharp.Jxl/Codestream/JxlDither.cs:
-  lib/jxl/render_pipeline/stage_write.cc (ordered dither table)
+- Codestream/Color/JxlDither.cs: lib/jxl/render_pipeline/stage_write.cc
 
 libjxl is distributed under the following license:
 

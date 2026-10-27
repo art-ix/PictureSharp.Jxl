@@ -1,13 +1,14 @@
-using System.Buffers.Binary;
-using PictureSharp.Formats.Jxl.Codestream;
+using PictureSharp.Formats.Jxl.Codestream.IO;
+using PictureSharp.Formats.Jxl.Codestream.Model;
 using PictureSharp.Formats.Jxl.Container;
+using System.Buffers.Binary;
 using static PictureSharp.Formats.Jxl.Tests.JxlTestData;
 
 namespace PictureSharp.Formats.Jxl.Tests;
 
 public sealed class JxlContainerTests
 {
-    private static byte[] Joined(JxlContainer container) => [.. container.Codestream.Segments.SelectMany(segment => segment.ToArray())];
+    private static byte[] Joined(JxlContainer container) => [.. container.Codestream.Segments.ToArray().SelectMany(segment => segment.ToArray())];
 
     [Test]
     public async Task RawCodestream_IsTheWholeInput()
@@ -38,7 +39,7 @@ public sealed class JxlContainerTests
         JxlContainer container = JxlContainer.Parse(file);
         await Assert.That(container.Codestream.Segments.Length).IsEqualTo(3);
         await Assert.That(Joined(container)).IsEquivalentTo(codestream);
-        await Assert.That(JxlHeaders.Read(container.Codestream).Size).IsEqualTo(new JxlSizeHeader(8, 8));
+        await Assert.That(JxlHeadersReader.Read(container.Codestream).Size).IsEqualTo(new JxlSizeHeader(8, 8));
     }
 
     [Test]
@@ -116,7 +117,7 @@ public sealed class JxlContainerTests
         JxlContainer container = JxlContainer.Parse(Boxed(FileType(1), Partial(1, false, cs.AsSpan(1)), Partial(0, false, cs.AsSpan(0, 1))));
         await Assert.That(Joined(container)).IsEquivalentTo(cs);
         JxlContainer truncated = JxlContainer.Parse(Boxed(FileType(), Partial(0, false, cs.AsSpan(0, 2))));
-        await Assert.That(() => JxlHeaders.Read(truncated.Codestream)).Throws<ImageFormatException>();
+        await Assert.That(() => JxlHeadersReader.Read(truncated.Codestream)).Throws<ImageFormatException>();
     }
 
     [Test]
@@ -161,7 +162,7 @@ public sealed class JxlContainerTests
         await Assert.That(Joined(JxlContainer.Parse(file))).IsEquivalentTo(cs);
         for (int length = 0; length < file.Length; length++)
         {
-            await Assert.That(() => JxlHeaders.Read(JxlContainer.Parse(file.AsMemory(0, length)).Codestream)).Throws<ImageFormatException>();
+            await Assert.That(() => JxlHeadersReader.Read(JxlContainer.Parse(file.AsMemory(0, length)).Codestream)).Throws<ImageFormatException>();
         }
     }
 }
