@@ -10,7 +10,8 @@ namespace PictureSharp.Formats.Jxl.Tests;
 
 /// <summary>
 /// Decoding against the djxl renderings recorded with the corpus (no tools needed): lossless files by the hash in
-/// corpus.json, lossy ones against djxl/*.png within <see cref="Tolerance"/>.
+/// corpus.json, lossy ones against djxl/*.png within <see cref="Tolerance"/>, XYB images with an ICC profile against
+/// cms/*.png (djxl's linear output converted to the profile) within <see cref="ManagedTolerance"/>.
 /// </summary>
 public sealed class JxlDecodeTests
 {
@@ -42,6 +43,14 @@ public sealed class JxlDecodeTests
         }
 
         using Image image = Image.Load(CorpusPath(name), options);
+        string managed = CorpusPath(Path.Combine("cms", Path.ChangeExtension(name, ".png")));
+        if (File.Exists(managed))
+        {
+            using Image converted = Image.Load(managed);
+            await Assert.That(ManagedTolerance(image, converted)).IsNull();
+            return;
+        }
+
         string reference = CorpusPath(Path.Combine("djxl", Path.ChangeExtension(name, ".png")));
         if (!File.Exists(reference))
         {
@@ -81,6 +90,30 @@ public sealed class JxlDecodeTests
         }
 
         return different * 1000L > a.Length ? $"{different} of {a.Length} samples differ" : null;
+    }
+
+    /// <summary>
+    /// Null when every sample is within 1 of the colour-managed reference. The reference is rounded, while the decoder
+    /// dithers 8-bit output as libjxl does, so many samples differ by 1.
+    /// </summary>
+    internal static string? ManagedTolerance(Image actual, Image expected)
+    {
+        if ((actual.Width, actual.Height) != (expected.Width, expected.Height))
+        {
+            return $"{actual.Width}x{actual.Height} instead of {expected.Width}x{expected.Height}";
+        }
+
+        byte[] a = JxlDecodeOracleTests.Rgba(actual);
+        byte[] e = JxlDecodeOracleTests.Rgba(expected);
+        for (int i = 0; i < a.Length; i++)
+        {
+            if (Math.Abs(a[i] - e[i]) > 1)
+            {
+                return $"sample {i} differs by {Math.Abs(a[i] - e[i])}";
+            }
+        }
+
+        return null;
     }
 
     [Test]

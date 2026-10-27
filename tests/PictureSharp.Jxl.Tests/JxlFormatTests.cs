@@ -35,7 +35,7 @@ public sealed class JxlFormatTests
     }
 
     [Test]
-    public async Task Registration_UsesSharedDescriptor_IdentifiesButDoesNotDecode()
+    public async Task Registration_UsesSharedDescriptor_IdentifiesAndReadsMetadata()
     {
         IImageFormatModule module = new JxlFormat();
         var configuration = ImageConfiguration.Default.ToBuilder().AddFormat(module).Build();
@@ -49,7 +49,7 @@ public sealed class JxlFormatTests
         await Assert.That(configuration.CanDecode(ImageFormat.Jxl)).IsTrue();
         await Assert.That(configuration.CanEncode(ImageFormat.Jxl)).IsFalse();
         await Assert.That(module.Encoder).IsNull();
-        await Assert.That(module.MetadataCodec).IsNull();
+        await Assert.That(module.MetadataCodec).IsNotNull();
         var options = new DecoderOptions { Configuration = configuration };
         byte[] data = JxlTestData.Minimal();
         ImageInfo info = Image.Identify(data, options);
@@ -57,8 +57,10 @@ public sealed class JxlFormatTests
         await Assert.That(() => Image.Identify(new byte[] { 0xFF, 0x0A }, options)).Throws<ImageFormatException>();
         // Headers without a frame.
         await Assert.That(() => Image.Load(data, options)).Throws<ImageFormatException>();
-        await Assert.That(() => Image.ReadMetadata((ReadOnlyMemory<byte>)data, options)).Throws<NotSupportedException>();
-        await Assert.That(() => Image.EditMetadata((ReadOnlyMemory<byte>)data, _ => { }, options)).Throws<NotSupportedException>();
+        // Metadata needs only the headers; this image has none (sRGB, no boxes, orientation 1).
+        await Assert.That(Image.ReadMetadata((ReadOnlyMemory<byte>)data, options).IsEmpty).IsTrue();
+        await Assert.That(() => Image.EditMetadata((ReadOnlyMemory<byte>)data, metadata => metadata.Xmp = "<x/>"u8.ToArray(), options))
+            .Throws<NotSupportedException>();
     }
 
     [Test]

@@ -46,16 +46,15 @@ internal static class JxlFrameSectionReader
         }
     }
 
-    /// <summary>A reader at the first frame after the headers, the ICC stream and a preview frame.</summary>
-    public static JxlBitReader FirstFrame(JxlCodestream codestream, JxlHeaders headers, CancellationToken cancellationToken)
+    /// <summary>
+    /// A reader at the first frame after the headers, the ICC stream and a preview frame. The ICC profile is decoded,
+    /// as libjxl always does; its size is checked against <paramref name="maxIccBytes"/> and charged to
+    /// <paramref name="reserveIcc"/> before it is allocated.
+    /// </summary>
+    public static JxlBitReader FirstFrame(JxlCodestream codestream, JxlHeaders headers, CancellationToken cancellationToken,
+        out byte[]? icc, long maxIccBytes = JxlIccStream.MaxProfileSize, Action<long>? reserveIcc = null)
     {
-        var reader = new JxlBitReader(codestream);
-        reader.SkipBits((ulong)headers.EndBitPosition);
-        if (headers.IccSize is { } iccSize)
-        {
-            JxlIccStream.Skip(ref reader, iccSize, cancellationToken);
-            reader.JumpToByteBoundary();
-        }
+        var reader = ReadIcc(codestream, headers, cancellationToken, out icc, maxIccBytes, reserveIcc);
 
         if (headers.Metadata.Preview is not null)
         {
@@ -63,6 +62,22 @@ internal static class JxlFrameSectionReader
             long previewStart = ReadToc(ref reader, codestream, preview, out JxlToc previewToc);
             reader = new JxlBitReader(codestream);
             reader.SkipBits((ulong)(previewStart + previewToc.TotalSize) * 8);
+        }
+
+        return reader;
+    }
+
+    /// <summary>The ICC profile after the headers, or null without one; the reader stops at the next byte boundary.</summary>
+    public static JxlBitReader ReadIcc(JxlCodestream codestream, JxlHeaders headers, CancellationToken cancellationToken,
+        out byte[]? icc, long maxIccBytes = JxlIccStream.MaxProfileSize, Action<long>? reserveIcc = null)
+    {
+        var reader = new JxlBitReader(codestream);
+        reader.SkipBits((ulong)headers.EndBitPosition);
+        icc = null;
+        if (headers.IccSize is { } iccSize)
+        {
+            icc = JxlIccStream.Read(ref reader, iccSize, maxIccBytes, reserveIcc, cancellationToken);
+            reader.JumpToByteBoundary();
         }
 
         return reader;

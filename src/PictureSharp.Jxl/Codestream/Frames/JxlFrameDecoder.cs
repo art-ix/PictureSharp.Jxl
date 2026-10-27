@@ -27,11 +27,13 @@ internal sealed class JxlFrameDecoder
     private readonly JxlReferenceFrames references;
     private JxlGroupHeader header = JxlGroupHeader.Default;
     private JxlPatch[] patches = [];
+    private readonly JxlIccTarget? iccTarget;
 
     public JxlFrameDecoder(JxlFrameHeader frame, JxlHeaders headers, JxlReferenceFrames references,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, JxlIccTarget? iccTarget = null)
     {
         this.frame = frame;
+        this.iccTarget = iccTarget;
         progress = new(frame.DcGroups, frame.Groups, frame.Passes.Count);
         this.references = references;
         this.headers = headers;
@@ -216,7 +218,7 @@ internal sealed class JxlFrameDecoder
     {
         (JxlPlane[] color, JxlPlane[] extra) = Render(colorTransform: true);
         return new JxlDecodedImage((int)frame.Width, (int)frame.Height, color, alpha < 0 ? null : extra[alpha], metadata.Color.ColorSpace == JxlColorSpace.Gray,
-            JxlColorOutput.DescribeOutput(metadata, frame.ColorTransform));
+            JxlColorOutput.DescribeOutput(metadata, frame.ColorTransform, iccTarget));
     }
 
     /// <summary>The frame as saved for later frames: before the colour transform (save_before_color_transform).</summary>
@@ -261,7 +263,7 @@ internal sealed class JxlFrameDecoder
             ? JxlEpfSigma.Compute(frame.LoopFilter, (int)frame.XSizeBlocks, (int)frame.YSizeBlocks,
                 varDct.QuantScale, varDct.QuantField, varDct.Sharpness, varDct.Strategies, cancellationToken)
             : null;
-        color = new JxlFrameRenderer(frame, headers, patches, references, sigma, cancellationToken)
+        color = new JxlFrameRenderer(frame, headers, patches, references, sigma, cancellationToken, iccTarget)
             .Render(color, extraPlanes, colorTransform);
         return (color, extraPlanes);
     }

@@ -4,6 +4,8 @@ PictureSharp.Formats.Jxl.JxlFormat
   Int32 get_HeaderSize()
   PictureSharp.Formats.IImageFormatDecoder Decoder
   PictureSharp.Formats.IImageFormatDecoder get_Decoder()
+  PictureSharp.Formats.IImageFormatMetadataCodec MetadataCodec
+  PictureSharp.Formats.IImageFormatMetadataCodec get_MetadataCodec()
   PictureSharp.ImageFormat Format
   PictureSharp.ImageFormat get_Format()
   Void .ctor()

@@ -12,8 +12,8 @@ namespace PictureSharp.Formats.Jxl.Codestream.Color;
 /// </summary>
 /// <remarks>
 /// XYB images are rendered in their enumerated colour space, as libjxl does without a colour management system.
-/// With an ICC profile libjxl falls back to linear sRGB; this decoder applies the sRGB transfer function instead,
-/// since the result is stored as 8-bit sRGB-like samples.
+/// With an ICC profile libjxl converts linear sRGB to the profile with a colour management system; this decoder does
+/// that for matrix/TRC and gray profiles (<see cref="JxlIccTarget"/>) and otherwise renders sRGB.
 /// </remarks>
 internal sealed class JxlColorOutput
 {
@@ -31,8 +31,10 @@ internal sealed class JxlColorOutput
     private readonly JxlTransferFunction transfer;
     private readonly float inverseGamma;
     private readonly float pqScale;
+    private readonly JxlToneCurve[]? curves;
 
-    public JxlColorOutput(JxlImageMetadata metadata, JxlCustomTransformData transformData, JxlColorTransform transform)
+    public JxlColorOutput(JxlImageMetadata metadata, JxlCustomTransformData transformData, JxlColorTransform transform,
+        JxlIccTarget? icc = null)
     {
         this.transform = transform;
         if (transform != JxlColorTransform.Xyb)
@@ -40,8 +42,10 @@ internal sealed class JxlColorOutput
             return;
         }
 
-        JxlColorEncoding color = DescribeOutput(metadata, transform);
+        JxlColorEncoding color = DescribeOutput(metadata, transform, icc);
         bool gray = color.ColorSpace == JxlColorSpace.Gray;
+        icc = color.WantIcc ? icc : null;
+        curves = icc?.Curves;
 
         if (color.Gamma == 0 && color.TransferFunction == JxlTransferFunction.Hlg)
         {
@@ -53,7 +57,11 @@ internal sealed class JxlColorOutput
         float intensity = metadata.ToneMapping.IntensityTarget;
         pqScale = intensity * (1.0f / 10000.0f);
         float[] inverse = [.. transformData.EffectiveOpsinInverseMatrix];
-        if (!gray && (color.Primaries != JxlPrimaries.Srgb || color.WhitePoint != JxlWhitePoint.D65))
+        if (!gray && icc is not null)
+        {
+            inverse = Multiply(Multiply(icc.FromXyzD50, SrgbToXyzD50()), inverse);
+        }
+        else if (!gray && (color.Primaries != JxlPrimaries.Srgb || color.WhitePoint != JxlWhitePoint.D65))
         {
             inverse = Multiply(SrgbToOriginal(color), inverse);
         }
@@ -78,12 +86,20 @@ internal sealed class JxlColorOutput
         }
     }
 
-    /// <summary>The encoding of rendered samples, including the existing fallback for non-enumerated XYB colour.</summary>
-    public static JxlColorEncoding DescribeOutput(JxlImageMetadata metadata, JxlColorTransform transform)
+    /// <summary>
+    /// The encoding of rendered samples: the image's own, which for XYB with an ICC profile requires a usable
+    /// <paramref name="icc"/> target, or the sRGB fallback (<see cref="JxlColorEncoding.WantIcc"/> then is false).
+    /// </summary>
+    public static JxlColorEncoding DescribeOutput(JxlImageMetadata metadata, JxlColorTransform transform, JxlIccTarget? icc = null)
     {
         if (transform != JxlColorTransform.Xyb) return metadata.Color;
         JxlColorEncoding color = metadata.Color;
         bool gray = color.ColorSpace == JxlColorSpace.Gray;
+        if (color.WantIcc && icc is not null && icc.IsGray == gray)
+        {
+            return color;
+        }
+
         bool enumerated = !color.WantIcc && (color.Gamma != 0 || color.TransferFunction != JxlTransferFunction.Unknown)
             && (!gray || color.WhitePoint == JxlWhitePoint.D65);
         if (!enumerated)
@@ -154,6 +170,12 @@ internal sealed class JxlColorOutput
         red = JxlFastMath.Fma(m[2], mixedB, red);
         green = JxlFastMath.Fma(m[5], mixedB, green);
         blue = JxlFastMath.Fma(m[8], mixedB, blue);
+        if (curves is not null)
+        {
+            (x, y, b) = (curves[0].Encode(red), curves[curves.Length == 3 ? 1 : 0].Encode(green), curves[^1].Encode(blue));
+            return;
+        }
+
         (x, y, b) = (FromLinear(red), FromLinear(green), FromLinear(blue));
     }
 
@@ -188,10 +210,15 @@ internal sealed class JxlColorOutput
     private static ReadOnlySpan<float> SrgbPrimaries =>
         [(float)0.639998686, (float)0.330010138, (float)0.300003784, (float)0.600003357, (float)0.150002046, (float)0.059997204];
 
-    private static float[] SrgbToOriginal(JxlColorEncoding color)
+    private static float[] SrgbToXyzD50()
     {
         ReadOnlySpan<float> s = SrgbPrimaries;
-        float[] srgbToXyzD50 = Multiply(AdaptToXyzD50((float)0.3127, (float)0.3290), PrimariesToXyz(s[0], s[1], s[2], s[3], s[4], s[5], (float)0.3127, (float)0.3290));
+        return Multiply(AdaptToXyzD50((float)0.3127, (float)0.3290), PrimariesToXyz(s[0], s[1], s[2], s[3], s[4], s[5], (float)0.3127, (float)0.3290));
+    }
+
+    private static float[] SrgbToOriginal(JxlColorEncoding color)
+    {
+        float[] srgbToXyzD50 = SrgbToXyzD50();
         (float wx, float wy) = color.WhitePoint switch
         {
             JxlWhitePoint.D65 => ((float)0.3127, (float)0.3290),

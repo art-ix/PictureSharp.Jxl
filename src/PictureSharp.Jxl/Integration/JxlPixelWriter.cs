@@ -6,7 +6,7 @@ namespace PictureSharp.Formats.Jxl.Integration;
 /// <summary>Copies rendered planes to the PictureSharp-owned straight-alpha pixel buffer.</summary>
 internal static class JxlPixelWriter
 {
-    public static Image Write(JxlDecodedImage decoded, uint orientationValue, CancellationToken cancellationToken)
+    public static Image Write(JxlDecodedImage decoded, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         JxlPlane? alpha = decoded.Alpha;
@@ -35,13 +35,6 @@ internal static class JxlPixelWriter
                         : new Rgba32(JxlDither.ToByte(r[x], x, y, 0), JxlDither.ToByte(g[x], x, y, 1), JxlDither.ToByte(b[x], x, y, 2),
                             alpha is null ? (byte)255 : JxlDither.ToByte(a[x], x, y, 3));
                 }
-            }
-
-            // Stored orientation, as for JPEG: ApplyExifOrientation (or AutoOrient) applies it.
-            var orientation = (ExifOrientation)orientationValue;
-            if (orientation != ExifOrientation.TopLeft)
-            {
-                image.Metadata.Orientation = orientation;
             }
 
             return image;

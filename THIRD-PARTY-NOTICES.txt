@@ -1,4 +1,4 @@
-PictureSharp.Jxl 0.4.2
+PictureSharp.Jxl 0.5.0
 
 No native libraries are bundled. PictureSharp is a NuGet dependency distributed
 separately under MIT. Project scaffolding and test patterns are adapted from
@@ -40,6 +40,7 @@ sources. The modular refactoring preserves their algorithms and source attributi
   Codestream/Rendering/JxlFrameRenderer.cs:
   lib/jxl/dec_frame.cc, dec_modular.cc, dec_cache.cc
 - Codestream/Metadata/JxlIccStream.cs: lib/jxl/icc_codec.cc, icc_codec_common.cc
+  (ICC stream decoding and UnpredictICC)
 - Codestream/VarDct/JxlAcStrategy.cs: lib/jxl/ac_strategy.cc, ac_strategy.h,
   ac_context.h, coeff_order.cc, coeff_order.h, entropy_coder.cc
 - Codestream/VarDct/JxlQuantWeights.cs: lib/jxl/quant_weights.cc, quant_weights.h

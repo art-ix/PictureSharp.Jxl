@@ -8,8 +8,8 @@ uses only PictureSharp's public SPI. All implementation types remain internal.
 
 | Module | Responsibility | Other codec modules it may use |
 | --- | --- | --- |
-| Integration | SPI adapter, ImageInfo mapping, straight-alpha Rgba32 output | Container and codec modules |
-| Container | Box validation, codestream assembly, optional encoded metadata index | IO |
+| Integration | SPI adapter, ImageInfo mapping, straight-alpha Rgba32 output, metadata mapping and the metadata codec | Container and codec modules |
+| Container | Box validation, codestream assembly, optional metadata index, bounded brob decompression | IO |
 | Codestream.Model | Immutable header/transform descriptions and small validated values | None |
 | Codestream.IO | Borrowed segmented input, bit/field reading, header readers | Model |
 | Codestream.Entropy | Prefix/ANS/LZ77 symbol decoding | IO |
@@ -17,8 +17,8 @@ uses only PictureSharp's public SPI. All implementation types remain internal.
 | Codestream.Modular | Modular streams, prediction, RCT/Palette/Squeeze operations | Model, IO, Entropy, Buffers |
 | Codestream.VarDct | Coefficients, transforms, quantization, EPF sigma derivation | Model, IO, Entropy, Modular, Buffers, Rendering, Numerics |
 | Codestream.Rendering | Ordered restoration, resampling and patch application | Model, Buffers, Color, Numerics |
-| Codestream.Color | Output colour transforms and quantization/dither | Model, Buffers, Numerics |
-| Codestream.Metadata | ICC entropy stream navigation | IO, Entropy |
+| Codestream.Color | Output colour transforms, matrix/TRC ICC output targets, quantization/dither | Model, Buffers, Numerics |
+| Codestream.Metadata | ICC entropy stream and prediction decoding | IO, Entropy |
 | Codestream.Frames | One-image session, frame scheduling, support policy, section readers | Codec modules above |
 | Codestream.Numerics | Scalar numerical primitives | None |
 
@@ -31,7 +31,8 @@ compiler-generated lambdas. No dependency-injection container is needed.
 
 1. `JxlDecoder` parses the container and headers and reserves the output pixels.
 2. A new `JxlDecodeSession` owns the references and DC frames for that one call.
-   It navigates the ICC stream and preview, then consumes the frame sequence.
+   It decodes the ICC profile (charged before allocation), derives the optional
+   `JxlIccTarget`, skips the preview, then consumes the frame sequence.
 3. `JxlDecodeSupportPolicy` rejects unsupported valid features and checks
    cross-frame consistency. Readers continue to validate encoded syntax.
 4. `JxlFrameSectionReader` schedules one `JxlFrameDecoder`: LF global, LF groups,
@@ -45,8 +46,12 @@ compiler-generated lambdas. No dependency-injection container is needed.
    sigma values, not a VarDCT decoder. It preserves the original order of filters,
    patching, upsampling and colour conversion.
 7. The completed planes are transferred to `JxlDecodedImage`. `JxlPixelWriter`
-   creates the PictureSharp image, writes pixels, records orientation and disposes
-   the incomplete output on failure. PictureSharp applies orientation on request.
+   creates the PictureSharp image and writes pixels. `JxlMetadataReader` attaches the
+   ICC profile (only when the output encoding is the profile), the colour description,
+   EXIF/XMP and finally the codestream orientation; the decoder disposes the image if
+   any step fails. PictureSharp applies orientation on request.
+8. `JxlMetadataCodec` (Image.ReadMetadata) parses the container and headers, decodes
+   only the ICC stream and maps the same metadata without reading frames.
 
 The public decoder is stateless and can be shared. Sessions and frame decoders are
 single-use. Mathematical kernels remain static. Explicit interfaces are used for
@@ -80,20 +85,23 @@ working-memory budget and broader pooling require a later, measured change.
 
 ## Extension points and unchanged capabilities
 
-This refactoring adds no public options and no new decoding/encoding features.
-The public API snapshot and the existing scalar numerical behavior remain fixed.
+0.5.0 added `JxlFormat.MetadataCodec` as its only public API change; there are
+still no public options. The scalar numerical behavior of earlier versions is fixed.
 
-- **ICC/EXIF/XMP:** `JxlContainer.Parse(..., includeMetadata: true)` provides
-  borrowed Exif/xml payloads, including `brob` payloads with the inner type removed.
-  Indexing is opt-in; ordinary Identify/Decode does not accumulate metadata blocks.
-  These are encoded slices, not validated or decompressed metadata. A future
-  metadata adapter must charge `ReserveMetadata` before materializing decompressed
-  content, honor `IgnoreMetadata`, and implement the existing metadata SPI only
-  when it actually reads metadata. ICC inside the codestream is a separate path.
+- **ICC/EXIF/XMP:** `JxlContainer.Parse(..., includeMetadata: true)` indexes
+  borrowed Exif/xml payloads, including `brob` payloads with the inner type removed;
+  Identify and `IgnoreMetadata` decodes do not index them. `JxlMetadataBox.Read`
+  materializes a payload, charging every byte through a callback before it exists
+  (Brotli output as it grows). The ICC stream is decoded by `JxlIccStream` with the
+  same callback and an explicit size limit. Codec modules receive `Action<long>`
+  and limits, never the PictureSharp context. Metadata writing (0.6.0) belongs in
+  separate writers; `Rewrite` keeps the SPI's NotSupportedException until then.
 - **Colour correctness:** the rendered result carries its actual `ColorEncoding`
-  and grayscale flag. The existing XYB+ICC fallback reports sRGB; unconverted
-  output retains its source description. A future adapter must not attach an
-  original ICC profile to already converted sRGB samples.
+  and grayscale flag. `WantIcc` in that encoding means the samples are in the
+  profile: unconverted output and XYB rendered through a `JxlIccTarget`. The XYB
+  fallback for lookup-table profiles reports sRGB and the adapter attaches no
+  profile, so converted sRGB samples are never labelled with the original one.
+  A full CMS (lookup-table profiles) would extend `JxlIccTarget`, not the adapter.
 - **Encoding:** add a separate encoder session and writers that consume shared
   descriptions. Introduce `JxlEncoderOptions : EncoderOptions`, the typed encoder
   SPI and convenience extensions together with a functioning encoder.

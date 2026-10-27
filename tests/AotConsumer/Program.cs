@@ -36,4 +36,25 @@ using (var image = Image.Load(lossy))
             throw new InvalidOperationException($"Lossy decoding returned {pixel}.");
     }
 }
-Console.WriteLine("Package consumer: registration, detection, Identify, lossless and lossy decoding passed.");
+// The 1×1 codestream in a container with a Brotli-compressed Exif box (brob): Exif with Make "AOT" and orientation 6.
+byte[] tiff = [0, 0, 0, 0, .. "MM\0*"u8, 0, 0, 0, 8, 0, 2, 0x01, 0x0F, 0, 2, 0, 0, 0, 4, (byte)'A', (byte)'O', (byte)'T', 0,
+    0x01, 0x12, 0, 3, 0, 0, 0, 1, 0, 6, 0, 0, 0, 0, 0, 0];
+byte[] compressed = new byte[256];
+if (!System.IO.Compression.BrotliEncoder.TryCompress(tiff, compressed, out int compressedLength))
+    throw new InvalidOperationException("Brotli compression failed.");
+static byte[] Box(string type, params byte[][] parts)
+{
+    byte[] payload = [.. parts.SelectMany(part => part)];
+    byte[] box = new byte[8 + payload.Length];
+    System.Buffers.Binary.BinaryPrimitives.WriteUInt32BigEndian(box, (uint)box.Length);
+    System.Text.Encoding.ASCII.GetBytes(type, box.AsSpan(4));
+    payload.CopyTo(box, 8);
+    return box;
+}
+byte[] container = [0, 0, 0, 12, 0x4A, 0x58, 0x4C, 0x20, 13, 10, 0x87, 10, .. Box("ftyp", "jxl "u8.ToArray(), [0, 0, 0, 0], "jxl "u8.ToArray()),
+    .. Box("brob", "Exif"u8.ToArray(), compressed[..compressedLength]), .. Box("jxlc", data)];
+ImageMetadata metadata = Image.ReadMetadata((ReadOnlyMemory<byte>)container);
+// The codestream orientation (1) overrides the EXIF tag (6).
+if (!metadata.ExifProfile.TryGetValue(ExifTag.Make, out string? make) || make != "AOT" || metadata.Orientation != ExifOrientation.TopLeft)
+    throw new InvalidOperationException("Brotli-compressed EXIF was not read.");
+Console.WriteLine("Package consumer: registration, detection, Identify, lossless and lossy decoding and metadata passed.");

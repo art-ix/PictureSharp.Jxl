@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
 """Generate public, synthetic JPEG XL fixtures and their jxlinfo and djxl oracle (no external images).
 
-Requires Pillow and the libjxl v0.12.0 tools (cjxl, djxl, jxlinfo) on PATH or in JXL_TOOLS. The outputs are
+Requires Pillow, NumPy and the libjxl v0.12.0 tools (cjxl, djxl, jxlinfo) on PATH or in JXL_TOOLS. The outputs are
 committed, so tests and CI do not need the tools. Lossy fixtures also get djxl's 8-bit rendering in djxl/, which
-tests compare within a tolerance. Run: python3 tests/assets/generate-corpus.py
+tests compare within a tolerance. XYB images with an ICC profile get cms/: djxl's linear sRGB floats converted to
+the profile in double precision (djxl itself would need a colour management system).
+Run: python3 tests/assets/generate-corpus.py
 """
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -16,7 +19,8 @@ import subprocess
 import tempfile
 import zlib
 
-from PIL import Image, ImageCms
+import numpy as np
+from PIL import Image, ImageCms, PngImagePlugin
 
 ROOT = Path(__file__).resolve().parents[2]
 OUTPUT = ROOT / 'tests/assets/corpus'
@@ -68,6 +72,95 @@ def jpeg(path, width, height, orientation):
     exif = Image.Exif()
     exif[0x0112] = orientation
     image.save(path, exif=exif.tobytes(), quality=95)
+
+
+def s15(value):
+    return struct.pack('>i', round(value * 65536))
+
+
+def bradford_to_d50(white):
+    bradford = np.array([[0.8951, 0.2664, -0.1614], [-0.7502, 1.7135, 0.0367], [0.0389, -0.0685, 1.0296]])
+    w = np.array([white[0] / white[1], 1, (1 - white[0] - white[1]) / white[1]])
+    return np.linalg.inv(bradford) @ np.diag((bradford @ np.array([0.9642, 1, 0.8249])) / (bradford @ w)) @ bradford
+
+
+def primaries_to_xyz(red, green, blue, white):
+    p = np.array([[red[0], green[0], blue[0]], [red[1], green[1], blue[1]],
+                  [1 - red[0] - red[1], 1 - green[0] - green[1], 1 - blue[0] - blue[1]]])
+    return p * np.linalg.solve(p, np.array([white[0] / white[1], 1, (1 - white[0] - white[1]) / white[1]]))
+
+
+D65 = (0.3127, 0.3290)
+# Wide-gamut primaries (Adobe RGB-like) and a gamma-2.2-like tone curve with a wiggle, so that cjxl cannot map the
+# profile to an enumerated colour encoding and keeps the ICC profile with XYB.
+TEST_COLORANTS = bradford_to_d50(D65) @ primaries_to_xyz((0.64, 0.33), (0.21, 0.71), (0.15, 0.06), D65)
+TEST_TRC = [min(1.0, (i / 1023) ** 2.2 * (1 + 0.04 * math.sin(math.pi * i / 1023))) for i in range(1024)]
+
+
+def icc_profile(gray):
+    """A version 2 matrix/TRC (or gray TRC) display profile with a fixed date, written tag by tag (ICC.1:2001-04)."""
+    xyz = lambda v: b'XYZ \0\0\0\0' + b''.join(s15(c) for c in v)
+    curve = b'curv\0\0\0\0' + struct.pack('>I', len(TEST_TRC)) + b''.join(struct.pack('>H', round(v * 65535)) for v in TEST_TRC)
+    name = b'PictureSharp test\0'
+    tags = [(b'desc', b'desc\0\0\0\0' + struct.pack('>I', len(name)) + name + b'\0' * 75), (b'cprt', b'text\0\0\0\0CC0\0'),
+            (b'wtpt', xyz([0.9642, 1.0, 0.8249]))]
+    if gray:
+        tags.append((b'kTRC', curve))
+    else:
+        tags += [(b'rXYZ', xyz(TEST_COLORANTS[:, 0])), (b'gXYZ', xyz(TEST_COLORANTS[:, 1])), (b'bXYZ', xyz(TEST_COLORANTS[:, 2])),
+                 (b'rTRC', curve), (b'gTRC', curve), (b'bTRC', curve)]
+    start = 128 + 4 + 12 * len(tags)
+    table, data, placed = b'', b'', {}
+    for signature, body in tags:
+        if body not in placed:
+            data += b'\0' * (-(start + len(data)) % 4)
+            placed[body] = (start + len(data), len(body))
+            data += body
+        table += signature + struct.pack('>II', *placed[body])
+    header = struct.pack('>I4sI4s4s4s6H4s', start + len(data), b'\0' * 4, 0x02100000, b'mntr', b'GRAY' if gray else b'RGB ',
+                         b'XYZ ', 2026, 1, 1, 0, 0, 0, b'acsp')
+    header += b'\0' * 28 + s15(0.9642) + s15(1.0) + s15(0.8249) + b'\0' * 48
+    assert len(header) == 128
+    return header + struct.pack('>I', len(tags)) + table + data
+
+
+def pfm_read(path):
+    with open(path, 'rb') as f:
+        kind = f.readline().strip()
+        width, height = map(int, f.readline().split())
+        scale = float(f.readline())
+        data = np.frombuffer(f.read(), dtype='<f4' if scale < 0 else '>f4')
+    return data.reshape(height, width, 3 if kind == b'PF' else 1)[::-1].astype(np.float64)
+
+
+def cms_reference(path, temp, reference, gray):
+    """djxl's linear sRGB output converted to the test profile: XYZ D50, the colourant inverse, the inverse TRC."""
+    pfm = Path(temp) / 'linear.pfm'
+    run(tool('djxl'), str(path), str(pfm), '--quiet')
+    linear = pfm_read(pfm)
+    if gray:
+        device = linear[..., :1] if linear.shape[2] == 1 else linear @ np.array([[0.2126], [0.7152], [0.0722]])
+    else:
+        srgb_to_d50 = bradford_to_d50(D65) @ primaries_to_xyz((0.64, 0.33), (0.30, 0.60), (0.15, 0.06), D65)
+        device = linear @ (np.linalg.inv(np.array(TEST_COLORANTS)) @ srgb_to_d50).T
+    table = np.array([round(v * 65535) / 65535 for v in TEST_TRC])
+    encoded = np.interp(np.clip(device, 0, 1), table, np.linspace(0, 1, len(table)))
+    samples = np.clip(np.round(encoded * 255), 0, 255).astype(np.uint8)
+    reference.parent.mkdir(exist_ok=True)
+    Image.fromarray(samples[..., 0] if gray else samples, 'L' if gray else 'RGB').save(reference, optimize=True)
+
+
+def metadata_png(path):
+    """A PNG with an eXIf chunk (orientation 6) and XMP, which cjxl stores as Exif and xml boxes."""
+    image = Image.new('RGB', (40, 24))
+    image.putdata([tuple(pixel(x, y, 40, 24)) for y in range(24) for x in range(40)])
+    exif = Image.Exif()
+    exif[0x0112] = 6
+    exif[0x010F] = 'PictureSharp'
+    info = PngImagePlugin.PngInfo()
+    info.add_itxt('XML:com.adobe.xmp', '<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">'
+                  '<rdf:Description xmlns:dc="http://purl.org/dc/elements/1.1/" dc:format="image/jxl"/></rdf:RDF></x:xmpmeta>')
+    image.save(path, exif=exif.tobytes(), pnginfo=info)
 
 
 def animation(path):
@@ -142,7 +235,7 @@ def info(path):
 
 def main():
     OUTPUT.mkdir(parents=True, exist_ok=True)
-    for old in [*OUTPUT.glob('*.jxl'), *OUTPUT.glob('djxl/*.png')]:
+    for old in [*OUTPUT.glob('*.jxl'), *OUTPUT.glob('djxl/*.png'), *OUTPUT.glob('cms/*.png')]:
         old.unlink()
     cjxl, djxl = tool('cjxl'), tool('djxl')
     with tempfile.TemporaryDirectory() as temp:
@@ -168,8 +261,14 @@ def main():
         Image.open(tmp / 'photo.png').save(tmp / 'q90-444.jpg', quality=90, subsampling=0)
         pfm(tmp / 'float.pfm', 20, 12)
         animation(tmp / 'anim.png')
-        # Lossless encoding keeps an embedded profile as ICC instead of an enumerated colour encoding.
-        srgb = ImageCms.ImageCmsProfile(ImageCms.createProfile('sRGB')).tobytes()
+        # Lossless encoding keeps an embedded profile as ICC instead of an enumerated colour encoding. The creation
+        # date (bytes 24-35) is fixed so that regenerating the corpus reproduces the file.
+        srgb = bytearray(ImageCms.ImageCmsProfile(ImageCms.createProfile('sRGB')).tobytes())
+        srgb[24:36] = struct.pack('>6H', 2026, 1, 1, 0, 0, 0)
+        srgb = bytes(srgb)
+        Image.open(tmp / 'photo.png').save(tmp / 'photo-icc.png', icc_profile=icc_profile(gray=False))
+        Image.open(tmp / 'photo-gray.png').save(tmp / 'gray-icc.png', icc_profile=icc_profile(gray=True))
+        metadata_png(tmp / 'metadata.png')
         Image.open(tmp / 'rgb.png').save(tmp / 'icc.png', icc_profile=srgb)
         for orientation in range(1, 9):
             jpeg(tmp / f'orient{orientation}.jpg', 40, 24, orientation)
@@ -180,6 +279,9 @@ def main():
             'rgba8-lossless': ('rgba.png', '-d', '0'),
             'gray8-lossless': ('gray.png', '-d', '0'),
             'rgb16-lossless': ('rgb16.png', '-d', '0'),
+            # Integer depths between 8 and 16 bits, reduced to 8 bits like djxl's 8-bit output.
+            'rgb10-lossless': ('rgb16.png', '-d', '0', '--override_bitdepth=10'),
+            'rgb12-lossless': ('rgb16.png', '-d', '0', '-e', '9', '--override_bitdepth=12'),
             'gray16-alpha': ('gray16a.png', '-d', '0'),
             'float32': ('float.pfm', '-d', '0'),
             'small-64x64': ('small.png', '-d', '0'),
@@ -193,6 +295,7 @@ def main():
             'container-jxlc': ('rgb.png', '-d', '0', '--container=1'),
             'container-exif': ('orient1.jpg', '-j', '0', '-d', '0', '--compress_boxes=0'),
             'icc-profile': ('icc.png', '-d', '0'),
+            'metadata-brob': ('metadata.png', '-d', '0', '--compress_boxes=1'),
             'jxlp-v1': ('rgb.png', '-d', '1', '--output_mode=2'),
             # Modular coding tools: palettes, squeeze, passes, effort extremes, predictors, groups, LF groups.
             'palette': ('few.png', '-d', '0'),
@@ -222,6 +325,7 @@ def main():
             'lossy-no-filters': ('photo.png', '-d', '2', '--epf=0', '--gaborish=0'),
             'lossy-modular': ('photo.png', '-d', '1', '-m', '1'),
             'lossy-p3': ('photo.png', '-d', '1', '-x', 'color_space=RGB_D65_DCI_Rel_SRG'),
+            'lossy-16bit': ('rgb16.png', '-d', '1'),
             'lossy-patches': ('text.png', '-d', '1'),
             'jpeg-420': ('q90-420.jpg', '--lossless_jpeg=1'),
             'jpeg-444': ('q90-444.jpg', '--lossless_jpeg=1'),
@@ -229,6 +333,9 @@ def main():
             'lossy-noise': ('photo.png', '-d', '1', '--photon_noise_iso=3200'),
         }
         cases.update(lossy)
+        # XYB with an ICC profile: rendered in the profile's colour space and compared with cms/*.png.
+        managed = {'icc-lossy-rgb': ('photo-icc.png', '-d', '1'), 'icc-lossy-gray': ('gray-icc.png', '-d', '1')}
+        cases.update(managed)
         for name, (source, *options) in cases.items():
             run(cjxl, str(tmp / source), str(OUTPUT / f'{name}.jxl'), *options)
 
@@ -240,6 +347,8 @@ def main():
         assert (tmp / 'a.ppm').read_bytes() == (tmp / 'b.ppm').read_bytes()
 
     with tempfile.TemporaryDirectory() as temp:
+        for name in managed:
+            cms_reference(OUTPUT / f'{name}.jxl', temp, OUTPUT / 'cms' / f'{name}.png', gray='gray' in name)
         oracle = {path.name: info(path) | {'rgba8Sha256': pixels(path, temp, OUTPUT / 'djxl' / f'{path.stem}.png' if path.stem in lossy else None)}
                   for path in sorted(OUTPUT.glob('*.jxl'))}
     (OUTPUT / 'corpus.json').write_text(json.dumps({'generator': run(tool('cjxl'), '--version').splitlines()[0], 'files': oracle}, indent=1) + '\n')
