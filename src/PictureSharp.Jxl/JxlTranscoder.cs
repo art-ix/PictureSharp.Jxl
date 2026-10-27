@@ -5,7 +5,8 @@ namespace PictureSharp.Formats.Jxl;
 /// <summary>
 /// Losslessly transcodes 8-bit Huffman JPEG (sequential or progressive, grayscale or YCbCr 4:4:4/4:2:2/4:2:0) to JPEG XL
 /// and reconstructs the original JPEG byte for byte. Streams remain open. Input and output are buffered; cancellation
-/// or an I/O error during output may leave a partial result. This API does not re-encode pixels or change quality.
+/// or an I/O error during output may leave a partial result. Path overloads create or overwrite the output file only
+/// after transcoding succeeds. This API does not re-encode pixels or change quality.
 /// </summary>
 public static class JxlTranscoder
 {
@@ -44,6 +45,22 @@ public static class JxlTranscoder
         cancellationToken.ThrowIfCancellationRequested(); output.Write(result);
     }
 
+    /// <summary>Reads a JPEG file and writes a reconstructable JPEG XL file, creating or overwriting <paramref name="outputPath"/>.</summary>
+    public static void FromJpeg(string jpegPath, string outputPath, JxlTranscoderOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        ValidatePaths(jpegPath, outputPath); options ??= new();
+        byte[] result = JxlTranscoding.FromJpeg(ReadFile(jpegPath, options, cancellationToken), options, cancellationToken);
+        WriteFile(outputPath, result, cancellationToken);
+    }
+
+    /// <summary>Reads a JPEG XL file and writes the byte-exact original JPEG, creating or overwriting <paramref name="outputPath"/>.</summary>
+    public static void ToJpeg(string jxlPath, string outputPath, JxlTranscoderOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        ValidatePaths(jxlPath, outputPath); options ??= new();
+        byte[] result = JxlTranscoding.ToJpeg(ReadFile(jxlPath, options, cancellationToken), options, cancellationToken);
+        WriteFile(outputPath, result, cancellationToken);
+    }
+
     /// <summary>Transcodes buffered JPEG with asynchronous output I/O and cooperative CPU cancellation.</summary>
     public static async Task FromJpegAsync(ReadOnlyMemory<byte> jpeg, Stream output, JxlTranscoderOptions? options = null, CancellationToken cancellationToken = default)
     {
@@ -78,6 +95,24 @@ public static class JxlTranscoder
         await ToJpegAsync(input.AsMemory(), output, options, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>Transcodes a JPEG file to a JPEG XL file using asynchronous file I/O.</summary>
+    public static async Task FromJpegAsync(string jpegPath, string outputPath, JxlTranscoderOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        ValidatePaths(jpegPath, outputPath); options ??= new();
+        byte[] input = await ReadFileAsync(jpegPath, options, cancellationToken).ConfigureAwait(false);
+        byte[] result = JxlTranscoding.FromJpeg(input, options, cancellationToken);
+        await WriteFileAsync(outputPath, result, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Reconstructs the original JPEG file from a JPEG XL file using asynchronous file I/O.</summary>
+    public static async Task ToJpegAsync(string jxlPath, string outputPath, JxlTranscoderOptions? options = null, CancellationToken cancellationToken = default)
+    {
+        ValidatePaths(jxlPath, outputPath); options ??= new();
+        byte[] input = await ReadFileAsync(jxlPath, options, cancellationToken).ConfigureAwait(false);
+        byte[] result = JxlTranscoding.ToJpeg(input, options, cancellationToken);
+        await WriteFileAsync(outputPath, result, cancellationToken).ConfigureAwait(false);
+    }
+
     private static void ValidateOutput(Stream output)
     {
         ArgumentNullException.ThrowIfNull(output);
@@ -87,6 +122,40 @@ public static class JxlTranscoder
     {
         ArgumentNullException.ThrowIfNull(input);
         if (!input.CanRead) throw new ArgumentException("The stream must be readable.", nameof(input));
+    }
+    private static void ValidatePaths(string inputPath, string outputPath)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(inputPath);
+        ArgumentException.ThrowIfNullOrEmpty(outputPath);
+    }
+    private static byte[] ReadFile(string path, JxlTranscoderOptions options, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        using var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1, FileOptions.SequentialScan);
+        CheckLength(input.Length, options);
+        return Read(input, options, cancellationToken);
+    }
+    private static async Task<byte[]> ReadFileAsync(string path, JxlTranscoderOptions options, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var input = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 1, FileOptions.Asynchronous | FileOptions.SequentialScan);
+        await using (input.ConfigureAwait(false))
+        {
+            CheckLength(input.Length, options);
+            return await ReadAsync(input, options, cancellationToken).ConfigureAwait(false);
+        }
+    }
+    private static void WriteFile(string path, byte[] data, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        using var output = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 1);
+        output.Write(data);
+    }
+    private static async Task WriteFileAsync(string path, byte[] data, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var output = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 1, FileOptions.Asynchronous);
+        await using (output.ConfigureAwait(false)) await output.WriteAsync(data, cancellationToken).ConfigureAwait(false);
     }
     private static void CheckLength(long length, JxlTranscoderOptions options)
     {

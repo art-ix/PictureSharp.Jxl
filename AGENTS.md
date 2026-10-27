@@ -27,7 +27,8 @@ keep it at most 600 lines by condensing the oldest entries.
   tests/assets/generate-corpus.py; Category=Oracle tests need jxlinfo and skip without it.
 - Build/test Release, pack, then run scripts/verify-package-consumer.sh before release.
 - Never commit private photos, external corpora, references, build outputs or local logs.
-- Commit/push/publication only when requested. Releases remain private; no NuGet publishing.
+- Commit/push/publication only when requested. The repository and its GitHub
+  releases are public (user decision, 2026-10-27); no NuGet publishing.
 - VERSION is the single source of package version. Documentation and identifiers use English.
 
 Reference baseline: libjxl v0.12.0, pinned in scripts/reference-lock.json. Treat downloaded sources as read-only. User authorized this source download on 2026-10-26.

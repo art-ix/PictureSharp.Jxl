@@ -3,11 +3,11 @@
 JPEG XL for [PictureSharp](https://github.com/art-ix/PictureSharp), in pure C# with no native dependencies.
 Requires .NET 10+ and PictureSharp 0.8.5+.
 
-The package is attached to the private GitHub releases only (not nuget.org): put `PictureSharp.Jxl.0.7.1.nupkg` in a
-local NuGet feed, then
+The package is attached to the [GitHub releases](https://github.com/art-ix/PictureSharp.Jxl/releases) only (not nuget.org):
+put `PictureSharp.Jxl.0.7.2.nupkg` in a local NuGet feed, then
 
 ```bash
-dotnet add package PictureSharp.Jxl --version 0.7.1
+dotnet add package PictureSharp.Jxl --version 0.7.2
 ```
 
 ## Usage
@@ -32,10 +32,9 @@ the metadata without touching the frames.
 To preserve an existing JPEG exactly, use the separate transcoder without loading its pixels:
 
 ```csharp
-using var jpeg = File.OpenRead("original.jpg");
-using var jxl = File.Create("archived.jxl");
-JxlTranscoder.FromJpeg(jpeg, jxl);
-// JxlTranscoder.ToJpeg(jxlInput, jpegOutput) recovers the original bytes.
+JxlTranscoder.FromJpeg("original.jpg", "archived.jxl");
+JxlTranscoder.ToJpeg("archived.jxl", "restored.jpg"); // byte-identical to original.jpg
+// Stream and buffer overloads are also available, e.g. FromJpeg(jpegStream, jxlStream).
 ```
 
 ## Support
@@ -54,7 +53,7 @@ JxlTranscoder.FromJpeg(jpeg, jxl);
 Pixels match djxl (libjxl 0.12.0): lossless images exactly, lossy ones within 1 of 255 in a few samples. Files this
 package writes decode with djxl the same way.
 
-**Status:** early development (0.7.1). Not for production use yet; the API may change. CI runs on Linux, including a Native AOT build.
+**Status:** early development (0.7.2). Not for production use yet; the API may change. CI runs on Linux, including a Native AOT build.
 
 Guides: [decoding](docs/decoding.md) · [encoding](docs/encoding.md) · [JPEG transcoding](docs/transcoding.md) · [metadata](docs/metadata.md) ·
 [architecture](docs/architecture.md) · [release notes](docs/releases)

@@ -48,12 +48,16 @@ PictureSharp.Formats.Jxl.JxlImageFormatExtensions
 PictureSharp.Formats.Jxl.JxlTranscoder
   System.Threading.Tasks.Task FromJpegAsync(System.IO.Stream, System.IO.Stream, PictureSharp.Formats.Jxl.JxlTranscoderOptions, System.Threading.CancellationToken)
   System.Threading.Tasks.Task FromJpegAsync(System.ReadOnlyMemory`1[System.Byte], System.IO.Stream, PictureSharp.Formats.Jxl.JxlTranscoderOptions, System.Threading.CancellationToken)
+  System.Threading.Tasks.Task FromJpegAsync(System.String, System.String, PictureSharp.Formats.Jxl.JxlTranscoderOptions, System.Threading.CancellationToken)
   System.Threading.Tasks.Task ToJpegAsync(System.IO.Stream, System.IO.Stream, PictureSharp.Formats.Jxl.JxlTranscoderOptions, System.Threading.CancellationToken)
   System.Threading.Tasks.Task ToJpegAsync(System.ReadOnlyMemory`1[System.Byte], System.IO.Stream, PictureSharp.Formats.Jxl.JxlTranscoderOptions, System.Threading.CancellationToken)
+  System.Threading.Tasks.Task ToJpegAsync(System.String, System.String, PictureSharp.Formats.Jxl.JxlTranscoderOptions, System.Threading.CancellationToken)
   Void FromJpeg(System.IO.Stream, System.IO.Stream, PictureSharp.Formats.Jxl.JxlTranscoderOptions, System.Threading.CancellationToken)
   Void FromJpeg(System.ReadOnlySpan`1[System.Byte], System.IO.Stream, PictureSharp.Formats.Jxl.JxlTranscoderOptions, System.Threading.CancellationToken)
+  Void FromJpeg(System.String, System.String, PictureSharp.Formats.Jxl.JxlTranscoderOptions, System.Threading.CancellationToken)
   Void ToJpeg(System.IO.Stream, System.IO.Stream, PictureSharp.Formats.Jxl.JxlTranscoderOptions, System.Threading.CancellationToken)
   Void ToJpeg(System.ReadOnlySpan`1[System.Byte], System.IO.Stream, PictureSharp.Formats.Jxl.JxlTranscoderOptions, System.Threading.CancellationToken)
+  Void ToJpeg(System.String, System.String, PictureSharp.Formats.Jxl.JxlTranscoderOptions, System.Threading.CancellationToken)
 PictureSharp.Formats.Jxl.JxlTranscoderOptions
   Boolean Equals(PictureSharp.Formats.Jxl.JxlTranscoderOptions)
   Boolean Equals(System.Object)

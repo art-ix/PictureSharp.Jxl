@@ -113,6 +113,36 @@ public sealed class JxlJpegTests
     }
 
     [Test]
+    public async Task PathOverloads_ReconstructAndKeepOutputOnFailure()
+    {
+        string source = Path.Combine(Corpus, "metadata-1.jpg");
+        byte[] original = File.ReadAllBytes(source);
+        string directory = Directory.CreateTempSubdirectory("jxl-transcoder-").FullName;
+        try
+        {
+            string jxl = Path.Combine(directory, "archived.jxl"), jpeg = Path.Combine(directory, "restored.jpg");
+            JxlTranscoder.FromJpeg(source, jxl);
+            JxlTranscoder.ToJpeg(jxl, jpeg);
+            await Assert.That(File.ReadAllBytes(jpeg).AsSpan().SequenceEqual(original)).IsTrue();
+            File.Delete(jxl); File.Delete(jpeg);
+            await JxlTranscoder.FromJpegAsync(source, jxl);
+            await JxlTranscoder.ToJpegAsync(jxl, jpeg);
+            await Assert.That(File.ReadAllBytes(jpeg).AsSpan().SequenceEqual(original)).IsTrue();
+
+            byte[] existing = File.ReadAllBytes(jpeg);
+            await Assert.That(() => JxlTranscoder.ToJpeg(source, jpeg)).Throws<ImageFormatException>();
+            await Assert.That(() => JxlTranscoder.FromJpeg(source, jpeg, new() { MaxInputBytes = original.Length - 1 })).Throws<ImageFormatException>();
+            using var cancelled = new CancellationTokenSource(); cancelled.Cancel();
+            await Assert.That(async () => await JxlTranscoder.FromJpegAsync(source, jpeg, cancellationToken: cancelled.Token)).Throws<OperationCanceledException>();
+            await Assert.That(File.ReadAllBytes(jpeg).AsSpan().SequenceEqual(existing)).IsTrue();
+            await Assert.That(() => JxlTranscoder.FromJpeg(Path.Combine(directory, "missing.jpg"), jxl)).Throws<FileNotFoundException>();
+            await Assert.That(() => JxlTranscoder.FromJpeg("", jxl)).Throws<ArgumentException>();
+            await Assert.That(() => JxlTranscoder.ToJpeg(jxl, (string)null!)).Throws<ArgumentNullException>();
+        }
+        finally { Directory.Delete(directory, recursive: true); }
+    }
+
+    [Test]
     public async Task LimitsAndCancellation_AreEnforced()
     {
         byte[] jpeg = File.ReadAllBytes(Path.Combine(Corpus, "color-2-1.jpg"));

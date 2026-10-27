@@ -9,12 +9,8 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - name: Check tag and private visibility
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          test "$GITHUB_REF_NAME" = "v$(tr -d '[:space:]' < VERSION)"
-          test "$(gh api "repos/$GITHUB_REPOSITORY" --jq .private)" = true
+      - name: Check tag
+        run: test "$GITHUB_REF_NAME" = "v$(tr -d '[:space:]' < VERSION)"
   validate:
     needs: version
     uses: ./.github/workflows/ci.yml
@@ -29,7 +25,7 @@ jobs:
         with:
           name: packages
           path: artifacts
-      - name: Publish private release
+      - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
