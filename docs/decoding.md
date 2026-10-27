@@ -107,6 +107,15 @@ materialized; Brotli output is charged as it grows, so a decompression bomb stop
 `ImageFormatException`. With `IgnoreMetadata` nothing is charged or reported (the orientation still is).
 `Image.EditMetadata` throws `NotSupportedException`.
 
+### Conversion to sRGB
+
+With `ColorConversion = ToSrgb`, frames coded in XYB (lossy images) are rendered directly to sRGB (gray images:
+gray with the sRGB curve) in the floating-point pipeline, as libjxl does for an sRGB output encoding, and get no
+ICC profile or colour description. Their samples are quantized to 8 bits once, so wide-gamut photos match
+`djxl --color_space=sRGB` within the lossy tolerance, also for ICC profiles with lookup tables; colours outside
+sRGB are clipped. Images coded without XYB (lossless images, recompressed JPEGs) keep their colour space and are
+converted by PictureSharp from the 8-bit samples. `ReadMetadata` still reports the file's ICC profile.
+
 ## Tests and corpus
 
 `tests/assets/corpus` holds small synthetic files made by `tests/assets/generate-corpus.py` with
@@ -115,8 +124,10 @@ renders at 8 bits; lossy files also keep djxl's rendering in `corpus/djxl/*.png`
 tolerance above. Lossy files with a test ICC profile (Adobe RGB-like primaries, a 1024-point tone curve
 cjxl cannot express as an enumerated encoding) keep `corpus/cms/*.png`: djxl's linear sRGB floats
 converted to the profile in double precision, compared within 1 (the decoder dithers, the reference
-rounds). The oracle tests also check every ICC profile against `djxl --orig_icc_out` and, for such
-images, PictureSharp's sRGB conversion against `djxl --color_space` (mean difference at most 0.5). The tests therefore do not need the tools. Oracle tests compare damaged files with
+rounds). These files and the P3 lossy file also keep `corpus/srgb/*.png`, djxl's rendering for
+`--color_space=sRGB`, which `ToSrgb` matches within the lossy tolerance. The tests therefore do not need
+the tools. Oracle tests check every ICC profile against `djxl --orig_icc_out`, `ToSrgb` of XYB images
+outside sRGB against `djxl --color_space` within the lossy tolerance, compare damaged files with
 jxlinfo and decoded pixels with djxl, and are skipped when the tools are not on `PATH` (or
 `JXL_TOOLS`). `JXL_ORACLE_DIR` adds the `.jxl` files of a local directory to the pixel comparison:
 

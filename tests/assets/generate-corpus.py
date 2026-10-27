@@ -4,7 +4,8 @@
 Requires Pillow, NumPy and the libjxl v0.12.0 tools (cjxl, djxl, jxlinfo) on PATH or in JXL_TOOLS. The outputs are
 committed, so tests and CI do not need the tools. Lossy fixtures also get djxl's 8-bit rendering in djxl/, which
 tests compare within a tolerance. XYB images with an ICC profile get cms/: djxl's linear sRGB floats converted to
-the profile in double precision (djxl itself would need a colour management system).
+the profile in double precision (djxl itself would need a colour management system). XYB images outside sRGB get
+srgb/: djxl's rendering for --color_space=sRGB (gray: the sRGB curve), which ColorConversion = ToSrgb matches.
 Run: python3 tests/assets/generate-corpus.py
 """
 import hashlib
@@ -150,6 +151,14 @@ def cms_reference(path, temp, reference, gray):
     Image.fromarray(samples[..., 0] if gray else samples, 'L' if gray else 'RGB').save(reference, optimize=True)
 
 
+def srgb_reference(path, reference, gray):
+    """djxl's 8-bit rendering of an XYB image straight to sRGB, without a colour management system."""
+    reference.parent.mkdir(exist_ok=True)
+    space = 'Gra_D65_Rel_SRG' if gray else 'RGB_D65_SRG_Rel_SRG'
+    run(tool('djxl'), str(path), str(reference), '--bits_per_sample=8', '--quiet', f'--color_space={space}')
+    Image.open(reference).save(reference, optimize=True)
+
+
 def metadata_png(path):
     """A PNG with an eXIf chunk (orientation 6) and XMP, which cjxl stores as Exif and xml boxes."""
     image = Image.new('RGB', (40, 24))
@@ -235,7 +244,7 @@ def info(path):
 
 def main():
     OUTPUT.mkdir(parents=True, exist_ok=True)
-    for old in [*OUTPUT.glob('*.jxl'), *OUTPUT.glob('djxl/*.png'), *OUTPUT.glob('cms/*.png')]:
+    for old in [*OUTPUT.glob('*.jxl'), *OUTPUT.glob('djxl/*.png'), *OUTPUT.glob('cms/*.png'), *OUTPUT.glob('srgb/*.png')]:
         old.unlink()
     cjxl, djxl = tool('cjxl'), tool('djxl')
     with tempfile.TemporaryDirectory() as temp:
@@ -349,6 +358,8 @@ def main():
     with tempfile.TemporaryDirectory() as temp:
         for name in managed:
             cms_reference(OUTPUT / f'{name}.jxl', temp, OUTPUT / 'cms' / f'{name}.png', gray='gray' in name)
+        for name in [*managed, 'lossy-p3']:
+            srgb_reference(OUTPUT / f'{name}.jxl', OUTPUT / 'srgb' / f'{name}.png', gray='gray' in name)
         oracle = {path.name: info(path) | {'rgba8Sha256': pixels(path, temp, OUTPUT / 'djxl' / f'{path.stem}.png' if path.stem in lossy else None)}
                   for path in sorted(OUTPUT.glob('*.jxl'))}
     (OUTPUT / 'corpus.json').write_text(json.dumps({'generator': run(tool('cjxl'), '--version').splitlines()[0], 'files': oracle}, indent=1) + '\n')

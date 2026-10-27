@@ -1,4 +1,8 @@
 using System.Diagnostics;
+using PictureSharp.Formats.Jxl.Codestream.Frames;
+using PictureSharp.Formats.Jxl.Codestream.IO;
+using PictureSharp.Formats.Jxl.Codestream.Model;
+using PictureSharp.Formats.Jxl.Container;
 using static PictureSharp.Formats.Jxl.Tests.JxlTestData;
 
 namespace PictureSharp.Formats.Jxl.Tests;
@@ -62,36 +66,29 @@ public sealed class JxlDecodeOracleTests
     }
 
     /// <summary>
-    /// Every corpus file this version decodes matches djxl: lossless ones exactly, lossy ones within
-    /// <see cref="JxlDecodeTests.Tolerance"/>; the others are reported unsupported.
+    /// The djxl --color_space (sRGB, or gray with the sRGB curve) that ToSrgb renders directly when the last frame is XYB
+    /// and the image is not plain sRGB, as djxl does without a colour management system; otherwise null.
     /// </summary>
-    /// <summary>
-    /// Null when an image rendered in its ICC profile and converted to sRGB by PictureSharp is close to djxl's sRGB
-    /// output: mean difference at most 0.5 and 99% of the samples within 2. Both conversions are exact to about 1, but
-    /// the intermediate 8-bit samples of a wider gamut amplify near the edge of sRGB (several levels in dark channels).
-    /// The profile rendering itself is checked within 1 against cms/*.png.
-    /// </summary>
-    internal static string? ConvertedTolerance(Image actual, Image expected)
+    internal static string? SrgbColorSpace(string path)
     {
-        if ((actual.Width, actual.Height) != (expected.Width, expected.Height))
+        JxlCodestream codestream = JxlContainer.Parse(File.ReadAllBytes(path)).Codestream;
+        JxlHeaders headers = JxlHeadersReader.Read(codestream);
+        JxlColorEncoding color = headers.Metadata.Color;
+        bool srgb = !color.WantIcc && color.Gamma == 0 && color.TransferFunction == JxlTransferFunction.Srgb
+            && (color.ColorSpace == JxlColorSpace.Gray || color.Primaries == JxlPrimaries.Srgb && color.WhitePoint == JxlWhitePoint.D65);
+        if (srgb || JxlDecodeSession.ReadFrameHeaders(codestream, headers)[^1].ColorTransform != JxlColorTransform.Xyb)
         {
-            return $"{actual.Width}x{actual.Height} instead of {expected.Width}x{expected.Height}";
+            return null;
         }
 
-        byte[] a = Rgba(actual);
-        byte[] e = Rgba(expected);
-        long total = 0;
-        int far = 0;
-        for (int i = 0; i < a.Length; i++)
-        {
-            int difference = Math.Abs(a[i] - e[i]);
-            total += difference;
-            far += difference > 2 ? 1 : 0;
-        }
-
-        return total * 2 > a.Length || far * 100L > a.Length ? $"mean {(double)total / a.Length:F3}, {far} samples differ by more than 2" : null;
+        return color.ColorSpace == JxlColorSpace.Gray ? "Gra_D65_Rel_SRG" : "RGB_D65_SRG_Rel_SRG";
     }
 
+    /// <summary>
+    /// Every corpus file this version decodes matches djxl: lossless ones exactly, lossy ones within
+    /// <see cref="JxlDecodeTests.Tolerance"/>; the others are reported unsupported. XYB images outside sRGB are also
+    /// converted with ToSrgb and compared with djxl --color_space=sRGB within the same tolerance.
+    /// </summary>
     [Test]
     [Property("Category", "Oracle")]
     public async Task Corpus_DecodesLikeDjxl()
@@ -124,16 +121,20 @@ public sealed class JxlDecodeOracleTests
 
             using (image)
             {
-                if (image.Metadata.IccProfile is not null && Image.Identify(path, Options()).Compression == ImageCompression.Lossy)
+                string? colorSpace = SrgbColorSpace(path);
+                if (colorSpace is not null)
                 {
-                    // XYB with an ICC profile is rendered in the profile; djxl needs its colour management system.
                     using Image converted = Image.Load(path, Options() with { ApplyExifOrientation = true, ColorConversion = ColorConversionMode.ToSrgb });
-                    using Image srgb = DjxlImage(djxl!, path, "--color_space=RGB_D65_SRG_Rel_SRG");
-                    if (ConvertedTolerance(converted, srgb) is { } converted8)
+                    using Image srgb = DjxlImage(djxl!, path, "--color_space=" + colorSpace);
+                    if (JxlDecodeTests.Tolerance(converted, srgb) is { } converted8)
                     {
-                        mismatches.Add($"{name}: {converted8}");
+                        mismatches.Add($"{name} (ToSrgb): {converted8}");
                     }
+                }
 
+                if (colorSpace is not null && image.Metadata.IccProfile is not null)
+                {
+                    // Rendered in the profile; djxl would need its colour management system (cms/*.png covers it).
                     decoded.Add(name);
                     continue;
                 }

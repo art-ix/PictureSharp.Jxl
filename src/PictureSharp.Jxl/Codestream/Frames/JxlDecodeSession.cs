@@ -8,10 +8,11 @@ namespace PictureSharp.Formats.Jxl.Codestream.Frames;
 
 /// <summary>
 /// Owns the reference/DC frames of one decode; never shared between calls. The ICC profile is limited to
-/// <paramref name="maxIccBytes"/> and charged to <paramref name="reserveIcc"/> before it is allocated.
+/// <paramref name="maxIccBytes"/> and charged to <paramref name="reserveIcc"/> before it is allocated. With
+/// <paramref name="renderSrgb"/> XYB frames are rendered as sRGB instead of the image's colour space.
 /// </summary>
 internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders headers, CancellationToken cancellationToken = default,
-    long maxIccBytes = JxlIccStream.MaxProfileSize, Action<long>? reserveIcc = null)
+    long maxIccBytes = JxlIccStream.MaxProfileSize, Action<long>? reserveIcc = null, bool renderSrgb = false)
 {
     private readonly JxlReferenceFrames references = new();
     private bool started;
@@ -47,7 +48,8 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
         int alpha = JxlDecodeSupportPolicy.EnsureSupported(metadata);
         var reader = JxlFrameSectionReader.FirstFrame(codestream, headers, cancellationToken, out byte[]? icc, maxIccBytes, reserveIcc);
         IccProfile = icc;
-        JxlIccTarget? iccTarget = icc is null ? null : JxlIccTarget.TryCreate(icc, metadata.Color.ColorSpace == JxlColorSpace.Gray);
+        JxlColorTarget target = renderSrgb ? JxlColorTarget.Srgb
+            : JxlColorTarget.Profile(icc is null ? null : JxlIccTarget.TryCreate(icc, metadata.Color.ColorSpace == JxlColorSpace.Gray));
         // Reference frames (patch sources) and DC frames come first; the last frame is the image.
         while (true)
         {
@@ -58,7 +60,7 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
             // A reference frame saved after the colour transform can only serve blending, which is not supported.
             if (frame.Type != JxlFrameType.ReferenceOnly || frame.SaveBeforeColorTransform)
             {
-                var decoder = new JxlFrameDecoder(frame, headers, references, cancellationToken, iccTarget);
+                var decoder = new JxlFrameDecoder(frame, headers, references, cancellationToken, target);
                 JxlFrameSectionReader.DecodeSections(codestream, frame, start, toc, decoder);
                 if (frame.Type == JxlFrameType.Regular)
                 {

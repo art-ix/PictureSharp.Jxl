@@ -6,12 +6,12 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <PackageId>PictureSharp.Jxl</PackageId>
-    <Description>Pure C# JPEG XL plugin for PictureSharp. Version 0.5.0 detects and identifies JPEG XL files (raw codestream and container), decodes still lossy (VarDCT, XYB) and lossless (Modular) images, including recompressed JPEGs, patches and progressive files, and reads the ICC profile, EXIF and XMP (also Brotli-compressed); encoding is not implemented yet.</Description>
+    <Description>Pure C# JPEG XL plugin for PictureSharp. Version 0.5.1 detects and identifies JPEG XL files (raw codestream and container), decodes still lossy (VarDCT, XYB) and lossless (Modular) images, including recompressed JPEGs, patches and progressive files, and reads the ICC profile, EXIF and XMP (also Brotli-compressed); with ColorConversion = ToSrgb lossy images are rendered straight to sRGB; encoding is not implemented yet.</Description>
     <PackageTags>picturesharp;image;jxl;jpegxl</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/art-ix/picturesharp.jxl</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageReleaseNotes>0.5.0: Metadata. The ICC profile is decoded from the codestream and attached; XYB images with matrix/TRC or gray profiles are rendered in the profile. EXIF and XMP boxes, including Brotli-compressed brob boxes, are read; the codestream orientation overrides EXIF. Enumerated colour encodings become a colour description. Image.ReadMetadata is supported (no editing). No encoding or animation support.</PackageReleaseNotes>
+    <PackageReleaseNotes>0.5.1: ColorConversion = ToSrgb renders lossy (XYB) images straight to sRGB in floating point, as djxl --color_space=sRGB does, so wide-gamut photos are quantized once and no longer differ by several levels near the edge of sRGB; this also covers ICC profiles with lookup tables. Images without XYB are still converted by PictureSharp. No public API changes; no encoding or animation support.</PackageReleaseNotes>
   </PropertyGroup>
   <ItemGroup><PackageReference Include="PictureSharp" Version="$(PictureSharpVersion)" /></ItemGroup>
   <ItemGroup>

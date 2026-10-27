@@ -6,7 +6,7 @@ namespace PictureSharp.Formats.Jxl.Codestream.Rendering;
 
 /// <summary>Ordered libjxl PreparePipeline stages (v0.12.0, BSD-3-Clause), independent of entropy decoding.</summary>
 internal sealed class JxlFrameRenderer(JxlFrameHeader frame, JxlHeaders headers, JxlPatch[] patches,
-    JxlReferenceFrames references, float[]? epfSigma, CancellationToken cancellationToken, JxlIccTarget? iccTarget = null)
+    JxlReferenceFrames references, float[]? epfSigma, CancellationToken cancellationToken, JxlColorTarget? colorTarget = null)
 {
     private JxlImageMetadata Metadata => headers.Metadata;
     private int Width => (int)frame.XSize;
@@ -93,7 +93,7 @@ internal sealed class JxlFrameRenderer(JxlFrameHeader frame, JxlHeaders headers,
 
         if (colorTransform && color.Length == 3)
         {
-            new JxlColorOutput(Metadata, headers.TransformData, frame.ColorTransform, iccTarget).Apply(color, cancellationToken);
+            new JxlColorOutput(Metadata, headers.TransformData, frame.ColorTransform, colorTarget).Apply(color, cancellationToken);
         }
 
         return color;

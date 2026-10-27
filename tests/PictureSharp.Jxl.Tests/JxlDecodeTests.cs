@@ -11,7 +11,8 @@ namespace PictureSharp.Formats.Jxl.Tests;
 /// <summary>
 /// Decoding against the djxl renderings recorded with the corpus (no tools needed): lossless files by the hash in
 /// corpus.json, lossy ones against djxl/*.png within <see cref="Tolerance"/>, XYB images with an ICC profile against
-/// cms/*.png (djxl's linear output converted to the profile) within <see cref="ManagedTolerance"/>.
+/// cms/*.png (djxl's linear output converted to the profile) within <see cref="ManagedTolerance"/>, and XYB images
+/// outside sRGB converted with ToSrgb against srgb/*.png (djxl --color_space=sRGB) within <see cref="Tolerance"/>.
 /// </summary>
 public sealed class JxlDecodeTests
 {
@@ -60,6 +61,20 @@ public sealed class JxlDecodeTests
         }
 
         using Image expected = Image.Load(reference);
+        await Assert.That(Tolerance(image, expected)).IsNull();
+    }
+
+    public static IEnumerable<string> SrgbFiles() =>
+        Directory.GetFiles(CorpusPath("srgb"), "*.png").Select(path => Path.ChangeExtension(Path.GetFileName(path), ".jxl")).Order(StringComparer.Ordinal);
+
+    [Test]
+    [MethodDataSource(nameof(SrgbFiles))]
+    public async Task Corpus_ToSrgbMatchesTheDjxlSrgbRendering(string name)
+    {
+        // XYB is rendered as sRGB in floating point and quantized once, so nothing is left for PictureSharp to convert.
+        using Image image = Image.Load(CorpusPath(name), Options() with { ApplyExifOrientation = true, ColorConversion = ColorConversionMode.ToSrgb });
+        await Assert.That((image.Metadata.IccProfile, image.Metadata.HasColorDescription)).IsEqualTo(((byte[]?)null, false));
+        using Image expected = Image.Load(CorpusPath(Path.Combine("srgb", Path.ChangeExtension(name, ".png"))));
         await Assert.That(Tolerance(image, expected)).IsNull();
     }
 

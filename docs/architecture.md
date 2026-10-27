@@ -86,7 +86,9 @@ working-memory budget and broader pooling require a later, measured change.
 ## Extension points and unchanged capabilities
 
 0.5.0 added `JxlFormat.MetadataCodec` as its only public API change; there are
-still no public options. The scalar numerical behavior of earlier versions is fixed.
+still no public options. XYB frames are rendered to a `JxlColorTarget`: the image's
+colour space (its ICC profile when `JxlIccTarget` can use it) or, for
+`ColorConversion = ToSrgb`, sRGB, chosen once per decode session. The scalar numerical behavior of earlier versions is fixed.
 
 - **ICC/EXIF/XMP:** `JxlContainer.Parse(..., includeMetadata: true)` indexes
   borrowed Exif/xml payloads, including `brob` payloads with the inner type removed;

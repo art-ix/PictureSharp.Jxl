@@ -26,13 +26,9 @@ internal static class JxlMetadataReader
             return;
         }
 
+        EnsureConvertible(encoding, options);
         if (encoding.Gamma == 0 && encoding.TransferFunction is JxlTransferFunction.Pq or JxlTransferFunction.Hlg)
         {
-            if (options.ColorConversion != ColorConversionMode.None)
-            {
-                throw new NotSupportedException("JPEG XL images with PQ or HLG transfer functions cannot be converted to sRGB.");
-            }
-
             return;
         }
 
@@ -59,6 +55,16 @@ internal static class JxlMetadataReader
         if (gamma is not null)
         {
             metadata.Gamma = gamma;
+        }
+    }
+
+    /// <summary>Rejects a conversion to sRGB of PQ or HLG (HDR) samples, which needs tone mapping.</summary>
+    public static void EnsureConvertible(JxlColorEncoding encoding, DecoderOptions options)
+    {
+        if (options.ColorConversion != ColorConversionMode.None && !encoding.WantIcc && encoding.Gamma == 0
+            && encoding.TransferFunction is JxlTransferFunction.Pq or JxlTransferFunction.Hlg)
+        {
+            throw new NotSupportedException("JPEG XL images with PQ or HLG transfer functions cannot be converted to sRGB.");
         }
     }
 

@@ -2,6 +2,9 @@ using System.Buffers.Binary;
 using System.IO.Compression;
 using System.Text;
 using PictureSharp.Formats.Jxl.Codestream.Color;
+using PictureSharp.Formats.Jxl.Codestream.IO;
+using PictureSharp.Formats.Jxl.Codestream.Model;
+using PictureSharp.Formats.Jxl.Container;
 using static PictureSharp.Formats.Jxl.Tests.JxlTestData;
 
 namespace PictureSharp.Formats.Jxl.Tests;
@@ -60,13 +63,34 @@ public sealed class JxlMetadataTests
     }
 
     [Test]
-    public async Task Icc_ConversionToSrgbUsesTheProfile()
+    public async Task Icc_ConversionToSrgbRendersXybDirectly()
     {
         using Image managed = Image.Load(CorpusPath("icc-lossy-rgb.jxl"), Options());
         using Image srgb = Image.Load(CorpusPath("icc-lossy-rgb.jxl"), Options() with { ColorConversion = ColorConversionMode.ToSrgb });
         await Assert.That(srgb.Metadata.IccProfile).IsNull();
         await Assert.That(JxlDecodeOracleTests.Rgba(srgb)).IsNotEquivalentTo(JxlDecodeOracleTests.Rgba(managed));
+        // The profile is still read with the metadata.
+        await Assert.That(srgb.Metadata.HasColorDescription).IsFalse();
+        await Assert.That(Read("icc-lossy-rgb.jxl", Options() with { ColorConversion = ColorConversionMode.ToSrgb }).IccProfile).IsNotNull();
+        // The sRGB target overrides the profile, including one with lookup tables, and enumerated colour spaces.
+        JxlImageMetadata metadata = Headers("icc-lossy-rgb.jxl").Metadata;
+        foreach (JxlColorTarget target in new[] { JxlColorTarget.Srgb, JxlColorTarget.Profile(null) })
+        {
+            JxlColorEncoding output = JxlColorOutput.DescribeOutput(metadata, JxlColorTransform.Xyb, target);
+            await Assert.That((output.WantIcc, output.Primaries, output.TransferFunction)).IsEqualTo((false, JxlPrimaries.Srgb, JxlTransferFunction.Srgb));
+        }
+
+        JxlImageMetadata p3 = Headers("lossy-p3.jxl").Metadata;
+        await Assert.That(JxlColorOutput.DescribeOutput(p3, JxlColorTransform.Xyb, JxlColorTarget.Original).Primaries).IsEqualTo(JxlPrimaries.P3);
+        await Assert.That(JxlColorOutput.DescribeOutput(p3, JxlColorTransform.Xyb, JxlColorTarget.Srgb).Primaries).IsEqualTo(JxlPrimaries.Srgb);
+        // Samples coded without XYB keep their colour space for PictureSharp to convert.
+        await Assert.That(JxlColorOutput.DescribeOutput(p3, JxlColorTransform.None, JxlColorTarget.Srgb).Primaries).IsEqualTo(JxlPrimaries.P3);
+        using Image p3Srgb = Image.Load(CorpusPath("lossy-p3.jxl"), Options() with { ColorConversion = ColorConversionMode.ToSrgb });
+        await Assert.That(p3Srgb.Metadata.HasColorDescription).IsFalse();
     }
+
+    private static JxlHeaders Headers(string name) =>
+        JxlHeadersReader.Read(JxlContainer.Parse(File.ReadAllBytes(CorpusPath(name))).Codestream);
 
     [Test]
     public async Task ColorDescription_DescribesEnumeratedEncodings()

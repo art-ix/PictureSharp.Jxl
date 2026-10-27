@@ -4,10 +4,10 @@ JPEG XL for [PictureSharp](https://github.com/art-ix/PictureSharp), in pure C# w
 Requires .NET 10+ and PictureSharp 0.8.5+.
 
 The package is attached to the private GitHub releases only (not nuget.org): put
-`PictureSharp.Jxl.0.5.0.nupkg` in a local NuGet feed next to nuget.org, then
+`PictureSharp.Jxl.0.5.1.nupkg` in a local NuGet feed next to nuget.org, then
 
 ```bash
-dotnet add package PictureSharp.Jxl --version 0.5.0
+dotnet add package PictureSharp.Jxl --version 0.5.1
 ```
 
 ## Usage
@@ -33,8 +33,9 @@ ImageMetadata metadata = Image.ReadMetadata("photo.jxl"); // ICC, EXIF and XMP w
   Modular, recompressed JPEGs (YCbCr with chroma subsampling), progressive files, patches and DC frames,
   restoration filters and upsampling. RGB, grayscale and alpha; integer samples up to 16 bits are reduced to 8.
 - **Colour:** the ICC profile is attached; lossy (XYB) images with matrix/TRC or gray profiles are rendered in that
-  profile, so `ColorConversion = ToSrgb` converts them correctly. Enumerated colour spaces (P3, BT.2020, gamma, …)
-  become a colour description.
+  profile. Enumerated colour spaces (P3, BT.2020, gamma, …) become a colour description. With
+  `ColorConversion = ToSrgb`, XYB images are rendered straight to sRGB in floating point, as `djxl --color_space=sRGB`
+  does, so their samples are quantized once; other images are converted by PictureSharp.
 - **Metadata:** ICC, EXIF and XMP, also Brotli-compressed (`brob`), through `Image.Load` and `Image.ReadMetadata`;
   the codestream orientation wins over the EXIF tag. Editing metadata is not supported yet.
 - **Write:** not yet.
@@ -43,9 +44,10 @@ ImageMetadata metadata = Image.ReadMetadata("photo.jxl"); // ICC, EXIF and XMP w
   without the profile.
 
 Pixels match djxl (libjxl 0.12.0): lossless images exactly, lossy ones within 1 of 255 in a few samples; lossy
-images in an ICC profile match a double-precision colour conversion within 1.
+images in an ICC profile match a double-precision colour conversion within 1, and `ToSrgb` matches djxl's sRGB
+rendering within the lossy tolerance.
 
-**Status:** early development (0.5.0): header parsing, lossless and lossy decoding and metadata reading are done.
+**Status:** early development (0.5.1): header parsing, lossless and lossy decoding and metadata reading are done.
 Next come lossless (0.6.0) and lossy encoding. Not for production use yet; the API may change.
 CI runs on Linux, including a Native AOT build.
 

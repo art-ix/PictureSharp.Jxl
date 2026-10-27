@@ -13,7 +13,8 @@ namespace PictureSharp.Formats.Jxl.Codestream.Color;
 /// <remarks>
 /// XYB images are rendered in their enumerated colour space, as libjxl does without a colour management system.
 /// With an ICC profile libjxl converts linear sRGB to the profile with a colour management system; this decoder does
-/// that for matrix/TRC and gray profiles (<see cref="JxlIccTarget"/>) and otherwise renders sRGB.
+/// that for matrix/TRC and gray profiles (<see cref="JxlIccTarget"/>) and otherwise renders sRGB. On request
+/// (<see cref="JxlColorTarget.Srgb"/>) every XYB image is rendered as sRGB, as libjxl does for an sRGB output encoding.
 /// </remarks>
 internal sealed class JxlColorOutput
 {
@@ -34,7 +35,7 @@ internal sealed class JxlColorOutput
     private readonly JxlToneCurve[]? curves;
 
     public JxlColorOutput(JxlImageMetadata metadata, JxlCustomTransformData transformData, JxlColorTransform transform,
-        JxlIccTarget? icc = null)
+        JxlColorTarget? target = null)
     {
         this.transform = transform;
         if (transform != JxlColorTransform.Xyb)
@@ -42,9 +43,9 @@ internal sealed class JxlColorOutput
             return;
         }
 
-        JxlColorEncoding color = DescribeOutput(metadata, transform, icc);
+        JxlColorEncoding color = DescribeOutput(metadata, transform, target);
         bool gray = color.ColorSpace == JxlColorSpace.Gray;
-        icc = color.WantIcc ? icc : null;
+        JxlIccTarget? icc = color.WantIcc ? target?.Icc : null;
         curves = icc?.Curves;
 
         if (color.Gamma == 0 && color.TransferFunction == JxlTransferFunction.Hlg)
@@ -87,20 +88,20 @@ internal sealed class JxlColorOutput
     }
 
     /// <summary>
-    /// The encoding of rendered samples: the image's own, which for XYB with an ICC profile requires a usable
-    /// <paramref name="icc"/> target, or the sRGB fallback (<see cref="JxlColorEncoding.WantIcc"/> then is false).
+    /// The encoding of rendered samples: the image's own, which for XYB with an ICC profile requires a usable ICC
+    /// target, or sRGB (<see cref="JxlColorEncoding.WantIcc"/> then is false) as the fallback or on request.
     /// </summary>
-    public static JxlColorEncoding DescribeOutput(JxlImageMetadata metadata, JxlColorTransform transform, JxlIccTarget? icc = null)
+    public static JxlColorEncoding DescribeOutput(JxlImageMetadata metadata, JxlColorTransform transform, JxlColorTarget? target = null)
     {
         if (transform != JxlColorTransform.Xyb) return metadata.Color;
         JxlColorEncoding color = metadata.Color;
         bool gray = color.ColorSpace == JxlColorSpace.Gray;
-        if (color.WantIcc && icc is not null && icc.IsGray == gray)
+        if (color.WantIcc && target?.Icc is { } icc && icc.IsGray == gray)
         {
             return color;
         }
 
-        bool enumerated = !color.WantIcc && (color.Gamma != 0 || color.TransferFunction != JxlTransferFunction.Unknown)
+        bool enumerated = target?.IsSrgb != true && !color.WantIcc && (color.Gamma != 0 || color.TransferFunction != JxlTransferFunction.Unknown)
             && (!gray || color.WhitePoint == JxlWhitePoint.D65);
         if (!enumerated)
         {
