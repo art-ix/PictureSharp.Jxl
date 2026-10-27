@@ -233,7 +233,9 @@ internal static class JxlHeaderWriter
         writer.Write(2, (uint)frame.Type);
         writer.Write(frame.Encoding == JxlFrameEncoding.Modular);
         JxlFieldWriter.U64(writer, (ulong)frame.Flags);
-        if (!metadata.XybEncoded) writer.Write(false);            // do_YCbCr
+        if (!metadata.XybEncoded) writer.Write(frame.ColorTransform == JxlColorTransform.YCbCr);
+        if (frame.ColorTransform == JxlColorTransform.YCbCr)
+            foreach (uint mode in frame.ChromaModes) writer.Write(2, mode);
         writer.Write(2, UpsamplingSelector(frame.Upsampling));
         for (int i = 0; i < metadata.ExtraChannels.Count; i++)
         {

@@ -33,6 +33,8 @@ internal sealed class JxlLossyFrame
         Coefficients = new int[header.Groups][];
     }
 
+    public bool Jpeg { get; init; }
+
     public JxlFrameHeader Header { get; set; }
 
     public JxlLossySettings Settings { get; }

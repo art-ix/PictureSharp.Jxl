@@ -84,4 +84,26 @@ using (var source = new Image(96, 64))
             throw new InvalidOperationException("Lossy encoding did not round-trip.");
     }
 }
-Console.WriteLine("Package consumer: registration, detection, Identify, decoding, encoding and metadata passed.");
+// Consume the package's public coefficient transcoder, including cjxl-generated JXL and asynchronous APIs.
+foreach (string name in new[] { "gray-1", "metadata-1" })
+{
+    string folder = Path.Combine(AppContext.BaseDirectory, "transcoding");
+    byte[] original = File.ReadAllBytes(Path.Combine(folder, name + ".jpg"));
+    using var encoded = new MemoryStream();
+    JxlTranscoder.FromJpeg(original, encoded);
+    using var restored = new MemoryStream();
+    JxlTranscoder.ToJpeg(encoded.ToArray(), restored);
+    if (!restored.ToArray().AsSpan().SequenceEqual(original)) throw new InvalidOperationException("JPEG transcoding changed original bytes.");
+    using Image rendered = Image.Load(encoded.ToArray());
+    if (rendered.Width == 0) throw new InvalidOperationException("Transcoded JPEG cannot be rendered.");
+    using var reference = File.OpenRead(Path.Combine(folder, name + ".jxl"));
+    restored.SetLength(0);
+    JxlTranscoder.ToJpeg(reference, restored);
+    if (!restored.ToArray().AsSpan().SequenceEqual(original)) throw new InvalidOperationException("cjxl JPEG reconstruction changed original bytes.");
+    encoded.SetLength(0);
+    JxlTranscoder.FromJpegAsync(original.AsMemory(), encoded).GetAwaiter().GetResult();
+    encoded.Position = 0; restored.SetLength(0);
+    JxlTranscoder.ToJpegAsync(encoded, restored).GetAwaiter().GetResult();
+    if (!restored.ToArray().AsSpan().SequenceEqual(original)) throw new InvalidOperationException("Async JPEG reconstruction changed original bytes.");
+}
+Console.WriteLine("Package consumer: registration, detection, Identify, decoding, encoding, metadata and JPEG transcoding passed.");

@@ -4,5 +4,9 @@
     <InvariantGlobalization>true</InvariantGlobalization>
     <RestorePackagesPath>$(MSBuildThisFileDirectory)../../artifacts/consumer-packages</RestorePackagesPath>
   </PropertyGroup>
+  <ItemGroup>
+    <None Include="../assets/corpus/transcoding/gray-1.jpg;../assets/corpus/transcoding/gray-1.jxl;../assets/corpus/transcoding/metadata-1.jpg;../assets/corpus/transcoding/metadata-1.jxl"
+          Link="transcoding/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+  </ItemGroup>
   <ItemGroup><PackageReference Include="PictureSharp.Jxl" Version="$(Version)" /></ItemGroup>
 </Project>

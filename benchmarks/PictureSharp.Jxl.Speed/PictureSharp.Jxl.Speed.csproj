@@ -1,0 +1,4 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><IsPackable>false</IsPackable><ServerGarbageCollection>false</ServerGarbageCollection></PropertyGroup>
+  <ItemGroup><ProjectReference Include="../../src/PictureSharp.Jxl/PictureSharp.Jxl.csproj" /></ItemGroup>
+</Project>

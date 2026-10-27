@@ -14,13 +14,14 @@ only PictureSharp's public SPI; all implementation types are internal.
 | Codestream.Entropy | Prefix/ANS/LZ77 symbol decoding | IO |
 | Codestream.Buffers | Working planes/channels, rendered result, reference slots | Model |
 | Codestream.Modular | Modular streams, prediction, RCT/Palette/Squeeze | Model, IO, Entropy, Buffers |
-| Codestream.VarDct | Coefficients, transforms, quantization, EPF sigma | Model, IO, Entropy, Modular, Buffers, Rendering, Numerics |
+| Codestream.VarDct | Coefficients, transforms, quantization, EPF sigma | Model, IO, Entropy, Modular, Buffers, Rendering, Numerics, Jpeg |
 | Codestream.Rendering | Restoration, resampling, patches | Model, Buffers, Color, Numerics |
 | Codestream.Color | Output colour transforms, matrix/TRC ICC targets, quantization/dither | Model, Buffers, Numerics |
 | Codestream.Metadata | ICC entropy stream and prediction (decode; simplest prediction for writing) | IO, Entropy |
-| Codestream.Frames | Decode session, frame scheduling, support policy, section readers | Codec modules above |
+| Codestream.Frames | Decode session, frame scheduling, support policy, section readers | Codec modules above, Jpeg |
 | Codestream.Numerics | Scalar numerics, integer helpers (`JxlIntMath`) | None; usable by all |
-| Codestream.Encoding | Bit/field/header writers, ANS encoder, MA tree learner, lossless Modular encoder, lossy VarDCT encoder (`Lossy/`), header rewriting | Model, Buffers, IO, Entropy, Modular, Metadata, VarDct, Rendering |
+| Codestream.Jpeg | JPEG coefficient/scan model, JPEG entropy parser/writer, bounded jbrd reader and shared field order | IO |
+| Codestream.Encoding | Bit/field/header writers, ANS encoder, MA tree learner, lossless Modular encoder, lossy VarDCT encoder (`Lossy/`), header rewriting | Model, Buffers, IO, Entropy, Modular, Metadata, VarDct, Rendering, Jpeg |
 
 `JxlDescriptor` is the shared exception/format boundary and holds the signatures. The codec never touches PictureSharp
 images, contexts, options or pixels. A compiled boundary test checks signatures, fields, locals and IL references
@@ -84,7 +85,15 @@ its ICC profile via `JxlIccTarget`) or sRGB for `ToSrgb`.
 - **Metadata:** `JxlContainer.Parse(..., includeMetadata: true)` indexes Exif/xml payloads; readers charge every
   byte through an `Action<long>` callback before it exists, never touching the PictureSharp context.
 - **Colour:** a full CMS (lookup-table profiles) would extend `JxlIccTarget`, not the adapter.
-- **Encoding:** JPEG recompression (0.7.1) adds a transcoder reusing the VarDCT writer, plus a `jbrd` box.
+- **JPEG transcoding (0.7.1):** `JxlTranscoder` delegates to Integration. The self-contained Jpeg module owns
+  coefficients, markers/scans, exact JPEG parsing/writing, and jbrd reading. Encoding implements the writing side
+  of the shared reconstruction field visitor and prepares integer JPEG coefficients for the shared VarDCT section
+  writer. Frames/VarDct recover coefficients with no IDCT, pixel planes or rendering. Their explicit dependency on
+  Jpeg is checked by the module boundary test; Jpeg depends only on IO, so there is no dependency cycle.
+- **Reconstruction metadata:** Container optionally borrows a unique jbrd payload. Ordinary image reads skip it.
+  The jbrd bit header precedes its Brotli stream; canonical ICC/EXIF/XMP markers refer to external metadata.
+  The per-call integration budget accounts for reconstruction header fields and expanded auxiliary data before
+  corresponding payload allocations. Streams are buffered; the limits are not a bound on all temporary memory.
 - **Animation:** extend session composition and map frames, durations and looping; until then it throws.
 - **Performance:** benchmark before pooling, SIMD or parallel groups; keep scalar results unchanged.
 

@@ -61,6 +61,13 @@ internal sealed class JxlEncoderQuantizer
     /// <summary>The coded quantization value of a float field value (SetQuantFieldRect, ClampVal).</summary>
     public int Quantize(float value) => (int)Math.Max(1.0f, Math.Min(value * InverseGlobalScale + 0.5f, QuantMax));
 
+    public void SetJpeg()
+    {
+        GlobalScale = GlobalScaleDenominator;
+        QuantDc = 1;
+        Recompute();
+    }
+
     private void Recompute()
     {
         Scale = (float)(GlobalScale * (1.0 / GlobalScaleDenominator));

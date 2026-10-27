@@ -13,6 +13,9 @@ keep it at most 600 lines by condensing the oldest entries.
   The encoder writes one 8-bit frame: lossy VarDCT (default, distance 1.0) or lossless Modular;
   metadata is read, written and edited (ICC, EXIF, XMP, brob via the BCL Brotli codecs). Lossless
   output must decode exactly with djxl; lossy output within 1 of djxl, alpha exact.
+- 0.7.1 JxlTranscoder preserves sequential/progressive 8-bit Huffman gray/YCbCr JPEG as integer coefficients,
+  plus jbrd and metadata; ToJpeg must reconstruct byte for byte, interoperating with cjxl/djxl 0.12.0.
+  Reconstruction bypasses IDCT/rendering. No automatic lossy fallback. See docs/transcoding.md for limits.
 - Preserve nullable, warnings as errors, XML docs, trimming and Native AOT compatibility.
 - Future decoders reserve pixels/metadata before allocation and honor cancellation.
   Corrupt data: ImageFormatException; unsupported features: NotSupportedException.

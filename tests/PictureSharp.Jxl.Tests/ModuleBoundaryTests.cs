@@ -70,15 +70,16 @@ public sealed class ModuleBoundaryTests
         "IO" => target is "Model",
         "Buffers" => target is "Model",
         "Entropy" => target is "IO",
+        "Jpeg" => target is "IO",
         "Container" => target is "IO",
         "Color" => target is "Model" or "Buffers" or "Numerics",
         "Rendering" => target is "Model" or "Buffers" or "Color" or "Numerics",
         "Modular" => target is "Model" or "Buffers" or "IO" or "Entropy",
-        "VarDct" => target is "Model" or "Buffers" or "IO" or "Entropy" or "Modular" or "Rendering" or "Numerics",
+        "VarDct" => target is "Model" or "Buffers" or "IO" or "Entropy" or "Modular" or "Rendering" or "Numerics" or "Jpeg",
         "Metadata" => target is "IO" or "Entropy",
-        "Frames" => target is "Model" or "Buffers" or "IO" or "Entropy" or "Modular" or "VarDct" or "Rendering" or "Metadata" or "Color",
+        "Frames" => target is "Model" or "Buffers" or "IO" or "Entropy" or "Modular" or "VarDct" or "Rendering" or "Metadata" or "Color" or "Jpeg",
         // The lossy encoder shares the decoder's transforms and tables and reconstructs frames with its renderer.
-        "Encoding" => target is "Model" or "Buffers" or "IO" or "Entropy" or "Modular" or "Metadata" or "VarDct" or "Rendering",
+        "Encoding" => target is "Model" or "Buffers" or "IO" or "Entropy" or "Modular" or "Metadata" or "VarDct" or "Rendering" or "Jpeg",
         _ => false
     };
 

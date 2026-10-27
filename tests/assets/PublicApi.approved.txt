@@ -45,3 +45,30 @@ PictureSharp.Formats.Jxl.JxlImageExtensions
   Void SaveAsJxl(PictureSharp.Image, System.String, PictureSharp.Formats.Jxl.JxlEncoderOptions)
 PictureSharp.Formats.Jxl.JxlImageFormatExtensions
   PictureSharp.ImageFormat get_Jxl()
+PictureSharp.Formats.Jxl.JxlTranscoder
+  System.Threading.Tasks.Task FromJpegAsync(System.IO.Stream, System.IO.Stream, PictureSharp.Formats.Jxl.JxlTranscoderOptions, System.Threading.CancellationToken)
+  System.Threading.Tasks.Task FromJpegAsync(System.ReadOnlyMemory`1[System.Byte], System.IO.Stream, PictureSharp.Formats.Jxl.JxlTranscoderOptions, System.Threading.CancellationToken)
+  System.Threading.Tasks.Task ToJpegAsync(System.IO.Stream, System.IO.Stream, PictureSharp.Formats.Jxl.JxlTranscoderOptions, System.Threading.CancellationToken)
+  System.Threading.Tasks.Task ToJpegAsync(System.ReadOnlyMemory`1[System.Byte], System.IO.Stream, PictureSharp.Formats.Jxl.JxlTranscoderOptions, System.Threading.CancellationToken)
+  Void FromJpeg(System.IO.Stream, System.IO.Stream, PictureSharp.Formats.Jxl.JxlTranscoderOptions, System.Threading.CancellationToken)
+  Void FromJpeg(System.ReadOnlySpan`1[System.Byte], System.IO.Stream, PictureSharp.Formats.Jxl.JxlTranscoderOptions, System.Threading.CancellationToken)
+  Void ToJpeg(System.IO.Stream, System.IO.Stream, PictureSharp.Formats.Jxl.JxlTranscoderOptions, System.Threading.CancellationToken)
+  Void ToJpeg(System.ReadOnlySpan`1[System.Byte], System.IO.Stream, PictureSharp.Formats.Jxl.JxlTranscoderOptions, System.Threading.CancellationToken)
+PictureSharp.Formats.Jxl.JxlTranscoderOptions
+  Boolean Equals(PictureSharp.Formats.Jxl.JxlTranscoderOptions)
+  Boolean Equals(System.Object)
+  Boolean op_Equality(PictureSharp.Formats.Jxl.JxlTranscoderOptions, PictureSharp.Formats.Jxl.JxlTranscoderOptions)
+  Boolean op_Inequality(PictureSharp.Formats.Jxl.JxlTranscoderOptions, PictureSharp.Formats.Jxl.JxlTranscoderOptions)
+  Int32 GetHashCode()
+  Int64 MaxInputBytes
+  Int64 MaxMetadataBytes
+  Int64 MaxPixels
+  Int64 get_MaxInputBytes()
+  Int64 get_MaxMetadataBytes()
+  Int64 get_MaxPixels()
+  PictureSharp.Formats.Jxl.JxlTranscoderOptions <Clone>$()
+  System.String ToString()
+  Void .ctor()
+  Void set_MaxInputBytes(Int64)
+  Void set_MaxMetadataBytes(Int64)
+  Void set_MaxPixels(Int64)

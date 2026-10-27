@@ -42,16 +42,17 @@ internal sealed class JxlEntropyEncoder
     }
 
     /// <summary>Chooses the codes of <paramref name="contexts"/> contexts for all values of <paramref name="streams"/>.</summary>
-    public static JxlEntropyEncoder Build(int contexts, IReadOnlyList<JxlTokens> streams)
+    public static JxlEntropyEncoder Build(int contexts, IReadOnlyList<JxlTokens> streams, CancellationToken cancellationToken = default)
     {
         // Token histograms per context under one configuration decide the clusters, then the exact values of each
         // cluster choose its hybrid integer configuration.
-        byte[] contextMap = JxlHistogramClustering.Cluster(TokenHistograms(contexts, streams), out int clusters);
-        List<(uint Value, long Count)>[] values = ValueHistograms(contextMap, clusters, streams);
+        byte[] contextMap = JxlHistogramClustering.Cluster(TokenHistograms(contexts, streams, cancellationToken), out int clusters);
+        List<(uint Value, long Count)>[] values = ValueHistograms(contextMap, clusters, streams, cancellationToken);
         var configs = new JxlHybridUint[clusters];
         var tokenCounts = new long[clusters][];
         for (int c = 0; c < clusters; c++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             (configs[c], tokenCounts[c]) = ChooseConfig(values[c]);
         }
 
@@ -76,15 +77,17 @@ internal sealed class JxlEntropyEncoder
     }
 
     /// <summary>Writes the ANS stream of <paramref name="tokens"/>: the final state, then the renormalization and raw bits.</summary>
-    public void WriteStream(JxlBitWriter writer, JxlTokens tokens)
+    public void WriteStream(JxlBitWriter writer, JxlTokens tokens, CancellationToken cancellationToken = default)
     {
         ReadOnlySpan<int> ctx = tokens.Contexts;
         ReadOnlySpan<uint> values = tokens.Values;
         int[] chunks = new int[ctx.Length];
         // ANS codes backwards; the decoder reads the state, then per symbol a renormalization chunk and the raw bits.
         uint state = JxlEntropyCode.AnsSignature;
+        cancellationToken.ThrowIfCancellationRequested();
         for (int i = ctx.Length - 1; i >= 0; i--)
         {
+            if ((i & 0xffff) == 0) cancellationToken.ThrowIfCancellationRequested();
             int cluster = contextMap[ctx[i]];
             uint token = configs[cluster].Encode(values[i], out _, out _);
             JxlAnsEncodingTable table = tables[cluster];
@@ -103,6 +106,7 @@ internal sealed class JxlEntropyEncoder
         writer.Write(32, state);
         for (int i = 0; i < ctx.Length; i++)
         {
+            if ((i & 0xffff) == 0) cancellationToken.ThrowIfCancellationRequested();
             if (chunks[i] >= 0) writer.Write(16, (uint)chunks[i]);
             // Tokenized again rather than stored: fewer arrays keep encoding faster.
             _ = configs[contextMap[ctx[i]]].Encode(values[i], out int bitCount, out uint bits);
@@ -111,15 +115,15 @@ internal sealed class JxlEntropyEncoder
     }
 
     /// <summary>Codes <paramref name="tokens"/> with their own codes: header and stream.</summary>
-    public static void WriteStandalone(JxlBitWriter writer, int contexts, JxlTokens tokens)
+    public static void WriteStandalone(JxlBitWriter writer, int contexts, JxlTokens tokens, CancellationToken cancellationToken = default)
     {
-        JxlEntropyEncoder encoder = Build(contexts, [tokens]);
+        JxlEntropyEncoder encoder = Build(contexts, [tokens], cancellationToken);
         encoder.WriteHeader(writer);
-        encoder.WriteStream(writer, tokens);
+        encoder.WriteStream(writer, tokens, cancellationToken);
     }
 
     // Per context, the counts of the tokens under the default configuration.
-    private static long[][] TokenHistograms(int contexts, IReadOnlyList<JxlTokens> streams)
+    private static long[][] TokenHistograms(int contexts, IReadOnlyList<JxlTokens> streams, CancellationToken cancellationToken)
     {
         var histograms = new long[contexts][];
         for (int c = 0; c < contexts; c++) histograms[c] = [];
@@ -129,6 +133,7 @@ internal sealed class JxlEntropyEncoder
             ReadOnlySpan<uint> streamValues = stream.Values;
             for (int i = 0; i < ctx.Length; i++)
             {
+                if ((i & 0xffff) == 0) cancellationToken.ThrowIfCancellationRequested();
                 uint token = JxlHybridUint.Default.Encode(streamValues[i], out _, out _);
                 Increment(ref histograms[ctx[i]], token, 1);
             }
@@ -138,7 +143,7 @@ internal sealed class JxlEntropyEncoder
     }
 
     // Per cluster, every distinct value with its count, small values first in value order.
-    private static List<(uint Value, long Count)>[] ValueHistograms(byte[] contextMap, int clusters, IReadOnlyList<JxlTokens> streams)
+    private static List<(uint Value, long Count)>[] ValueHistograms(byte[] contextMap, int clusters, IReadOnlyList<JxlTokens> streams, CancellationToken cancellationToken)
     {
         var small = new long[clusters][];
         var large = new Dictionary<uint, long>[clusters];
@@ -154,6 +159,7 @@ internal sealed class JxlEntropyEncoder
             ReadOnlySpan<uint> v = stream.Values;
             for (int i = 0; i < ctx.Length; i++)
             {
+                if ((i & 0xffff) == 0) cancellationToken.ThrowIfCancellationRequested();
                 int cluster = contextMap[ctx[i]];
                 if (v[i] < SmallValues)
                 {

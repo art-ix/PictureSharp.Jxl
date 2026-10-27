@@ -36,6 +36,7 @@ internal sealed class JxlModularStreamSet
     ];
 
     private readonly SortedDictionary<int, (List<JxlChannel> Channels, JxlTreeKind Kind)> streams = [];
+    private CancellationToken cancellationToken;
     private JxlTokens treeTokens = new();
     private JxlEntropyEncoder? code;
     private readonly Dictionary<int, JxlTokens> tokens = [];
@@ -52,6 +53,8 @@ internal sealed class JxlModularStreamSet
     /// </summary>
     public void Build(IReadOnlyList<int> splits, CancellationToken cancellationToken)
     {
+        this.cancellationToken = cancellationToken;
+        cancellationToken.ThrowIfCancellationRequested();
         var useful = new List<int>();
         var trees = new List<List<JxlTreeNode>>();
         for (int chunk = 0; chunk + 1 < splits.Count; chunk++)
@@ -80,7 +83,7 @@ internal sealed class JxlModularStreamSet
         List<(int Id, List<JxlChannel> Channels)> all = [.. streams.Select(pair => (pair.Key, pair.Value.Channels))];
         List<JxlTokens> streamTokens = JxlModularTreeEncoder.TokenizeStreams(all, tree, leafOf, cancellationToken);
         for (int i = 0; i < all.Count; i++) tokens[all[i].Id] = streamTokens[i];
-        code = JxlEntropyEncoder.Build(leafOf.Count(leaf => leaf >= 0), streamTokens);
+        code = JxlEntropyEncoder.Build(leafOf.Count(leaf => leaf >= 0), streamTokens, cancellationToken);
     }
 
     /// <summary>Writes the global tree and its code (the start of the global Modular section), or that there is none.</summary>
@@ -88,7 +91,7 @@ internal sealed class JxlModularStreamSet
     {
         writer.Write(code is not null);
         if (code is null) return;
-        JxlEntropyEncoder.WriteStandalone(writer, JxlMaTree.TreeContexts, treeTokens);
+        JxlEntropyEncoder.WriteStandalone(writer, JxlMaTree.TreeContexts, treeTokens, cancellationToken);
         code.WriteHeader(writer);
     }
 
@@ -103,7 +106,7 @@ internal sealed class JxlModularStreamSet
         writer.Write(true);                  // use the global tree
         writer.Write(true);                  // default weighted predictor parameters
         JxlFieldWriter.U32(writer, 0, JxlTransformFields.TransformCount);
-        if (pixels) code!.WriteStream(writer, tokens[id]);
+        if (pixels) code!.WriteStream(writer, tokens[id], cancellationToken);
     }
 
     // MakeFixedTree: a balanced tree over the cutoffs of one property, lower for small images.

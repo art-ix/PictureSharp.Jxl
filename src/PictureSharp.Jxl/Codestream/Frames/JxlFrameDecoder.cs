@@ -2,6 +2,7 @@ using PictureSharp.Formats.Jxl.Codestream.Buffers;
 using PictureSharp.Formats.Jxl.Codestream.Color;
 using PictureSharp.Formats.Jxl.Codestream.Entropy;
 using PictureSharp.Formats.Jxl.Codestream.IO;
+using PictureSharp.Formats.Jxl.Codestream.Jpeg;
 using PictureSharp.Formats.Jxl.Codestream.Model;
 using PictureSharp.Formats.Jxl.Codestream.Modular;
 using PictureSharp.Formats.Jxl.Codestream.Rendering;
@@ -33,11 +34,13 @@ internal sealed class JxlFrameDecoder
     private JxlGroupHeader header = JxlGroupHeader.Default;
     private JxlPatch[] patches = [];
     private readonly JxlColorTarget? colorTarget;
+    private readonly JxlJpegData? jpeg;
 
     public JxlFrameDecoder(JxlFrameHeader frame, JxlHeaders headers, JxlReferenceFrames references,
-        CancellationToken cancellationToken, JxlColorTarget? colorTarget = null)
+        CancellationToken cancellationToken, JxlColorTarget? colorTarget = null, JxlJpegData? jpeg = null)
     {
         this.frame = frame;
+        this.jpeg = jpeg;
         this.colorTarget = colorTarget;
         progress = new(frame.DcGroups, frame.Groups, frame.Passes.Count);
         this.references = references;
@@ -48,7 +51,7 @@ internal sealed class JxlFrameDecoder
         codedChannels = gray ? 1 : 3;
         if (frame.Encoding == JxlFrameEncoding.VarDct)
         {
-            varDct = new JxlVarDctFrame(frame, metadata, matrices, headers.TransformData.EffectiveQuantBiases, cancellationToken);
+            varDct = new JxlVarDctFrame(frame, metadata, matrices, headers.TransformData.EffectiveQuantBiases, cancellationToken, jpeg is not null);
         }
         else
         {
@@ -122,7 +125,7 @@ internal sealed class JxlFrameDecoder
     public void FinishLf()
     {
         progress.FinishLf();
-        varDct?.SmoothDc();
+        if (jpeg is null) varDct?.SmoothDc();
     }
 
     public void DecodeHfGlobal(ref JxlBitReader reader)
@@ -130,6 +133,30 @@ internal sealed class JxlFrameDecoder
         progress.BeginHf();
         cancellationToken.ThrowIfCancellationRequested();
         varDct?.ReadHfGlobal(ref reader, ReadRawQuantTable);
+        if (jpeg is not null)
+        {
+            int[] table = matrices.JpegTable;
+            bool[] set = new bool[jpeg.Quant.Count];
+            foreach (int c in jpeg.Gray ? (ReadOnlySpan<int>)[1] : [0, 1, 2])
+            {
+                int target = jpeg.Components[jpeg.Gray ? 0 : c == 0 ? 1 : c == 1 ? 0 : 2].Quant;
+                var quant = jpeg.Quant[target];
+                for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++)
+                {
+                    int value = table[c * 64 + x * 8 + y];
+                    if (value is <= 0 or > 65535 || (set[target] && quant.Values[y * 8 + x] != value))
+                        throw JxlDescriptor.Corrupt("Invalid reconstructed JPEG quantization entry.");
+                    quant.Values[y * 8 + x] = value;
+                }
+                set[target] = true;
+            }
+            for (int i = 0; i < set.Length; i++)
+                if (!set[i])
+                {
+                    if (i == 0) throw JxlDescriptor.Corrupt("First JPEG quantization table is unused.");
+                    jpeg.Quant[i - 1].Values.CopyTo(jpeg.Quant[i].Values, 0);
+                }
+        }
     }
 
     // A raw quantisation table: a three-channel Modular image with its own stream id.
@@ -164,7 +191,8 @@ internal sealed class JxlFrameDecoder
         if (varDct is not null)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            varDct.RenderGroup(group, coefficients!);
+            if (jpeg is null) varDct.RenderGroup(group, coefficients!);
+            else varDct.RecoverJpeg(group, coefficients!, jpeg);
         }
     }
 

@@ -27,14 +27,17 @@ internal sealed class JxlContainer
     /// <summary>The conformance level of a file without a jxll box.</summary>
     public const int DefaultLevel = 5;
 
-    private JxlContainer(JxlCodestream codestream, bool boxed, uint version, int level, List<JxlMetadataBox>? metadata = null)
+    private JxlContainer(JxlCodestream codestream, bool boxed, uint version, int level, List<JxlMetadataBox>? metadata = null, ReadOnlyMemory<byte>? reconstruction = null)
     {
         Codestream = codestream;
         IsBoxed = boxed;
         MetadataBoxes = metadata is null ? Array.Empty<JxlMetadataBox>() : metadata.AsReadOnly();
         FileFormatVersion = version;
         Level = level;
+        JpegReconstruction = reconstruction;
     }
+
+    public ReadOnlyMemory<byte>? JpegReconstruction { get; }
 
     public JxlCodestream Codestream { get; }
 
@@ -49,7 +52,7 @@ internal sealed class JxlContainer
     /// <summary>The conformance level from the jxll box, <see cref="DefaultLevel"/> when absent.</summary>
     public int Level { get; }
 
-    public static JxlContainer Parse(ReadOnlyMemory<byte> data, bool includeMetadata = false, CancellationToken cancellationToken = default)
+    public static JxlContainer Parse(ReadOnlyMemory<byte> data, bool includeMetadata = false, CancellationToken cancellationToken = default, bool includeJpegReconstruction = false)
     {
         cancellationToken.ThrowIfCancellationRequested();
         ReadOnlySpan<byte> bytes = data.Span;
@@ -64,6 +67,7 @@ internal sealed class JxlContainer
         }
 
         ReadOnlyMemory<byte>? jxlcPayload = null;
+        ReadOnlyMemory<byte>? reconstruction = null;
         var parts = new List<Part>();
         List<JxlMetadataBox>? metadata = includeMetadata ? [] : null;
         bool lastPartSeen = false;
@@ -111,6 +115,13 @@ internal sealed class JxlContainer
                 case JxlBoxType.Brotli:
                     if (ReadBrotliBox(content) is { } compressed) metadata?.Add(compressed);
                     break;
+                case JxlBoxType.JpegReconstruction:
+                    if (includeJpegReconstruction)
+                    {
+                        if (reconstruction is not null) throw JxlDescriptor.Corrupt("Duplicate JPEG reconstruction box.");
+                        reconstruction = content;
+                    }
+                    break;
                 case JxlBoxType.Exif or JxlBoxType.Xmp:
                     metadata?.Add(new(box.Type, content, false));
                     break;
@@ -124,12 +135,12 @@ internal sealed class JxlContainer
 
         if (jxlcPayload is { } single)
         {
-            return new JxlContainer(new JxlCodestream(single), true, version, level, metadata);
+            return new JxlContainer(new JxlCodestream(single), true, version, level, metadata, reconstruction);
         }
 
         return parts.Count == 0
             ? throw JxlDescriptor.Corrupt("Container without a codestream box.")
-            : new JxlContainer(new JxlCodestream(Order(parts, cancellationToken)), true, version, level, metadata);
+            : new JxlContainer(new JxlCodestream(Order(parts, cancellationToken)), true, version, level, metadata, reconstruction);
     }
 
     /// <summary>The boxes of a container that <see cref="Parse"/> accepted, up to a second signature box.</summary>

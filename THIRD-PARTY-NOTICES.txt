@@ -87,6 +87,15 @@ sources. The modular refactoring preserves their algorithms and source attributi
 - Codestream/VarDct/JxlDct.cs (forward transforms): lib/jxl/enc_transforms-inl.h,
   dct-inl.h; JxlQuantWeights.cs (inverse matrices): lib/jxl/quant_weights.cc
 
+- Codestream/Jpeg/: lib/jxl/jpeg/jpeg_data.h, jpeg_data.cc, enc_jpeg_data_reader.cc,
+  enc_jpeg_huffman_decode.cc, dec_jpeg_data.cc, dec_jpeg_data_writer.cc (scalar JPEG
+  parsing, scan coding and byte-exact reconstruction; reconstruction field order)
+- Codestream/Encoding/JxlJpegEncoder.cs and JxlJpegReconstructionWriter.cs:
+  lib/jxl/enc_frame.cc (ComputeJPEGTranscodingData), jpeg/enc_jpeg_data.cc
+- Codestream/Frames/JxlJpegDecoder.cs and coefficient recovery in
+  Codestream/VarDct/JxlVarDctFrame.cs: lib/jxl/dec_frame.cc and dec_group.cc
+  (JPEG channel/table mapping, integer chroma correlation, coefficient recovery)
+
 libjxl is distributed under the following license:
 
 Copyright (c) the JPEG XL Project Authors.

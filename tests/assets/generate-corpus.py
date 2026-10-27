@@ -364,6 +364,8 @@ def main():
                   for path in sorted(OUTPUT.glob('*.jxl'))}
     (OUTPUT / 'corpus.json').write_text(json.dumps({'generator': run(tool('cjxl'), '--version').splitlines()[0], 'files': oracle}, indent=1) + '\n')
     print(f'{len(oracle)} files, {sum(p.stat().st_size for p in OUTPUT.glob("*.jxl"))} bytes')
+    import runpy
+    runpy.run_path(str(Path(__file__).with_name('generate-transcoding.py')), run_name='__main__')
 
 
 if __name__ == '__main__':

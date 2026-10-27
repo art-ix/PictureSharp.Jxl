@@ -78,6 +78,10 @@ internal sealed class JxlQuantWeights
     private readonly float[]?[] inverseTables = new float[Tables][];
     private JxlQuantEncoding[] encodings = LibraryEncodings();
 
+    public int[] JpegTable => encodings[0] is { Mode: JxlQuantMode.Raw, RawTable: { } table } encoding
+        && Math.Abs(encoding.RawDenominator - 1.0f / (8 * 255)) <= 1e-8f
+        ? table : throw JxlDescriptor.Corrupt("The reconstruction quantization table is not a JPEG table.");
+
     public float[] DcQuant { get; } = [1.0f / 4096.0f, 1.0f / 512.0f, 1.0f / 256.0f];
 
     /// <summary>Reads the DC quantisation steps from the LF global section (DequantMatrices::DecodeDC).</summary>

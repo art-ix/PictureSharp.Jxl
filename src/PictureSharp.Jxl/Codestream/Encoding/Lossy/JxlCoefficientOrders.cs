@@ -17,6 +17,7 @@ internal static class JxlCoefficientOrders
         (uint used, uint customized) = UsedOrders(frame);
         int[] orders = new int[JxlAcStrategy.OrderOffset(JxlAcStrategy.Orders - 1, 3)];
         long[] zeros = new long[orders.Length];
+        if (frame.Jpeg) customized = 0;
         if (customized != 0)
         {
             CountZeros(frame, zeros, frame.Settings.SpeedTier >= JxlLossySettings.Squirrel && customized == 1 ? 0.5 : 1.0);

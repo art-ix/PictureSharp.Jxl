@@ -128,12 +128,17 @@ internal static class JxlCodestreamWriter
     }
 
     /// <summary>The encoded ICC size and its entropy-coded stream (WriteICC).</summary>
-    private static void Icc(JxlBitWriter writer, byte[] icc)
+    internal static void Icc(JxlBitWriter writer, byte[] icc, CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         byte[] encoded = JxlIccStream.Predict(icc);
         JxlFieldWriter.U64(writer, (ulong)encoded.Length);
         var tokens = new JxlTokens();
-        for (int i = 0; i < encoded.Length; i++) tokens.Add(JxlIccStream.Context(encoded, i), encoded[i]);
-        JxlEntropyEncoder.WriteStandalone(writer, JxlIccStream.Contexts, tokens);
+        for (int i = 0; i < encoded.Length; i++)
+        {
+            if ((i & 0xffff) == 0) cancellationToken.ThrowIfCancellationRequested();
+            tokens.Add(JxlIccStream.Context(encoded, i), encoded[i]);
+        }
+        JxlEntropyEncoder.WriteStandalone(writer, JxlIccStream.Contexts, tokens, cancellationToken);
     }
 }

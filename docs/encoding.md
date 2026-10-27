@@ -14,6 +14,9 @@ byte[] data = image.ToJxl(new JxlEncoderOptions { CompressMetadata = true });
 animation) with ICC, EXIF and XMP. The default is lossy VarDCT in XYB at distance 1.0, effort 7, like `cjxl`.
 `Quality = 100` or `Distance = 0` is lossless. The stream is left open.
 
+Original JPEG bytes can be preserved with the separate [JPEG transcoder](transcoding.md). Loading a JPEG into an
+`Image` and calling `SaveAsJxl` works on pixels and cannot reconstruct the original JPEG file.
+
 ## Options
 
 | Option | Default | Meaning |

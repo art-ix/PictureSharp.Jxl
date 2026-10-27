@@ -86,6 +86,13 @@ internal static class JxlVarDctEncoder
         streams.Build([0, JxlFrameHeader.VarDctDcStream(0), header.ModularDcStream(0), header.AcMetadataStream(0), header.QuantTableStream(0),
             header.ModularAcStream(0, 0), header.ModularAcStream(0, header.Groups)], cancellationToken);
 
+        WritePrepared(writer, frame, metadata, streams, alpha is not null, patches, cancellationToken);
+    }
+
+    internal static void WritePrepared(JxlBitWriter writer, JxlLossyFrame frame, JxlImageMetadata metadata, JxlModularStreamSet streams,
+        bool alpha, JxlPatchEncoder? patches, CancellationToken cancellationToken)
+    {
+        JxlFrameHeader header = frame.Header;
         (int[] orders, uint codedOrders) = JxlCoefficientOrders.Compute(frame);
         var acTokens = new List<JxlTokens>();
         for (int group = 0; group < header.Groups; group++)
@@ -94,8 +101,8 @@ internal static class JxlVarDctEncoder
             acTokens.Add(JxlAcTokenizer.Tokenize(frame, group, orders));
         }
 
-        JxlEntropyEncoder acCode = JxlEntropyEncoder.Build(frame.BlockContexts.AcContexts, acTokens);
-        WriteSections(writer, frame, metadata, streams, alpha is not null, patches, orders, codedOrders, acCode, acTokens);
+        JxlEntropyEncoder acCode = JxlEntropyEncoder.Build(frame.BlockContexts.AcContexts, acTokens, cancellationToken);
+        WriteSections(writer, frame, metadata, streams, alpha, patches, orders, codedOrders, acCode, acTokens, cancellationToken);
     }
 
     // LossyFrameHeuristics: quantization field, chroma from luma and varblocks.
@@ -382,7 +389,7 @@ internal static class JxlVarDctEncoder
     }
 
     // AddACMetadata: chroma from luma per tile, the varblocks with their quantization, and the EPF sharpness.
-    private static List<JxlChannel> AcMetadata(JxlLossyFrame frame, int group)
+    internal static List<JxlChannel> AcMetadata(JxlLossyFrame frame, int group)
     {
         (int x0, int y0, int width, int height) = frame.DcGroupRect(group);
         int tileX0 = x0 >> 3;
@@ -448,18 +455,26 @@ internal static class JxlVarDctEncoder
     }
 
     private static void WriteSections(JxlBitWriter writer, JxlLossyFrame frame, JxlImageMetadata metadata, JxlModularStreamSet streams, bool alpha,
-        JxlPatchEncoder? patches, int[] orders, uint codedOrders, JxlEntropyEncoder acCode, List<JxlTokens> acTokens)
+        JxlPatchEncoder? patches, int[] orders, uint codedOrders, JxlEntropyEncoder acCode, List<JxlTokens> acTokens, CancellationToken cancellationToken)
     {
         JxlFrameHeader header = frame.Header;
         var global = new JxlBitWriter();
         patches?.WriteDictionary(global, metadata.ExtraChannels.Count);
-        global.Write(true);                                       // default DC quantization weights
+        global.Write(!frame.Jpeg);                                // DC quantization weights
+        if (frame.Jpeg)
+            for (int c = 0; c < 3; c++) JxlFieldWriter.F16(global, frame.Matrices.DcQuant[c] * 128);
         JxlFieldWriter.U32(global, (uint)frame.Quantizer.GlobalScale, IO.JxlU32.BitsOffset(11, 1), IO.JxlU32.BitsOffset(11, 2049),
             IO.JxlU32.BitsOffset(12, 4097), IO.JxlU32.BitsOffset(16, 8193));
         JxlFieldWriter.U32(global, (uint)frame.Quantizer.QuantDc, IO.JxlU32.Val(16), IO.JxlU32.BitsOffset(5, 1), IO.JxlU32.BitsOffset(8, 1),
             IO.JxlU32.BitsOffset(16, 1));
         BlockContextMap(global, frame.BlockContexts);
-        global.Write(true);                                       // default chroma from luma for DC
+        global.Write(!frame.Jpeg);                                // chroma from luma for DC
+        if (frame.Jpeg)
+        {
+            JxlFieldWriter.U32(global, 84, IO.JxlU32.Val(84), IO.JxlU32.Val(256), IO.JxlU32.BitsOffset(8, 2), IO.JxlU32.BitsOffset(16, 258));
+            JxlFieldWriter.F16(global, 0); JxlFieldWriter.F16(global, 0);
+            global.Write(8, 128); global.Write(8, 128);
+        }
         streams.WriteGlobal(global);
         streams.WriteStream(global, JxlFrameHeader.GlobalStream, header: alpha);
 
@@ -467,7 +482,7 @@ internal static class JxlVarDctEncoder
         for (int group = 0; group < header.DcGroups; group++)
         {
             var section = new JxlBitWriter();
-            section.Write(2, frame.Settings.NonlinearDc ? 1u : 0u);  // extra DC precision
+            section.Write(2, !frame.Jpeg && frame.Settings.NonlinearDc ? 1u : 0u);  // extra DC precision
             streams.WriteStream(section, JxlFrameHeader.VarDctDcStream(group));
             streams.WriteStream(section, header.ModularDcStream(group));
             (_, _, int width, int height) = frame.DcGroupRect(group);
@@ -485,7 +500,17 @@ internal static class JxlVarDctEncoder
         }
 
         var hfGlobal = new JxlBitWriter();
-        hfGlobal.Write(true);                                     // default AC quantization tables
+        hfGlobal.Write(!frame.Jpeg);                               // AC quantization tables
+        if (frame.Jpeg)
+        {
+            for (int table = 0; table < JxlFrameHeader.QuantTables; table++)
+            {
+                hfGlobal.Write(3, table == 0 ? 7u : 0u);
+                if (table != 0) continue;
+                JxlFieldWriter.F16(hfGlobal, 1.0f / (8 * 255));
+                streams.WriteStream(hfGlobal, header.QuantTableStream(0));
+            }
+        }
         hfGlobal.Write(CeilLog2(header.Groups), 0);               // one histogram set
         JxlCoefficientOrders.Write(hfGlobal, orders, codedOrders);
         acCode.WriteHeader(hfGlobal);
@@ -493,7 +518,8 @@ internal static class JxlVarDctEncoder
         for (int group = 0; group < header.Groups; group++)
         {
             var section = new JxlBitWriter();
-            acCode.WriteStream(section, acTokens[group]);
+            cancellationToken.ThrowIfCancellationRequested();
+            acCode.WriteStream(section, acTokens[group], cancellationToken);
             streams.WriteStream(section, header.ModularAcStream(0, group));
             sections.Add(section);
         }

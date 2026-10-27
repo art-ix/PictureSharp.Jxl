@@ -37,6 +37,9 @@ internal static class JxlAcTokenizer
                 int cy = Math.Min(type.BlocksX, type.BlocksY);
                 foreach (int c in (ReadOnlySpan<int>)[1, 0, 2])
                 {
+                    int hs = frame.Header.HShift(c), vs = frame.Header.VShift(c);
+                    int sbx = bx >> hs, sby = by >> vs;
+                    if ((sbx << hs) != bx || (sby << vs) != by) continue;
                     ReadOnlySpan<int> block = coefficients.AsSpan(c * area + offset, size);
                     int count = 0;
                     for (int k = 0; k < size; k++)
@@ -45,17 +48,17 @@ internal static class JxlAcTokenizer
                     }
 
                     int[] counts = nonZeros[c];
-                    int predicted = bx == 0 ? (by == 0 ? 32 : counts[(by - 1) * GroupBlocks])
-                        : by == 0 ? counts[by * GroupBlocks + bx - 1]
-                        : (counts[(by - 1) * GroupBlocks + bx] + counts[by * GroupBlocks + bx - 1] + 1) / 2;
+                    int predicted = sbx == 0 ? (sby == 0 ? 32 : counts[(sby - 1) * GroupBlocks])
+                        : sby == 0 ? counts[sby * GroupBlocks + sbx - 1]
+                        : (counts[(sby - 1) * GroupBlocks + sbx] + counts[sby * GroupBlocks + sbx - 1] + 1) / 2;
                     int shifted = (count + covered - 1) >> log2Covered;
                     for (int iy = 0; iy < type.BlocksY; iy++)
                     {
-                        counts.AsSpan((by + iy) * GroupBlocks + bx, type.BlocksX).Fill(shifted);
+                        counts.AsSpan((sby + iy) * GroupBlocks + sbx, type.BlocksX).Fill(shifted);
                     }
 
                     int bucket = type.OrderBucket;
-                    int blockContext = contexts.Context(0, frame.QuantField[row + bx], bucket, c);
+                    int blockContext = contexts.Context(0, frame.QuantField[(y0 + by) * frame.XBlocks + x0 + sbx], bucket, c);
                     tokens.Add(contexts.NonZeroContext(predicted, blockContext), (uint)count);
                     int histogramOffset = contexts.ZeroDensityContextsOffset(blockContext);
                     int orderOffset = JxlAcStrategy.OrderOffset(bucket, c);

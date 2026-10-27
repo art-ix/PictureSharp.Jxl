@@ -1,6 +1,7 @@
 using PictureSharp.Formats.Jxl.Codestream.Buffers;
 using PictureSharp.Formats.Jxl.Codestream.Entropy;
 using PictureSharp.Formats.Jxl.Codestream.IO;
+using PictureSharp.Formats.Jxl.Codestream.Jpeg;
 using PictureSharp.Formats.Jxl.Codestream.Model;
 using PictureSharp.Formats.Jxl.Codestream.Modular;
 using PictureSharp.Formats.Jxl.Codestream.Numerics;
@@ -33,6 +34,7 @@ internal sealed class JxlVarDctFrame
     private readonly JxlQuantWeights matrices;
     private readonly float[] quantBiases;
     private readonly int bitDepth;
+    private readonly bool recoverJpeg;
     private readonly bool is444;
     private readonly int[] hShift = new int[3];
     private readonly int[] vShift = new int[3];
@@ -50,9 +52,10 @@ internal sealed class JxlVarDctFrame
     private float baseCorrelationX;
     private float baseCorrelationB = 1.0f;
 
-    public JxlVarDctFrame(JxlFrameHeader frame, JxlImageMetadata metadata, JxlQuantWeights matrices, IReadOnlyList<float> quantBiases, CancellationToken cancellationToken = default)
+    public JxlVarDctFrame(JxlFrameHeader frame, JxlImageMetadata metadata, JxlQuantWeights matrices, IReadOnlyList<float> quantBiases, CancellationToken cancellationToken = default, bool recoverJpeg = false)
     {
         this.frame = frame;
+        this.recoverJpeg = recoverJpeg;
         this.cancellationToken = cancellationToken;
         this.matrices = matrices;
         this.quantBiases = [.. quantBiases];
@@ -79,7 +82,7 @@ internal sealed class JxlVarDctFrame
         xDmMultiplier = MathF.Pow(1 / 1.25f, frame.XQmScale - 2.0f);
         bDmMultiplier = MathF.Pow(1 / 1.25f, frame.BQmScale - 2.0f);
         Planes = new JxlPlane[3];
-        for (int c = 0; c < 3; c++)
+        for (int c = 0; c < 3 && !recoverJpeg; c++)
         {
             Planes[c] = new JxlPlane(DivCeil((int)frame.XSize, 1 << hShift[c]), DivCeil((int)frame.YSize, 1 << vShift[c]),
                 (XBlocks >> hShift[c]) * JxlFrameHeader.BlockDim, (YBlocks >> vShift[c]) * JxlFrameHeader.BlockDim);
@@ -141,6 +144,12 @@ internal sealed class JxlVarDctFrame
 
         dcFactors[0] = YToXRatio(yToXDc);
         dcFactors[2] = YToBRatio(yToBDc);
+        if (recoverJpeg)
+        {
+            if (baseCorrelationX != 0 || baseCorrelationB != 0 || yToXDc != 0 || yToBDc != 0 || colorScale != 1.0f / DefaultColorFactor)
+                throw JxlDescriptor.Corrupt("The chroma correlation is not JPEG reconstruction compatible.");
+            Array.Fill(mulDc, 1.0f);
+        }
     }
 
     public JxlBlockContextMap BlockContexts { get; private set; } = JxlBlockContextMap.Default;
@@ -393,6 +402,53 @@ internal sealed class JxlVarDctFrame
         }
     }
 
+    /// <summary>Recovers integer JPEG DCT coefficients without IDCT or pixel rendering (libjxl dec_group.cc).</summary>
+    public void RecoverJpeg(int group, int[] coefficients, JxlJpegData jpeg)
+    {
+        int[] table = matrices.JpegTable;
+        (int x0, int y0, int width, int height) = BlockGroupRect(group);
+        int area = width * height * 64;
+        int[] map = jpeg.Gray ? [0, 0, 0] : [1, 0, 2];
+        for (int by = 0; by < height; by++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            for (int bx = 0; bx < width; bx++)
+            {
+                int index = (y0 + by) * XBlocks + x0 + bx;
+                if (Varblocks[index].Type != JxlAcStrategyType.Dct) throw JxlDescriptor.Corrupt("JPEG reconstruction requires DCT-8 blocks.");
+                foreach (int c in YFirstOrder)
+                {
+                    if (jpeg.Gray && c != 1 || !TryChannelBlock(c, bx, by, out int sbx, out int sby)) continue;
+                    var component = jpeg.Components[map[c]];
+                    int destination = (((y0 + by) >> vShift[c]) * component.WidthBlocks + ((x0 + bx) >> hShift[c])) * 64;
+                    int source = c * area + (by * width + bx) * 64;
+                    int tile = (y0 + by) / ColorTileBlocks * xTiles + (x0 + bx) / ColorTileBlocks;
+                    int correlation = c == 0 ? YToX[tile] : c == 2 ? YToB[tile] : 0;
+                    int scale = correlation * 2048 / DefaultColorFactor;
+                    for (int y = 0; y < 8; y++)
+                        for (int x = 0; x < 8; x++)
+                        {
+                            int transposed = x * 8 + y;
+                            long value = coefficients[source + transposed];
+                            if (is444 && c != 1 && scale != 0)
+                            {
+                                int ratio = 2048 * table[64 + transposed] / table[c * 64 + transposed];
+                                long factor = ((long)scale * ratio + 1024) >> 11;
+                                int luma = coefficients[area + (by * width + bx) * 64 + transposed];
+                                value += (luma * factor + 1024) >> 11;
+                            }
+                            if (value is < -4095 or > 4095) throw JxlDescriptor.Corrupt("Reconstructed JPEG AC coefficient out of range.");
+                            component.Coefficients[destination + y * 8 + x] = (short)value;
+                        }
+                    int dcIndex = ((y0 >> vShift[c]) + sby) * XBlocks + (x0 >> hShift[c]) + sbx;
+                    float dcValue = dc[c][dcIndex];
+                    if (dcValue is < -2047 or > 2047 || dcValue != MathF.Truncate(dcValue)) throw JxlDescriptor.Corrupt("Reconstructed JPEG DC coefficient out of range.");
+                    component.Coefficients[destination] = (short)dcValue;
+                }
+            }
+        }
+    }
+
     /// <summary>Adaptive DC smoothing, between the last LF group and the first pass group (AdaptiveDCSmoothing).</summary>
     public void SmoothDc()
     {
@@ -566,6 +622,7 @@ internal sealed class JxlVarDctFrame
         int previous = nonZero > size / 16 ? 0 : 1;
         for (int k = covered; k < size && nonZero != 0; k++)
         {
+            if (nonZero > size - k) throw JxlDescriptor.Corrupt("AC non-zero count exceeds the remaining coefficients.");
             int context = histogramOffset + JxlBlockContextMap.ZeroDensityContext(nonZero, k, log2Covered, previous);
             uint token = symbols.Read(context, ref reader);
             block[order[coefficientOffset + k]] += unchecked(UnpackSigned(token) << shift);

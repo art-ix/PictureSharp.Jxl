@@ -6,12 +6,12 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <PackageId>PictureSharp.Jxl</PackageId>
-    <Description>Pure C# JPEG XL plugin for PictureSharp. Version 0.7.0 detects and identifies JPEG XL files (raw codestream and container), decodes still lossy (VarDCT, XYB) and lossless (Modular) images, including recompressed JPEGs, patches and progressive files, encodes images lossily (VarDCT with quality, distance and effort 1-9, about as small as cjxl, the default) or losslessly (8-bit Modular, about as small as cjxl -d 0 -e 7), and reads, writes and edits the ICC profile, EXIF and XMP (also Brotli-compressed).</Description>
+    <Description>Pure C# JPEG XL plugin for PictureSharp. Version 0.7.1 detects and identifies JPEG XL files (raw codestream and container), decodes still lossy (VarDCT, XYB) and lossless (Modular) images, including recompressed JPEGs, patches and progressive files, encodes images lossily (VarDCT with quality, distance and effort 1-9, about as small as cjxl, the default) or losslessly (8-bit Modular, about as small as cjxl -d 0 -e 7), losslessly transcodes sequential and progressive 8-bit JPEG with byte-exact original reconstruction, and reads, writes and edits the ICC profile, EXIF and XMP (also Brotli-compressed).</Description>
     <PackageTags>picturesharp;image;jxl;jpegxl</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/art-ix/picturesharp.jxl</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageReleaseNotes>0.7.0: lossy VarDCT encoding is the default (distance 1.0, effort 7, like cjxl); Quality, Distance and Effort options; Quality 100 or Distance 0 keep the lossless output of 0.6.x byte for byte. A scalar port of the libjxl 0.12.0 encoder including patches; alpha is lossless; output decodes with djxl within 1 of this decoder.</PackageReleaseNotes>
+    <PackageReleaseNotes>0.7.1: pure managed lossless JPEG transcoding and byte-exact original reconstruction. JxlTranscoder sync/async stream/memory APIs; sequential and progressive 8-bit Huffman gray/YCbCr 4:4:4, 4:2:2 and 4:2:0; original scans, metadata, markers, restart/padding data and EOI tail preserved. Interoperable with cjxl/djxl 0.12.0; resource limits and Native AOT support.</PackageReleaseNotes>
   </PropertyGroup>
   <ItemGroup><PackageReference Include="PictureSharp" Version="$(PictureSharpVersion)" /></ItemGroup>
   <ItemGroup>
