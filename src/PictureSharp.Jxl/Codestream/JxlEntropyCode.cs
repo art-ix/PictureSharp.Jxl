@@ -439,7 +439,7 @@ internal sealed class JxlEntropyCode
     }
 
     /// <summary>Reads the cluster of every context and returns the number of clusters; all must be used.</summary>
-    private static int ReadContextMap(ref JxlBitReader reader, byte[] contextMap)
+    public static int ReadContextMap(ref JxlBitReader reader, byte[] contextMap)
     {
         if (reader.ReadBool())
         {

@@ -55,8 +55,8 @@ public sealed class JxlFormatTests
         ImageInfo info = Image.Identify(data, options);
         await Assert.That((info.Format, info.Width, info.Height, info.Color.BitsPerSample)).IsEqualTo((ImageFormat.Jxl, 8, 8, 8));
         await Assert.That(() => Image.Identify(new byte[] { 0xFF, 0x0A }, options)).Throws<ImageFormatException>();
-        // Default image metadata is XYB-encoded (lossy), which this version does not decode.
-        await Assert.That(() => Image.Load(data, options)).Throws<NotSupportedException>();
+        // Headers without a frame.
+        await Assert.That(() => Image.Load(data, options)).Throws<ImageFormatException>();
         await Assert.That(() => Image.ReadMetadata((ReadOnlyMemory<byte>)data, options)).Throws<NotSupportedException>();
         await Assert.That(() => Image.EditMetadata((ReadOnlyMemory<byte>)data, _ => { }, options)).Throws<NotSupportedException>();
     }

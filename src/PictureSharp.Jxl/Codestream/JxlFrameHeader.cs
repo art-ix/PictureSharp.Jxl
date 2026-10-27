@@ -133,10 +133,42 @@ internal sealed record JxlPasses(uint Count, uint[] Shift, uint[] Downsample, ui
     }
 }
 
-/// <summary>The restoration filters: Gaborish smoothing and the edge-preserving filter.</summary>
-internal sealed record JxlLoopFilter(bool Gaborish, uint EpfIterations)
+/// <summary>The restoration filters: Gaborish smoothing and the edge-preserving filter (EPF) with its parameters.</summary>
+internal sealed record JxlLoopFilter
 {
-    public static JxlLoopFilter Default { get; } = new(true, 2);
+    public const int SharpnessEntries = 8;
+
+    public static JxlLoopFilter Default { get; } = new();
+
+    public bool Gaborish { get; init; } = true;
+
+    /// <summary>The side and corner weights of the X, Y and B Gaborish kernels (before normalisation).</summary>
+    public float[] GaborishWeights { get; init; } = [.. Enumerable.Repeat(new[] { GaborishSide, GaborishCorner }, 3).SelectMany(w => w)];
+
+    /// <summary>0 disables EPF; 1 runs stage one, 2 stages one and two, 3 stage zero first.</summary>
+    public uint EpfIterations { get; init; } = 2;
+
+    public float[] SharpnessLut { get; init; } = [.. Enumerable.Range(0, SharpnessEntries).Select(i => (float)i / (SharpnessEntries - 1))];
+
+    public float[] ChannelScale { get; init; } = [40.0f, 5.0f, 3.5f];
+
+    public float Pass1ZeroFlush { get; init; } = 0.45f;
+
+    public float Pass2ZeroFlush { get; init; } = 0.6f;
+
+    public float QuantMul { get; init; } = 0.46f;
+
+    public float Pass0SigmaScale { get; init; } = 0.9f;
+
+    public float Pass2SigmaScale { get; init; } = 6.5f;
+
+    public float BorderSadMul { get; init; } = 0.6666666666666666f;
+
+    public float SigmaForModular { get; init; } = 1.0f;
+
+    private static float GaborishSide => (float)(1.1 * 0.104699568f);
+
+    private static float GaborishCorner => (float)(1.1 * 0.055680538f);
 
     public static JxlLoopFilter Read(ref JxlBitReader reader, bool modular)
     {
@@ -145,54 +177,67 @@ internal sealed record JxlLoopFilter(bool Gaborish, uint EpfIterations)
             return Default;
         }
 
-        bool gaborish = reader.ReadBool();
-        if (gaborish && reader.ReadBool())
+        var filter = new JxlLoopFilter { Gaborish = reader.ReadBool() };
+        if (filter.Gaborish && reader.ReadBool())
         {
+            float[] weights = new float[6];
             for (int channel = 0; channel < 3; channel++)
             {
-                float weight1 = JxlFields.F16(ref reader);
-                float weight2 = JxlFields.F16(ref reader);
-                if (Math.Abs(1.0f + (weight1 + weight2) * 4) < 1e-8)
+                weights[2 * channel] = JxlFields.F16(ref reader);
+                weights[2 * channel + 1] = JxlFields.F16(ref reader);
+                if (Math.Abs(1.0f + (weights[2 * channel] + weights[2 * channel + 1]) * 4) < 1e-8)
                 {
                     throw JxlDescriptor.Corrupt("Gaborish weights lead to a zero kernel.");
                 }
             }
+
+            filter = filter with { GaborishWeights = weights };
         }
 
-        uint iterations = reader.ReadBits(2);
-        if (iterations > 0)
+        filter = filter with { EpfIterations = reader.ReadBits(2) };
+        if (filter.EpfIterations > 0)
         {
             if (!modular && reader.ReadBool())
             {
-                SkipF16(ref reader, 8);               // sharpness LUT
+                filter = filter with { SharpnessLut = F16s(ref reader, SharpnessEntries) };
             }
 
             if (reader.ReadBool())
             {
-                SkipF16(ref reader, 5);               // channel scales and zero-flush thresholds
+                float[] values = F16s(ref reader, 5);
+                filter = filter with { ChannelScale = values[..3], Pass1ZeroFlush = values[3], Pass2ZeroFlush = values[4] };
             }
 
             if (reader.ReadBool())
             {
-                SkipF16(ref reader, modular ? 3 : 4); // sigma parameters
+                float quantMul = modular ? filter.QuantMul : JxlFields.F16(ref reader);
+                float[] values = F16s(ref reader, 3);
+                filter = filter with { QuantMul = quantMul, Pass0SigmaScale = values[0], Pass2SigmaScale = values[1], BorderSadMul = values[2] };
             }
 
-            if (modular && JxlFields.F16(ref reader) < 1e-8)
+            if (modular)
             {
-                throw JxlDescriptor.Corrupt("EPF sigma for Modular is too small.");
+                filter = filter with { SigmaForModular = JxlFields.F16(ref reader) };
+                if (filter.SigmaForModular < 1e-8)
+                {
+                    throw JxlDescriptor.Corrupt("EPF sigma for Modular is too small.");
+                }
             }
         }
 
         JxlFields.SkipExtensions(ref reader);
-        return new JxlLoopFilter(gaborish, iterations);
+        return filter;
     }
 
-    private static void SkipF16(ref JxlBitReader reader, int count)
+    private static float[] F16s(ref JxlBitReader reader, int count)
     {
+        float[] values = new float[count];
         for (int i = 0; i < count; i++)
         {
-            JxlFields.F16(ref reader);
+            values[i] = JxlFields.F16(ref reader);
         }
+
+        return values;
     }
 }
 
@@ -212,7 +257,7 @@ internal sealed record JxlFrameHeader
 
     public JxlColorTransform ColorTransform { get; init; }
 
-    /// <summary>Chroma subsampling mode (0–3) of the Y, Cb, Cr channels, used with YCbCr only.</summary>
+    /// <summary>Chroma subsampling mode (0–3) of channels 0–2 (Cb, Y, Cr), used with YCbCr only.</summary>
     public uint[] ChromaModes { get; init; } = [0, 0, 0];
 
     public uint Upsampling { get; init; } = 1;
@@ -221,6 +266,11 @@ internal sealed record JxlFrameHeader
     public uint[] ExtraChannelUpsampling { get; init; } = [];
 
     public int GroupSizeShift { get; init; } = 1;
+
+    /// <summary>Scales of the X and B quantisation matrices (VarDCT XYB frames; 2 means no change).</summary>
+    public uint XQmScale { get; init; } = 3;
+
+    public uint BQmScale { get; init; } = 2;
 
     public JxlPasses Passes { get; init; } = JxlPasses.Single;
 
@@ -260,6 +310,13 @@ internal sealed record JxlFrameHeader
 
     public int MaxVShift => ChromaModes.Max(mode => VShifts[(int)mode]);
 
+    /// <summary>The horizontal subsampling shift of colour channel <paramref name="c"/> (0 = Cb or X, 1 = Y, 2 = Cr or B).</summary>
+    public int HShift(int c) => MaxHShift - HShifts[(int)ChromaModes[c]];
+
+    public int VShift(int c) => MaxVShift - VShifts[(int)ChromaModes[c]];
+
+    public bool Is444 => Enumerable.Range(0, 3).All(c => HShift(c) == 0 && VShift(c) == 0);
+
     /// <summary>Group size: 128, 256, 512 or 1024; LF groups cover 8 times as much.</summary>
     public int GroupDimension => (GroupDim >> 1) << GroupSizeShift;
 
@@ -270,6 +327,11 @@ internal sealed record JxlFrameHeader
     public long XSizeBlocks => DivCeil(XSize, BlockDim << MaxHShift) << MaxHShift;
 
     public long YSizeBlocks => DivCeil(YSize, BlockDim << MaxVShift) << MaxVShift;
+
+    /// <summary>The size VarDCT blocks cover; Modular frames have no padding.</summary>
+    public long XSizePadded => Encoding == JxlFrameEncoding.VarDct ? XSizeBlocks * BlockDim : XSize;
+
+    public long YSizePadded => Encoding == JxlFrameEncoding.VarDct ? YSizeBlocks * BlockDim : YSize;
 
     public long XGroups => DivCeil(XSize, GroupDimension);
 
@@ -300,6 +362,7 @@ internal sealed record JxlFrameHeader
             {
                 Encoding = JxlFrameEncoding.VarDct,
                 ColorTransform = metadata.XybEncoded ? JxlColorTransform.Xyb : JxlColorTransform.None,
+                XQmScale = metadata.XybEncoded ? 3u : 2u,
                 ExtraChannelUpsampling = [.. metadata.ExtraChannels.Select(channel => 1u << (int)channel.DimShift)],
                 ExtraChannelBlending = [.. Enumerable.Repeat(new JxlBlendingInfo(JxlBlendMode.Replace, 0, false, 0), extraChannels)],
                 Width = defaultWidth,
@@ -340,9 +403,10 @@ internal sealed record JxlFrameHeader
         }
 
         int groupSizeShift = encoding == JxlFrameEncoding.Modular ? (int)reader.ReadBits(2) : 1;
+        (uint xQmScale, uint bQmScale) = (2, 2);
         if (encoding == JxlFrameEncoding.VarDct && transform == JxlColorTransform.Xyb)
         {
-            reader.ReadBits(6);   // x_qm_scale and b_qm_scale
+            (xQmScale, bQmScale) = (reader.ReadBits(3), reader.ReadBits(3));
         }
 
         JxlPasses passes = type != JxlFrameType.ReferenceOnly ? JxlPasses.Read(ref reader) : JxlPasses.Single;
@@ -448,6 +512,8 @@ internal sealed record JxlFrameHeader
             Upsampling = upsampling,
             ExtraChannelUpsampling = ecUpsampling,
             GroupSizeShift = groupSizeShift,
+            XQmScale = xQmScale,
+            BQmScale = bQmScale,
             Passes = passes,
             DcLevel = dcLevel,
             CustomSizeOrOrigin = custom,
@@ -482,7 +548,6 @@ internal sealed record JxlFrameHeader
 internal sealed record JxlToc(long[] Offsets, uint[] Sizes, long TotalSize)
 {
     private const int MaxEntries = 65536;
-    private const int PermutationContexts = 8;
 
     public static JxlToc Read(ref JxlBitReader reader, long entries)
     {
@@ -525,75 +590,9 @@ internal sealed record JxlToc(long[] Offsets, uint[] Sizes, long TotalSize)
 
     private static int[] ReadPermutation(ref JxlBitReader reader, int size)
     {
-        JxlEntropyCode code = JxlEntropyCode.Read(ref reader, PermutationContexts);
-        uint[] lehmer = new uint[size];
-        using (var symbols = new JxlSymbolReader(code, ref reader))
-        {
-            uint end = symbols.Read(Context((uint)size), ref reader);
-            if (end > size)
-            {
-                throw JxlDescriptor.Corrupt("Invalid permutation size.");
-            }
-
-            uint last = 0;
-            for (int i = 0; i < end; i++)
-            {
-                lehmer[i] = symbols.Read(Context(last), ref reader);
-                last = lehmer[i];
-                if (lehmer[i] >= size - i)
-                {
-                    throw JxlDescriptor.Corrupt("Invalid Lehmer code.");
-                }
-            }
-
-            if (!symbols.IsFinalStateValid)
-            {
-                throw JxlDescriptor.Corrupt("Invalid ANS stream.");
-            }
-        }
-
-        return DecodeLehmerCode(lehmer);
-    }
-
-    // The token of HybridUintConfig(0, 0, 0), capped: 0 for 0, else 1 + floor(log2(value)).
-    private static int Context(uint value) => Math.Min(value == 0 ? 0 : JxlPrefixCode.Log2Floor(value) + 1, PermutationContexts - 1);
-
-    /// <summary>Lehmer code to permutation with an implicit order-statistics tree (lib/jxl/lehmer_code.h).</summary>
-    private static int[] DecodeLehmerCode(uint[] code)
-    {
-        int n = code.Length;
-        int log2 = n <= 1 ? 0 : JxlPrefixCode.Log2Floor((uint)n - 1) + 1;
-        int padded = 1 << log2;
-        uint[] tree = new uint[padded];
-        for (int i = 0; i < padded; i++)
-        {
-            tree[i] = (uint)((i + 1) & -(i + 1));
-        }
-
-        int[] permutation = new int[n];
-        for (int i = 0; i < n; i++)
-        {
-            uint rank = code[i] + 1;
-            int bit = padded;
-            int next = 0;
-            for (int b = 0; b <= log2; b++)
-            {
-                int candidate = next + bit;
-                bit >>= 1;
-                if (candidate <= padded && tree[candidate - 1] < rank)
-                {
-                    next = candidate;
-                    rank -= tree[candidate - 1];
-                }
-            }
-
-            permutation[i] = next;
-            for (next++; next <= padded; next += next & -next)
-            {
-                tree[next - 1]--;
-            }
-        }
-
-        return permutation;
+        JxlEntropyCode code = JxlEntropyCode.Read(ref reader, JxlPermutation.Contexts);
+        using var symbols = new JxlSymbolReader(code, ref reader);
+        int[] permutation = JxlPermutation.Read(ref reader, symbols, code.ContextMap, 0, size);
+        return symbols.IsFinalStateValid ? permutation : throw JxlDescriptor.Corrupt("Invalid ANS stream.");
     }
 }

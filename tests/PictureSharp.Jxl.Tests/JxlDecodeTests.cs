@@ -1,14 +1,19 @@
 using System.Security.Cryptography;
 using System.Text.Json;
+using PictureSharp.Formats.Jxl.Codestream;
+using PictureSharp.Formats.Jxl.Container;
 using static PictureSharp.Formats.Jxl.Tests.JxlTestData;
 
 namespace PictureSharp.Formats.Jxl.Tests;
 
-/// <summary>Lossless Modular decoding against the djxl renderings recorded in corpus.json (no tools needed).</summary>
+/// <summary>
+/// Decoding against the djxl renderings recorded with the corpus (no tools needed): lossless files by the hash in
+/// corpus.json, lossy ones against djxl/*.png within <see cref="Tolerance"/>.
+/// </summary>
 public sealed class JxlDecodeTests
 {
-    // Valid files outside this version's subset: animation, float samples and lossy (XYB) images.
-    private static readonly string[] Unsupported = ["animation.jxl", "float32.jxl", "jxlp-v1-out-of-order.jxl", "jxlp-v1.jxl", "rgb8-lossy.jxl"];
+    // Valid files outside this version's subset: animation, float samples and photon noise.
+    private static readonly string[] Unsupported = ["animation.jxl", "float32.jxl", "lossy-noise.jxl"];
 
     public static IEnumerable<string> CorpusFiles()
     {
@@ -35,8 +40,69 @@ public sealed class JxlDecodeTests
         }
 
         using Image image = Image.Load(CorpusPath(name), options);
-        string hash = Convert.ToHexStringLower(SHA256.HashData(JxlDecodeOracleTests.Rgba(image)));
-        await Assert.That(hash).IsEqualTo(ExpectedHash(name));
+        string reference = CorpusPath(Path.Combine("djxl", Path.ChangeExtension(name, ".png")));
+        if (!File.Exists(reference))
+        {
+            string hash = Convert.ToHexStringLower(SHA256.HashData(JxlDecodeOracleTests.Rgba(image)));
+            await Assert.That(hash).IsEqualTo(ExpectedHash(name));
+            return;
+        }
+
+        using Image expected = Image.Load(reference);
+        await Assert.That(Tolerance(image, expected)).IsNull();
+    }
+
+    /// <summary>
+    /// Null when <paramref name="actual"/> matches the djxl rendering within libjxl's floating-point freedom: every
+    /// 8-bit sample within 1 and at most 0.1% of them different. djxl uses approximate reciprocals in the
+    /// dequantisation and filters, so lossy images are not bit-exact.
+    /// </summary>
+    internal static string? Tolerance(Image actual, Image expected)
+    {
+        if ((actual.Width, actual.Height) != (expected.Width, expected.Height))
+        {
+            return $"{actual.Width}x{actual.Height} instead of {expected.Width}x{expected.Height}";
+        }
+
+        byte[] a = JxlDecodeOracleTests.Rgba(actual);
+        byte[] e = JxlDecodeOracleTests.Rgba(expected);
+        int different = 0;
+        for (int i = 0; i < a.Length; i++)
+        {
+            int difference = Math.Abs(a[i] - e[i]);
+            if (difference > 1)
+            {
+                return $"sample {i} differs by {difference}";
+            }
+
+            different += difference;
+        }
+
+        return different * 1000L > a.Length ? $"{different} of {a.Length} samples differ" : null;
+    }
+
+    [Test]
+    public async Task Corpus_FramesUseTheCodingToolsTheyNameAfter()
+    {
+        static List<JxlFrameHeader> Frames(string name)
+        {
+            JxlCodestream codestream = JxlContainer.Parse(File.ReadAllBytes(CorpusPath(name))).Codestream;
+            return JxlFrameDecoder.ReadFrameHeaders(codestream, JxlHeaders.Read(codestream));
+        }
+
+        List<JxlFrameHeader> patches = Frames("lossy-patches.jxl");
+        await Assert.That(patches.Select(frame => frame.Type)).IsEquivalentTo([JxlFrameType.ReferenceOnly, JxlFrameType.Regular]);
+        await Assert.That(patches[^1].Flags.HasFlag(JxlFrameFlags.Patches)).IsTrue();
+        List<JxlFrameHeader> progressive = Frames("lossy-progressive-dc.jxl");
+        await Assert.That(progressive.Select(frame => frame.Type)).IsEquivalentTo([JxlFrameType.Dc, JxlFrameType.Regular]);
+        await Assert.That(progressive[^1].Flags.HasFlag(JxlFrameFlags.UseDcFrame)).IsTrue();
+        await Assert.That(Frames("lossy-progressive-ac.jxl")[^1].Passes.Count).IsGreaterThan(1u);
+        await Assert.That(Frames("lossy-resampling.jxl")[^1].Upsampling).IsEqualTo(2u);
+        await Assert.That(Frames("lossy-epf3.jxl")[^1].LoopFilter.EpfIterations).IsEqualTo(3u);
+        await Assert.That(Frames("lossy-modular.jxl")[^1].Encoding).IsEqualTo(JxlFrameEncoding.Modular);
+        await Assert.That(Frames("lossy-groups.jxl")[^1].Groups).IsGreaterThan(1);
+        JxlFrameHeader jpeg = Frames("jpeg-420.jxl")[^1];
+        await Assert.That((jpeg.ColorTransform, jpeg.Is444)).IsEqualTo((JxlColorTransform.YCbCr, false));
     }
 
     [Test]
@@ -77,9 +143,12 @@ public sealed class JxlDecodeTests
     }
 
     [Test]
-    public async Task Decode_EveryTruncation_IsRejectedAsCorrupt()
+    [Arguments("squeeze.jxl")]
+    [Arguments("lossy-progressive-ac.jxl")]
+    [Arguments("lossy-patches.jxl")]
+    public async Task Decode_EveryTruncation_IsRejectedAsCorrupt(string name)
     {
-        byte[] data = File.ReadAllBytes(CorpusPath("squeeze.jxl"));
+        byte[] data = File.ReadAllBytes(CorpusPath(name));
         for (int length = 0; length < data.Length; length++)
         {
             await Assert.That(() => Image.Load(data.AsSpan(0, length).ToArray(), Options())).Throws<ImageFormatException>();
@@ -91,6 +160,9 @@ public sealed class JxlDecodeTests
     [Arguments("palette.jxl")]
     [Arguments("progressive.jxl")]
     [Arguments("effort1.jxl")]
+    [Arguments("lossy-progressive-dc.jxl")]
+    [Arguments("jpeg-420.jxl")]
+    [Arguments("lossy-alpha.jxl")]
     public async Task Decode_EveryBitFlip_DecodesOrFailsCleanly(string name)
     {
         byte[] data = File.ReadAllBytes(CorpusPath(name));
@@ -126,11 +198,31 @@ public sealed class JxlDecodeTests
     }
 
     [Test]
-    public async Task Decode_RejectsLayeredAndLossyImagesAsUnsupported()
+    public async Task Decode_RejectsAnimationAndNoiseAsUnsupported()
     {
-        await Assert.That(() => Image.Load(CorpusPath("rgb8-lossy.jxl"), Options())).Throws<NotSupportedException>()
-            .WithMessageContaining("XYB");
         await Assert.That(() => Image.Load(CorpusPath("animation.jxl"), Options())).Throws<NotSupportedException>()
             .WithMessageContaining("animation");
+        await Assert.That(() => Image.Load(CorpusPath("lossy-noise.jxl"), Options())).Throws<NotSupportedException>()
+            .WithMessageContaining("noise");
+    }
+
+    [Test]
+    public async Task Decode_LossyAlphaAndGray()
+    {
+        using (Image rgba = Image.Load(CorpusPath("lossy-alpha.jxl"), Options()))
+        {
+            await Assert.That(rgba.HasAlpha).IsTrue();
+            await Assert.That(rgba.IsOpaque()).IsFalse();
+        }
+
+        using Image gray = Image.Load(CorpusPath("lossy-gray.jxl"), Options());
+        await Assert.That(gray.HasAlpha).IsFalse();
+        foreach (Rgba32 pixel in gray.GetPixelMemory().Span)
+        {
+            if (pixel.R != pixel.G || pixel.G != pixel.B)
+            {
+                Assert.Fail($"Not a gray pixel: {pixel}.");
+            }
+        }
     }
 }

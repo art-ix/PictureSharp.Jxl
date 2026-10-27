@@ -19,8 +19,8 @@ public sealed class JxlDecodeOracleTests
         return directories.Select(directory => Path.Combine(directory, name)).FirstOrDefault(File.Exists);
     }
 
-    /// <summary>The RGBA pixels djxl renders as an 8-bit PNG (its PAM output ignores --bits_per_sample), read by the core.</summary>
-    internal static (int Width, int Height, byte[] Rgba) Djxl(string djxl, string file)
+    /// <summary>The image djxl renders as an 8-bit PNG (its PAM output ignores --bits_per_sample), read by the core.</summary>
+    internal static Image DjxlImage(string djxl, string file)
     {
         string output = Path.Combine(Path.GetTempPath(), $"jxl-oracle-{Guid.NewGuid():N}.png");
         try
@@ -38,8 +38,7 @@ public sealed class JxlDecodeOracleTests
                 throw new InvalidOperationException($"djxl failed: {error}");
             }
 
-            using Image reference = Image.Load(output);
-            return (reference.Width, reference.Height, Rgba(reference));
+            return Image.Load(output);
         }
         finally
         {
@@ -62,7 +61,10 @@ public sealed class JxlDecodeOracleTests
         return rgba;
     }
 
-    /// <summary>Every corpus file this version decodes matches djxl exactly; the others are reported unsupported.</summary>
+    /// <summary>
+    /// Every corpus file this version decodes matches djxl: lossless ones exactly, lossy ones within
+    /// <see cref="JxlDecodeTests.Tolerance"/>; the others are reported unsupported.
+    /// </summary>
     [Test]
     [Property("Category", "Oracle")]
     public async Task Corpus_DecodesLikeDjxl()
@@ -95,12 +97,10 @@ public sealed class JxlDecodeOracleTests
 
             using (image)
             {
-                (int width, int height, byte[] expected) = Djxl(djxl!, path);
-                byte[] actual = Rgba(image);
-                int first = actual.AsSpan().CommonPrefixLength(expected);
-                if (image.Width != width || image.Height != height || first != expected.Length)
+                using Image expected = DjxlImage(djxl!, path);
+                if (JxlDecodeTests.Tolerance(image, expected) is { } difference)
                 {
-                    mismatches.Add($"{name}: {image.Width}x{image.Height} vs {width}x{height}, first difference at byte {first}");
+                    mismatches.Add($"{name}: {difference}");
                 }
 
                 decoded.Add(name);

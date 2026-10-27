@@ -4,8 +4,8 @@ using PictureSharp.Formats.Jxl.Container;
 namespace PictureSharp.Formats.Jxl;
 
 /// <summary>
-/// Identify reads the container and the codestream headers. Decode supports still lossless Modular images (see
-/// <see cref="JxlFrameDecoder"/>); other valid images throw <see cref="NotSupportedException"/>.
+/// Identify reads the container and the codestream headers. Decode supports still single-frame VarDCT and Modular
+/// images (see <see cref="JxlFrameDecoder"/>); other valid images throw <see cref="NotSupportedException"/>.
 /// </summary>
 internal sealed class JxlDecoder : IImageFormatDecoder
 {
@@ -106,19 +106,31 @@ internal sealed class JxlDecoder : IImageFormatDecoder
 
         context.ReservePixels((int)width, (int)height);
         JxlDecodedImage decoded = JxlFrameDecoder.Decode(codestream, headers, context.CancellationToken);
-        bool alpha = decoded.Alpha is not null;
-        var image = alpha ? new Image(decoded.Width, decoded.Height) : new Image(decoded.Width, decoded.Height, new Rgba32(0, 0, 0, 255));
+        JxlPlane? alpha = decoded.Alpha;
+        var image = alpha is not null ? new Image(decoded.Width, decoded.Height) : new Image(decoded.Width, decoded.Height, new Rgba32(0, 0, 0, 255));
         try
         {
             Span<Rgba32> pixels = image.GetPixelMemory().Span;
-            int[] red = decoded.Color[0];
-            int[] green = decoded.Color[decoded.Color.Length == 3 ? 1 : 0];
-            int[] blue = decoded.Color[^1];
-            Func<int, byte> color = Converter(decoded.ColorBits);
-            Func<int, byte> opacity = Converter(decoded.AlphaBits);
-            for (int i = 0; i < pixels.Length; i++)
+            JxlPlane red = decoded.Color[0];
+            JxlPlane green = decoded.Color[decoded.Color.Length == 3 ? 1 : 0];
+            JxlPlane blue = decoded.Color[^1];
+            // Grayscale is written as one channel (dithered as channel 0, alpha as channel 1) and replicated.
+            bool gray = headers.Metadata.Color.ColorSpace == JxlColorSpace.Gray;
+            static byte Gray(float value, int x, int y) => JxlDither.ToByte(value, x, y, 0);
+            for (int y = 0; y < decoded.Height; y++)
             {
-                pixels[i] = new Rgba32(color(red[i]), color(green[i]), color(blue[i]), alpha ? opacity(decoded.Alpha![i]) : (byte)255);
+                Span<float> r = red.Row(y);
+                Span<float> g = green.Row(y);
+                Span<float> b = blue.Row(y);
+                Span<float> a = alpha is null ? default : alpha.Row(y);
+                Span<Rgba32> row = pixels.Slice(y * decoded.Width, decoded.Width);
+                for (int x = 0; x < row.Length; x++)
+                {
+                    row[x] = gray
+                        ? new Rgba32(Gray(r[x], x, y), Gray(r[x], x, y), Gray(r[x], x, y), alpha is null ? (byte)255 : JxlDither.ToByte(a[x], x, y, 1))
+                        : new Rgba32(JxlDither.ToByte(r[x], x, y, 0), JxlDither.ToByte(g[x], x, y, 1), JxlDither.ToByte(b[x], x, y, 2),
+                            alpha is null ? (byte)255 : JxlDither.ToByte(a[x], x, y, 3));
+                }
             }
 
             // Stored orientation, as for JPEG: ApplyExifOrientation (or AutoOrient) applies it.
@@ -136,24 +148,4 @@ internal sealed class JxlDecoder : IImageFormatDecoder
             throw;
         }
     }
-
-    /// <summary>
-    /// Samples of <paramref name="bits"/> bits to 8 bits the way libjxl renders them: scaled to [0, 1] in single
-    /// precision (double from 23 bits), clamped, multiplied by 255 and rounded to nearest even.
-    /// </summary>
-    private static Func<int, byte> Converter(int bits)
-    {
-        if (bits == 0)
-        {
-            return static _ => 255;
-        }
-
-        double factor = 1.0 / ((1u << bits) - 1);
-        float single = (float)factor;
-        return bits < 23
-            ? value => ToByte(value * single)
-            : value => ToByte((float)(value * factor));
-    }
-
-    private static byte ToByte(float value) => (byte)MathF.Round(Math.Clamp(value, 0f, 1f) * 255f, MidpointRounding.ToEven);
 }

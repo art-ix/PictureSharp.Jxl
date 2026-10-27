@@ -2,7 +2,8 @@
 """Generate public, synthetic JPEG XL fixtures and their jxlinfo and djxl oracle (no external images).
 
 Requires Pillow and the libjxl v0.12.0 tools (cjxl, djxl, jxlinfo) on PATH or in JXL_TOOLS. The outputs are
-committed, so tests and CI do not need the tools. Run: python3 tests/assets/generate-corpus.py
+committed, so tests and CI do not need the tools. Lossy fixtures also get djxl's 8-bit rendering in djxl/, which
+tests compare within a tolerance. Run: python3 tests/assets/generate-corpus.py
 """
 import hashlib
 import json
@@ -99,13 +100,27 @@ def few_colors(path, width, height):
     image.save(path)
 
 
-def pixels(path, temp):
+def text(path, width, height):
+    """Repeated glyphs on a plain background: content for which cjxl codes patches from a reference frame."""
+    from PIL import ImageDraw
+    image = Image.new('RGB', (width, height), (250, 250, 245))
+    draw = ImageDraw.Draw(image)
+    for row in range(height // 12):
+        draw.text((2, row * 12), 'JPEG XL patches 0123 ' * 4, fill=(20, 20, 60))
+    image.save(path)
+
+
+def pixels(path, temp, reference=None):
     """SHA-256 of the RGBA pixels djxl renders at 8 bits (orientation applied), or None if djxl fails."""
     png = Path(temp) / 'pixels.png'
     result = subprocess.run([tool('djxl'), str(path), str(png), '--bits_per_sample=8', '--quiet'], capture_output=True)
     if result.returncode != 0:
         return None
-    return hashlib.sha256(Image.open(png).convert('RGBA').tobytes()).hexdigest()
+    rendered = Image.open(png).convert('RGBA')
+    if reference is not None:
+        reference.parent.mkdir(exist_ok=True)
+        rendered.save(reference, optimize=True)
+    return hashlib.sha256(rendered.tobytes()).hexdigest()
 
 
 def info(path):
@@ -127,7 +142,7 @@ def info(path):
 
 def main():
     OUTPUT.mkdir(parents=True, exist_ok=True)
-    for old in OUTPUT.glob('*.jxl'):
+    for old in [*OUTPUT.glob('*.jxl'), *OUTPUT.glob('djxl/*.png')]:
         old.unlink()
     cjxl, djxl = tool('cjxl'), tool('djxl')
     with tempfile.TemporaryDirectory() as temp:
@@ -144,6 +159,13 @@ def main():
         png(tmp / 'groups.png', 300, 200)
         png(tmp / 'lf-groups.png', 1100, 40, alpha=True)
         few_colors(tmp / 'few.png', 40, 24)
+        png(tmp / 'photo.png', 64, 48)
+        png(tmp / 'photo-alpha.png', 64, 48, alpha=True)
+        png(tmp / 'photo-gray.png', 64, 48, gray=True)
+        png(tmp / 'groups-lossy.png', 300, 200)
+        text(tmp / 'text.png', 200, 96)
+        Image.open(tmp / 'photo.png').save(tmp / 'q90-420.jpg', quality=90, subsampling=2)
+        Image.open(tmp / 'photo.png').save(tmp / 'q90-444.jpg', quality=90, subsampling=0)
         pfm(tmp / 'float.pfm', 20, 12)
         animation(tmp / 'anim.png')
         # Lossless encoding keeps an embedded profile as ICC instead of an enumerated colour encoding.
@@ -184,6 +206,29 @@ def main():
             'lf-groups': ('lf-groups.png', '-d', '0', '-g', '0', '-R', '1'),
         }
         cases.update({f'orient{o}': (f'orient{o}.jpg', '-j', '0', '-d', '0') for o in range(1, 9)})
+        # Lossy (VarDCT, XYB) coding tools: rendered by djxl into djxl/*.png and compared within a tolerance.
+        lossy = {
+            'lossy-d0.5': ('photo.png', '-d', '0.5'),
+            'lossy-d4-e9': ('photo.png', '-d', '4', '-e', '9'),
+            'lossy-e1': ('photo.png', '-d', '1', '-e', '1'),
+            'lossy-container': ('photo.png', '-d', '2', '--container=1'),
+            'lossy-alpha': ('photo-alpha.png', '-d', '1'),
+            'lossy-gray': ('photo-gray.png', '-d', '1'),
+            'lossy-groups': ('groups-lossy.png', '-d', '2'),
+            'lossy-progressive-dc': ('photo.png', '-d', '1', '-p'),
+            'lossy-progressive-ac': ('photo.png', '-d', '1', '--progressive_ac'),
+            'lossy-resampling': ('photo.png', '-d', '2', '--resampling=2'),
+            'lossy-epf3': ('photo.png', '-d', '3', '--epf=3'),
+            'lossy-no-filters': ('photo.png', '-d', '2', '--epf=0', '--gaborish=0'),
+            'lossy-modular': ('photo.png', '-d', '1', '-m', '1'),
+            'lossy-p3': ('photo.png', '-d', '1', '-x', 'color_space=RGB_D65_DCI_Rel_SRG'),
+            'lossy-patches': ('text.png', '-d', '1'),
+            'jpeg-420': ('q90-420.jpg', '--lossless_jpeg=1'),
+            'jpeg-444': ('q90-444.jpg', '--lossless_jpeg=1'),
+            # Valid but not rendered yet: photon noise.
+            'lossy-noise': ('photo.png', '-d', '1', '--photon_noise_iso=3200'),
+        }
+        cases.update(lossy)
         for name, (source, *options) in cases.items():
             run(cjxl, str(tmp / source), str(OUTPUT / f'{name}.jxl'), *options)
 
@@ -195,7 +240,8 @@ def main():
         assert (tmp / 'a.ppm').read_bytes() == (tmp / 'b.ppm').read_bytes()
 
     with tempfile.TemporaryDirectory() as temp:
-        oracle = {path.name: info(path) | {'rgba8Sha256': pixels(path, temp)} for path in sorted(OUTPUT.glob('*.jxl'))}
+        oracle = {path.name: info(path) | {'rgba8Sha256': pixels(path, temp, OUTPUT / 'djxl' / f'{path.stem}.png' if path.stem in lossy else None)}
+                  for path in sorted(OUTPUT.glob('*.jxl'))}
     (OUTPUT / 'corpus.json').write_text(json.dumps({'generator': run(tool('cjxl'), '--version').splitlines()[0], 'files': oracle}, indent=1) + '\n')
     print(f'{len(oracle)} files, {sum(p.stat().st_size for p in OUTPUT.glob("*.jxl"))} bytes')
 

@@ -29,31 +29,51 @@ parts, as libjxl v0.12.0 does. Metadata boxes (`Exif`, `xml `, `jumb`, `brob`, `
 
 ## Load
 
-`Image.Load` decodes still images whose single frame is Modular without XYB, which is what
-`cjxl -d 0` produces for PNG, PPM and JPEG input (`-j 0`). It implements the entropy coding (ANS
-and prefix codes, LZ77, clustered contexts), meta-adaptive trees with all predictors including
-the weighted predictor, the RCT, palette (with delta and implicit entries) and squeeze transforms,
-groups, LF groups and progressive passes. Pixels match djxl v0.12.0 exactly at 8 bits per sample.
+`Image.Load` decodes still JPEG XL images, lossy and lossless, as `cjxl` produces them:
 
-- Samples become `Rgba32` with straight alpha. Integer samples of any depth are scaled like libjxl:
-  to [0, 1] in single precision, times 255, rounded to nearest even. Deeper samples (10, 12, 16 bits)
-  are therefore reduced to 8 bits.
+- **VarDCT** (lossy): all 27 transforms from 2×2 to 256×256 including AFV, custom quantisation tables,
+  chroma from luma, adaptive DC smoothing, coefficient orders, progressive AC passes and several
+  histogram sets.
+- **Modular**: entropy coding (ANS and prefix codes, LZ77, clustered contexts), meta-adaptive trees
+  with all predictors including the weighted predictor, the RCT, palette and squeeze transforms,
+  groups, LF groups and progressive passes; lossless, and lossy with XYB.
+- **Recompressed JPEGs** (`cjxl` on JPEG input): YCbCr with 4:2:0, 4:2:2 and 4:4:0 chroma subsampling,
+  rendered as libjxl renders them (not as the reconstructed JPEG file).
+- **Several frames** of one still image: reference frames with patches (cjxl codes text and graphics
+  this way) and DC frames (`cjxl -p`).
+- **Rendering**: Gaborish and the edge-preserving filter, 2×, 4× and 8× upsampling of colour and
+  extra channels, XYB to RGB in the image's colour space with its transfer function (sRGB, linear,
+  gamma, BT.709, DCI, PQ) and YCbCr to RGB.
+
+The port follows libjxl v0.12.0 operation by operation, including fused multiply-adds, its rational
+polynomial approximations and the ordered dither libjxl applies to 8-bit output. Lossless images
+match djxl exactly. Lossy images differ by at most 1 in a few samples (typically under 0.01%), since
+libjxl uses hardware approximate reciprocals in dequantisation.
+
+- Samples become `Rgba32` with straight alpha. Rendered samples are scaled to 0–255 as libjxl writes
+  8-bit output: plus a 32×32 blue-noise dither, clamped, rounded to nearest even. Integer samples
+  (10, 12, 16 bits) are scaled to [0, 1] in single precision first, so they are reduced to 8 bits.
 - Grayscale is replicated to RGB. The first alpha extra channel becomes alpha. Other extra channels
   (depth, selection mask, thermal, …) are decoded and dropped.
-- Pixels stay in the image's colour space, which `ImageInfo.Color` describes. Colour management is
-  not applied and the ICC profile is not attached yet.
+- Pixels stay in the image's colour space, which `ImageInfo.Color` describes. XYB images are rendered
+  in their enumerated colour space (P3, BT.2100 and custom primaries are converted from XYB through
+  XYZ, as libjxl does). XYB images with an ICC profile are rendered as sRGB, since colour management
+  is not available yet; libjxl would convert them to the profile with a CMS. The ICC profile is not
+  attached yet.
 - The orientation is not applied: like JPEG with EXIF, `Image.Metadata.Orientation` carries it, and
   `DecoderOptions.ApplyExifOrientation` or `AutoOrient()` applies it.
-- A preview frame is skipped. `DecoderOptions.MaxPixels` applies before allocation. The decoder keeps
-  32-bit working planes, about 4 bytes per sample per channel, and checks cancellation between
-  sections and channels.
+- A preview frame is skipped. `DecoderOptions.MaxPixels` applies before allocation. The decoder
+  renders whole frames in single precision (about 12 bytes per pixel per buffer, two buffers while
+  filtering) and checks cancellation between sections and groups. It is a scalar port; SIMD and
+  multithreading come later.
 
 `NotSupportedException` for valid images outside this subset:
 
-- lossy (VarDCT or XYB) images, animations, floating-point samples;
-- several frames (layers, reference frames, patches), noise, splines, upsampling, cropped or
-  blended frames, restoration filters;
-- CMYK (Black) and spot colour channels; premultiplied, float or subsampled alpha.
+- animations and floating-point samples (other than XYB images, whose bit depth is only metadata);
+- several displayed frames (layers), cropped or blended frames;
+- photon noise and splines;
+- HLG transfer with XYB (HDR);
+- CMYK (Black) and spot colour channels; premultiplied or float alpha.
 
 Not implemented: encoding, metadata reading/editing and the ICC profile itself. CanEncode returns false.
 
@@ -64,7 +84,8 @@ supported throw `NotSupportedException`.
 
 `tests/assets/corpus` holds small synthetic files made by `tests/assets/generate-corpus.py` with
 cjxl v0.12.0. `corpus.json` records their jxlinfo output and the SHA-256 of the RGBA pixels djxl
-renders at 8 bits, so the tests do not need the tools. Oracle tests compare damaged files with
+renders at 8 bits; lossy files also keep djxl's rendering in `corpus/djxl/*.png`, compared within the
+tolerance above. The tests therefore do not need the tools. Oracle tests compare damaged files with
 jxlinfo and decoded pixels with djxl, and are skipped when the tools are not on `PATH` (or
 `JXL_TOOLS`). `JXL_ORACLE_DIR` adds the `.jxl` files of a local directory to the pixel comparison:
 
