@@ -6,12 +6,12 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <PackageId>PictureSharp.Jxl</PackageId>
-    <Description>Pure C# JPEG XL plugin for PictureSharp. Version 0.7.4 detects and identifies JPEG XL files (raw codestream and container), decodes still lossy (VarDCT, XYB) and lossless (Modular) images, including recompressed JPEGs, patches and progressive files, encodes images lossily (VarDCT with quality, distance and effort 1-9, about as small as cjxl, the default) or losslessly (8-bit Modular, about as small as cjxl -d 0 -e 7), losslessly transcodes sequential and progressive 8-bit JPEG with byte-exact original reconstruction, and reads, writes and edits the ICC profile, EXIF and XMP (also Brotli-compressed).</Description>
+    <Description>Pure C# JPEG XL plugin for PictureSharp. Version 0.7.5 detects and identifies JPEG XL files (raw codestream and container), decodes still lossy (VarDCT, XYB) and lossless (Modular) images, including recompressed JPEGs, patches and progressive files, encodes images lossily (VarDCT with quality, distance and effort 1-9, about as small as cjxl, the default) or losslessly (8-bit Modular, about as small as cjxl -d 0 -e 7), losslessly transcodes sequential and progressive 8-bit JPEG with byte-exact original reconstruction, and reads, writes and edits the ICC profile, EXIF and XMP (also Brotli-compressed).</Description>
     <PackageTags>picturesharp;image;jxl;jpegxl</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/art-ix/picturesharp.jxl</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageReleaseNotes>0.7.4: faster lossless (Modular) decoding: direct prediction for trees without decisions, lookup tables for trees on one property, packed tree nodes, cheaper weighted predictor and entropy decoding. Output is byte-identical to 0.7.2.</PackageReleaseNotes>
+    <PackageReleaseNotes>0.7.5: faster lossless (Modular) decoding: residuals of decision-free trees read a row at a time (including LZ77 runs), a dedicated loop for gradient trees, branch-free clamped gradient. Output is byte-identical to 0.7.2.</PackageReleaseNotes>
   </PropertyGroup>
   <ItemGroup><PackageReference Include="PictureSharp" Version="$(PictureSharpVersion)" /></ItemGroup>
   <ItemGroup>

@@ -80,17 +80,105 @@ internal sealed class JxlSymbolReader : IDisposable
     /// <summary>Reads the value of an unclustered context.</summary>
     public uint Read(int context, ref JxlBitReader reader) => ReadClustered(contextMap[context], ref reader);
 
+    /// <summary>
+    /// Reads <c>values.Length</c> values of one cluster, as repeated <see cref="ReadClustered"/> calls would: the
+    /// prefix-code path skips the per-symbol dispatch and LZ77 copies run as one loop.
+    /// </summary>
+    public void ReadClusteredRow(int cluster, ref JxlBitReader reader, Span<uint> values)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (window is null && usePrefixCode)
+        {
+            JxlPrefixCode prefix = code.PrefixCodes[cluster];
+            JxlHybridUint config = configs[cluster];
+            uint split = config.SplitToken;
+            for (int i = 0; i < values.Length; i++)
+            {
+                uint token = prefix.ReadSymbol(ref reader);
+                values[i] = token < split ? token : config.Decode(token, ref reader);
+            }
+
+            return;
+        }
+
+        if (window is null)
+        {
+            for (int i = 0; i < values.Length; i++)
+            {
+                values[i] = ReadClustered(cluster, ref reader);
+            }
+
+            return;
+        }
+
+        uint[] history = window;
+        JxlHybridUint hybrid = configs[cluster];
+        uint literalSplit = hybrid.SplitToken;
+        JxlPrefixCode? literals = usePrefixCode ? code.PrefixCodes[cluster] : null;
+        uint minSymbol = code.Lz77MinSymbol;
+        int at = 0;
+        while (at < values.Length)
+        {
+            if (toCopy == 0)
+            {
+                // Literals up to the next copy; the window position stays in a local meanwhile.
+                uint position = decoded;
+                while (at < values.Length)
+                {
+                    uint token = literals is not null ? literals.ReadSymbol(ref reader) : ReadAnsSymbol(cluster, ref reader);
+                    if (token >= minSymbol)
+                    {
+                        decoded = position;
+                        StartCopy(token, ref reader);
+                        break;
+                    }
+
+                    uint literal = token < literalSplit ? token : hybrid.Decode(token, ref reader);
+                    history[position++ & WindowMask] = literal;
+                    values[at++] = literal;
+                }
+
+                if (toCopy == 0)
+                {
+                    decoded = position;
+                    continue;
+                }
+            }
+
+            int count = (int)Math.Min(toCopy, (uint)(values.Length - at));
+            uint from = copyPosition;
+            uint to = decoded;
+            for (int end = at + count; at < end; at++)
+            {
+                uint value = history[from++ & WindowMask];
+                history[to++ & WindowMask] = value;
+                values[at] = value;
+            }
+
+            copyPosition = from;
+            decoded = to;
+            toCopy -= (uint)count;
+        }
+    }
+
     /// <summary>Reads the value of a cluster (a context already mapped through the context map).</summary>
     public uint ReadClustered(int cluster, ref JxlBitReader reader)
     {
-        ObjectDisposedException.ThrowIf(disposed, this);
-        if (window is null)
+        if (window is null && !disposed)
         {
             uint symbol = usePrefixCode ? code.PrefixCodes[cluster].ReadSymbol(ref reader) : ReadAnsSymbol(cluster, ref reader);
             ref readonly JxlHybridUint config = ref configs[cluster];
             return symbol < config.SplitToken ? symbol : config.Decode(symbol, ref reader);
         }
 
+        return ReadWindowed(cluster, ref reader);
+    }
+
+    /// <summary>The LZ77 path of <see cref="ReadClustered"/>, kept out of line so the common path inlines.</summary>
+    private uint ReadWindowed(int cluster, ref JxlBitReader reader)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        uint[] window = this.window!;
         if (toCopy > 0)
         {
             return Copy();
@@ -104,6 +192,14 @@ internal sealed class JxlSymbolReader : IDisposable
             return value;
         }
 
+        StartCopy(token, ref reader);
+        return Copy();
+    }
+
+    /// <summary>Starts an LZ77 copy for a length <paramref name="token"/>: reads its length and distance.</summary>
+    private void StartCopy(uint token, ref JxlBitReader reader)
+    {
+        uint[] window = this.window!;
         toCopy = unchecked(code.Lz77LengthConfig.Decode(token - code.Lz77MinSymbol, ref reader) + code.Lz77MinLength);
         int distanceCluster = code.Lz77DistanceCluster;
         uint distance = configs[distanceCluster].Decode(ReadSymbol(distanceCluster, ref reader), ref reader);
@@ -119,8 +215,6 @@ internal sealed class JxlSymbolReader : IDisposable
         {
             throw JxlDescriptor.Corrupt("Invalid LZ77 length.");
         }
-
-        return Copy();
     }
 
     private uint Copy()

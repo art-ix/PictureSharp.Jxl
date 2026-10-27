@@ -342,9 +342,20 @@ internal sealed class JxlFrameDecoder
             cancellationToken.ThrowIfCancellationRequested();
             Span<int> row = channel.Row(y);
             Span<float> output = plane.Row(y);
-            for (int x = 0; x < row.Length; x++)
+            output = output[..row.Length];
+            if (bits < 23)
             {
-                output[x] = bits < 23 ? row[x] * single : (float)(row[x] * factor);
+                for (int x = 0; x < row.Length; x++)
+                {
+                    output[x] = row[x] * single;
+                }
+            }
+            else
+            {
+                for (int x = 0; x < row.Length; x++)
+                {
+                    output[x] = (float)(row[x] * factor);
+                }
             }
         }
 

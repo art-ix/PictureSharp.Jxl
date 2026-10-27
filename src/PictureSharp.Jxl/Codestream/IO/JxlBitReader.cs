@@ -13,6 +13,8 @@ internal ref struct JxlBitReader
     private readonly ReadOnlySpan<ReadOnlyMemory<byte>> segments;
     private readonly long totalBits;
     private int segment;
+    // Bytes in the segments before the current one; the bit position is derived from it on demand.
+    private long segmentStart;
     private ReadOnlySpan<byte> current;
     private int offset;
     private ulong buffer;
@@ -26,7 +28,7 @@ internal ref struct JxlBitReader
     }
 
     /// <summary>Number of bits consumed from the start of the codestream.</summary>
-    public long BitPosition { get; private set; }
+    public readonly long BitPosition => (segmentStart + offset) * 8 - bufferedBits;
 
     /// <summary>Bits left before the end of the codestream.</summary>
     public readonly long RemainingBits => totalBits - BitPosition;
@@ -51,7 +53,6 @@ internal ref struct JxlBitReader
         uint value = (uint)(buffer & ((1UL << count) - 1));
         buffer >>= count;
         bufferedBits -= count;
-        BitPosition += count;
         return value;
     }
 
@@ -81,7 +82,6 @@ internal ref struct JxlBitReader
 
         buffer >>= count;
         bufferedBits -= count;
-        BitPosition += count;
     }
 
     /// <summary>Skips <paramref name="count"/> bits, failing when fewer remain.</summary>
@@ -96,12 +96,10 @@ internal ref struct JxlBitReader
         int fromBuffer = (int)Math.Min(bits, bufferedBits);
         buffer = fromBuffer == 64 ? 0 : buffer >> fromBuffer;
         bufferedBits -= fromBuffer;
-        BitPosition += fromBuffer;
         bits -= fromBuffer;
 
         // The buffer is empty now; skip whole bytes in the slices, then read the leftover bits.
         long bytes = bits / 8;
-        BitPosition += bytes * 8;
         while (bytes > 0)
         {
             int available = current.Length - offset;
@@ -163,6 +161,7 @@ internal ref struct JxlBitReader
 
     private void NextSegment()
     {
+        segmentStart += current.Length;
         segment++;
         current = segments[segment].Span;
         offset = 0;

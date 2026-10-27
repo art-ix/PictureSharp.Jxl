@@ -1,4 +1,4 @@
-# Speed measurements — 0.7.3–0.7.4 (scalar)
+# Speed measurements — 0.7.3–0.7.5 (scalar)
 
 Measured on 2026-10-27, Linux x64, Intel Core i5-12500H, .NET 10, one thread (`DOTNET_PROCESSOR_COUNT=1`).
 libjxl 0.12.0 (`4128790`) times are its own `--num_reps=3` geomean with `--num_threads=1`, PNG I/O excluded, AVX2 enabled.
@@ -81,6 +81,28 @@ Tried for effort 7 and not kept, compared by minimum time in alternating runs: l
 faster with branches, about 10 % slower branch-free) and an edge-free neighbour path for interior pixels (no
 measurable difference). Computing only the properties a tree uses was not pursued: the local properties are a dozen
 integer operations per pixel, while the cost is in branches that depend on the data (tree walk, leaf predictor).
+
+## Modular decoding (0.7.5)
+
+Trees without decisions read the residuals of a whole row first (prefix codes and LZ77 runs in one loop, the window
+position kept in a local) and then predict the row. Trees where every leaf predicts the clamped gradient and the
+tree splits on the unclamped gradient (libjxl's gradient tree, effort 2) get their own row loop. Both prediction loops
+are compiled fully optimised from the start: with tiered PGO the single-leaf gradient pass took about twice as long.
+The clamped gradient is branch-free. Bit positions are derived on demand instead of being counted on every read. Decoded
+pixels and encoded files are unchanged (all 1142 golden results identical to 0.7.2).
+Lossless decoding, 5 runs, two alternating rounds against the 0.7.4 package (mean of the two medians):
+
+| Case | 0.7.4 (ms) | Now (ms) | Speed-up | libjxl 1 thread (ms) |
+| --- | ---: | ---: | ---: | ---: |
+| decode/photo12-d0-e1 | 833 | 621 | 1.34× | 345 |
+| decode/photo12-d0-e2 | 813 | 715 | 1.14× | 428 |
+| decode/photo12-d0-e7 | 2978 | 2921 | 1.02× | 1691 |
+| decode/photo1-d0-e7 | 282 | 263 | 1.07× | 142 |
+
+photo1-d0-e3 and screen-d0-e7 stay within noise (about ±10 % on this machine). Not kept: full optimisation for the
+single-property lookup loop (slower at effort 7), inlining the weighted predictor (e3 about 20 % slower), branch-free
+selection of its largest error (no change). Converting decoded integers to float planes is about 8 % of lossless
+decoding; most of it is first writes to newly allocated planes, which the memory work of a later milestone addresses.
 
 ## Reproduce
 

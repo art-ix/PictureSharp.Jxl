@@ -1,3 +1,4 @@
+using System.Buffers;
 using PictureSharp.Formats.Jxl.Codestream.Buffers;
 using PictureSharp.Formats.Jxl.Codestream.Entropy;
 using PictureSharp.Formats.Jxl.Codestream.IO;
@@ -377,39 +378,54 @@ internal sealed class JxlMaTree
         }
     }
 
-    /// <summary>A tree without decisions: every pixel uses the same leaf, so no properties are computed.</summary>
+    /// <summary>
+    /// A tree without decisions: every pixel uses the same leaf, so no properties are computed and the residuals of a
+    /// row, which do not depend on the pixels, are read in one batch before the prediction pass.
+    /// </summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
     private static void DecodeSingleLeaf(ref JxlBitReader reader, JxlSymbolReader symbols, JxlMaLeaf leaf, JxlChannel channel,
         CancellationToken cancellationToken)
     {
         int width = channel.Width;
         int[] pixels = channel.Pixels;
-        int cluster = leaf.Cluster;
         long multiplier = leaf.Multiplier;
-        for (int y = 0; y < channel.Height; y++)
+        long offset = leaf.Offset;
+        uint[] residuals = ArrayPool<uint>.Shared.Rent(width);
+        try
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            int row = y * width;
-            if (leaf.Predictor == JxlPredictor.Gradient && y > 0)
+            for (int y = 0; y < channel.Height; y++)
             {
-                // Interior rows: W, N and NW exist from the second pixel on, so the edge substitutes are not needed.
-                pixels[row] = Next(ref reader, symbols, cluster, multiplier, leaf.Offset + pixels[row - width]);
-                for (int x = 1; x < width; x++)
+                cancellationToken.ThrowIfCancellationRequested();
+                symbols.ReadClusteredRow(leaf.Cluster, ref reader, residuals.AsSpan(0, width));
+                int row = y * width;
+                if (leaf.Predictor == JxlPredictor.Gradient && y > 0)
                 {
-                    int i = row + x;
-                    long guess = leaf.Offset + JxlMaProperty.ClampedGradient(pixels[i - 1], pixels[i - width], pixels[i - width - 1]);
-                    pixels[i] = Next(ref reader, symbols, cluster, multiplier, guess);
+                    // Interior rows: W, N and NW exist from the second pixel on, so the edge substitutes are not needed.
+                    pixels[row] = Value(residuals[0], multiplier, offset + pixels[row - width]);
+                    for (int x = 1; x < width; x++)
+                    {
+                        int i = row + x;
+                        long guess = offset + JxlMaProperty.ClampedGradient(pixels[i - 1], pixels[i - width], pixels[i - width - 1]);
+                        pixels[i] = Value(residuals[x], multiplier, guess);
+                    }
+
+                    continue;
                 }
 
-                continue;
-            }
-
-            for (int x = 0; x < width; x++)
-            {
-                long guess = leaf.Offset + Predict(leaf.Predictor, JxlNeighbours.At(pixels, width, x, y), 0);
-                pixels[row + x] = Next(ref reader, symbols, cluster, multiplier, guess);
+                for (int x = 0; x < width; x++)
+                {
+                    long guess = offset + Predict(leaf.Predictor, JxlNeighbours.At(pixels, width, x, y), 0);
+                    pixels[row + x] = Value(residuals[x], multiplier, guess);
+                }
             }
         }
+        finally
+        {
+            ArrayPool<uint>.Shared.Return(residuals);
+        }
     }
+
+    private static int Value(uint residual, long multiplier, long guess) => unchecked((int)(UnpackSigned(residual) * multiplier + guess));
 
     /// <summary>
     /// A tree deciding on a single local property: the leaf comes from a table indexed by that property, and only that
@@ -426,6 +442,9 @@ internal sealed class JxlMaTree
         int last = table.Length - 1;
         Span<int> properties = stackalloc int[JxlMaProperty.Local];
         JxlWeightedPredictor? weighted = tree.UsesWeighted ? new JxlWeightedPredictor(weightedHeader, width) : null;
+        // libjxl's gradient tree: every leaf predicts the clamped gradient and the tree splits on the unclamped one.
+        bool gradientTree = property == JxlMaProperty.Gradient && weighted is null &&
+            Array.TrueForAll(leaves, leaf => leaf.Predictor == JxlPredictor.Gradient);
         for (int y = 0; y < channel.Height; y++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -433,6 +452,12 @@ internal sealed class JxlMaTree
             int row = y * width;
             for (int x = 0; x < width; x++)
             {
+                if (gradientTree && y > 0 && x > 0)
+                {
+                    GradientTreeRow(ref reader, symbols, leaves, table, min, pixels, row + x, row + width, width);
+                    break;
+                }
+
                 var neighbours = JxlNeighbours.At(pixels, width, x, y);
                 long weightedPrediction = 0;
                 if (weighted is not null)
@@ -451,6 +476,23 @@ internal sealed class JxlMaTree
                 pixels[row + x] = Next(ref reader, symbols, leaf.Cluster, leaf.Multiplier, guess);
                 weighted?.Update(pixels[row + x], x, y);
             }
+        }
+    }
+
+    /// <summary>Pixels <paramref name="start"/> to <paramref name="end"/> of an interior row of a gradient tree.</summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveOptimization)]
+    private static void GradientTreeRow(ref JxlBitReader reader, JxlSymbolReader symbols, JxlMaLeaf[] leaves, int[] table,
+        int min, int[] pixels, int start, int end, int width)
+    {
+        int last = table.Length - 1;
+        for (int i = start; i < end; i++)
+        {
+            int w = pixels[i - 1];
+            int n = pixels[i - width];
+            int nw = pixels[i - width - 1];
+            long index = (long)unchecked(w + n - nw) - min;
+            ref readonly JxlMaLeaf leaf = ref leaves[table[index < 0 ? 0 : index > last ? last : (int)index]];
+            pixels[i] = Next(ref reader, symbols, leaf.Cluster, leaf.Multiplier, leaf.Offset + JxlMaProperty.ClampedGradient(w, n, nw));
         }
     }
 

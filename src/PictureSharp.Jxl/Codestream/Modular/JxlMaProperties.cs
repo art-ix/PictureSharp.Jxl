@@ -74,10 +74,12 @@ internal static class JxlMaProperty
     /// <summary>W + N − NW clamped to the range of W and N (the gradient predictor).</summary>
     public static int ClampedGradient(int w, int n, int nw)
     {
-        int min = Math.Min(w, n);
-        int max = Math.Max(w, n);
-        int gradient = unchecked((int)((uint)w + (uint)n - (uint)nw));
-        return nw > max ? min : nw < min ? max : gradient;
+        // Branch-free clamp of the exact gradient to [min, max]: nw above max gives min, below min gives max, as in
+        // libjxl; photo data makes the branches unpredictable.
+        long min = Math.Min(w, n);
+        long max = Math.Max(w, n);
+        long gradient = (long)w + n - nw;
+        return (int)Math.Min(Math.Max(gradient, min), max);
     }
 }
 
