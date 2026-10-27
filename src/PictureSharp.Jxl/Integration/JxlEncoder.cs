@@ -1,13 +1,15 @@
+using PictureSharp.Formats.Jxl.Codestream.Color;
 using PictureSharp.Formats.Jxl.Codestream.Encoding;
+using PictureSharp.Formats.Jxl.Codestream.Encoding.Lossy;
 using PictureSharp.Formats.Jxl.Codestream.Model;
 using PictureSharp.Formats.Jxl.Container;
 
 namespace PictureSharp.Formats.Jxl.Integration;
 
 /// <summary>
-/// The PictureSharp SPI adapter of the lossless encoder: the root frame's samples as gray or RGB with alpha when any
-/// pixel is not opaque, the colour encoding of the ICC profile or colour description, the orientation, and Exif and
-/// xml boxes in a container when there are any.
+/// The PictureSharp SPI adapter of the encoder: the root frame's samples as gray or RGB with alpha when any pixel is
+/// not opaque, lossy in XYB or lossless, the colour encoding of the ICC profile or colour description, the orientation,
+/// and Exif and xml boxes in a container when there are any.
 /// </summary>
 internal sealed class JxlEncoder : IImageFormatEncoder<JxlEncoderOptions>
 {
@@ -46,18 +48,74 @@ internal sealed class JxlEncoder : IImageFormatEncoder<JxlEncoderOptions>
             _ => false,
         };
         bool alpha = !image.Frames.RootFrame.IsOpaque();
-        (int[][] color, int[]? alphaPlane) = SplitPlanes(pixels, gray, alpha, cancellationToken);
-        pixels = [];
+        JxlColorEncoding encoding = JxlMetadataWriter.Encoding(metadata, gray);
+        uint orientation = JxlMetadataWriter.Orientation(metadata);
+        float distance = options.EffectiveDistance;
+        JxlXybInput? xybInput = distance == 0 ? null
+            : JxlXybInput.TryCreate(icc is null ? encoding : new JxlColorEncoding { WantIcc = true, ColorSpace = gray ? JxlColorSpace.Gray : JxlColorSpace.Rgb },
+                icc is null ? null : JxlIccTarget.TryCreate(icc, gray), JxlToneMapping.Default.IntensityTarget);
+        byte[] codestream;
+        if (xybInput is not null)
+        {
+            // Profiles and transfer functions XYB cannot be converted from (lookup tables, HLG) stay lossless.
+            JxlImage3F xyb = ToXyb(pixels, width, height, xybInput, cancellationToken);
+            int[]? alphaPlane = alpha ? AlphaPlane(pixels, cancellationToken) : null;
+            pixels = [];
+            // Alpha stays lossless at full size, so frames with alpha are not downsampled at high distances.
+            var settings = JxlLossySettings.Create(Math.Max(distance, JxlLossySettings.MinDistance), options.Effort, resample: !alpha);
+            codestream = JxlCodestreamWriter.WriteLossy(new JxlLossyEncodeImage(width, height, xyb, alphaPlane, gray, encoding, icc, orientation, settings),
+                cancellationToken);
+        }
+        else
+        {
+            (int[][] color, int[]? alphaPlane) = SplitPlanes(pixels, gray, alpha, cancellationToken);
+            pixels = [];
+            var input = new JxlEncodeImage(width, height, color, alphaPlane, encoding, icc, orientation);
+            codestream = JxlCodestreamWriter.Write(input, cancellationToken);
+        }
 
-        var input = new JxlEncodeImage(width, height, color, alphaPlane, JxlMetadataWriter.Encoding(metadata, gray), icc,
-            JxlMetadataWriter.Orientation(metadata));
-        byte[] codestream = JxlCodestreamWriter.Write(input, cancellationToken);
         JxlBox[] boxes = JxlMetadataWriter.DescriptiveBoxes(
             options.Metadata.HasFlag(MetadataKinds.Exif) ? metadata.Exif : null,
             options.Metadata.HasFlag(MetadataKinds.Xmp) ? metadata.Xmp : null,
             options.CompressMetadata);
         int level = ConformanceLevel(width, height);
         return boxes.Length == 0 && level == JxlContainer.DefaultLevel ? codestream : JxlContainerWriter.Write(codestream, boxes, level);
+    }
+
+    // The XYB planes of the pixels; gray pixels have equal channels.
+    private static JxlImage3F ToXyb(ReadOnlySpan<Rgba32> pixels, int width, int height, JxlXybInput input, CancellationToken cancellationToken)
+    {
+        var xyb = new JxlImage3F(width, height);
+        for (int y = 0; y < height; y++)
+        {
+            if ((y & 0xF) == 0) cancellationToken.ThrowIfCancellationRequested();
+            Span<float> r = xyb.Row(0, y);
+            Span<float> g = xyb.Row(1, y);
+            Span<float> b = xyb.Row(2, y);
+            ReadOnlySpan<Rgba32> row = pixels.Slice(y * width, width);
+            for (int x = 0; x < width; x++)
+            {
+                r[x] = row[x].R;
+                g[x] = row[x].G;
+                b[x] = row[x].B;
+            }
+
+            input.Convert(r, g, b);
+        }
+
+        return xyb;
+    }
+
+    private static int[] AlphaPlane(ReadOnlySpan<Rgba32> pixels, CancellationToken cancellationToken)
+    {
+        int[] alpha = new int[pixels.Length];
+        for (int i = 0; i < pixels.Length; i++)
+        {
+            if ((i & CancellationCheckMask) == 0) cancellationToken.ThrowIfCancellationRequested();
+            alpha[i] = pixels[i].A;
+        }
+
+        return alpha;
     }
 
     // One integer plane per colour channel (one for gray) and an alpha plane when requested.

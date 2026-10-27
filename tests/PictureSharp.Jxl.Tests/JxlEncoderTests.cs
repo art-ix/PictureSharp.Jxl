@@ -9,7 +9,9 @@ public sealed class JxlEncoderTests
 {
     private static readonly ImageConfiguration Formats = ImageConfiguration.Default.ToBuilder().AddFormat(new JxlFormat()).Build();
 
-    private static JxlEncoderOptions Encoder(JxlEncoderOptions? options = null) => (options ?? new()) with { Configuration = Formats };
+    // These tests cover the lossless encoder unless they ask for a distance.
+    private static JxlEncoderOptions Encoder(JxlEncoderOptions? options = null) =>
+        (options ?? new()) with { Configuration = Formats, Distance = options?.Distance ?? 0 };
 
     private static Image Create(int width, int height, Pattern pattern, bool alpha, bool gray = false)
     {
@@ -34,6 +36,17 @@ public sealed class JxlEncoderTests
         var options = new JxlEncoderOptions();
         await Assert.That(options.Format).IsSameReferenceAs(ImageFormat.Jxl);
         await Assert.That(options.CompressMetadata).IsFalse();
+        await Assert.That(options.Quality).IsEqualTo(JxlEncoderOptions.DefaultQuality);
+        await Assert.That(options.Distance).IsNull();
+        await Assert.That(options.EffectiveDistance).IsEqualTo(1.0f);
+        await Assert.That(options.Effort).IsEqualTo(7);
+        await Assert.That((options with { Quality = 100 }).EffectiveDistance).IsEqualTo(0.0f);
+        await Assert.That((options with { Quality = 0 }).EffectiveDistance).IsEqualTo(25.0f);
+        await Assert.That((options with { Quality = 100, Distance = 2.5f }).EffectiveDistance).IsEqualTo(2.5f);
+        await Assert.That(() => options with { Quality = 101 }).Throws<ArgumentOutOfRangeException>();
+        await Assert.That(() => options with { Distance = 25.5f }).Throws<ArgumentOutOfRangeException>();
+        await Assert.That(() => options with { Effort = 0 }).Throws<ArgumentOutOfRangeException>();
+        await Assert.That(() => options with { Effort = 10 }).Throws<ArgumentOutOfRangeException>();
         await Assert.That(options.Metadata).IsEqualTo(MetadataKinds.All);
         await Assert.That((options with { CompressMetadata = true }).CompressMetadata).IsTrue();
     }

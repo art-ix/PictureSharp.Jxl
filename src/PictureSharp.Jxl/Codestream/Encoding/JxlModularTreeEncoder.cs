@@ -98,7 +98,7 @@ internal static class JxlModularTreeEncoder
 
     private interface IPixelVisitor
     {
-        void Visit(ReadOnlySpan<int> properties, int pixel, long weighted, long gradient);
+        void Visit(ReadOnlySpan<int> properties, int pixel, long weighted, long gradient, JxlNeighbours neighbours);
     }
 
     /// <summary>Visits every pixel with its properties and predictions, exactly as JxlMaTree.DecodeChannel computes them.</summary>
@@ -121,7 +121,7 @@ internal static class JxlModularTreeEncoder
                 JxlMaProperty.SetLocal(properties, x, neighbours);
                 long prediction = weighted.Predict(x, y, neighbours, out properties[JxlMaProperty.WeightedMaxError]);
                 long gradient = JxlMaProperty.ClampedGradient((int)neighbours.W, (int)neighbours.N, (int)neighbours.NW);
-                visitor.Visit(properties, pixels[row + x], prediction, gradient);
+                visitor.Visit(properties, pixels[row + x], prediction, gradient, neighbours);
                 weighted.Update(pixels[row + x], x, y);
             }
         }
@@ -132,7 +132,7 @@ internal static class JxlModularTreeEncoder
         private readonly long[] residuals = new long[2];
         private uint state = 0x9E3779B9;
 
-        public void Visit(ReadOnlySpan<int> properties, int pixel, long weighted, long gradient)
+        public void Visit(ReadOnlySpan<int> properties, int pixel, long weighted, long gradient, JxlNeighbours neighbours)
         {
             // xorshift32: a fixed sequence, so the output does not depend on anything but the image.
             state ^= state << 13;
@@ -149,7 +149,7 @@ internal static class JxlModularTreeEncoder
     {
         public JxlTokens Tokens => tokens;
 
-        public void Visit(ReadOnlySpan<int> properties, int pixel, long weighted, long gradient)
+        public void Visit(ReadOnlySpan<int> properties, int pixel, long weighted, long gradient, JxlNeighbours neighbours)
         {
             int node = 0;
             while (!tree[node].IsLeaf)
@@ -157,7 +157,12 @@ internal static class JxlModularTreeEncoder
                 node = properties[tree[node].Property] > tree[node].Split ? tree[node].Left : tree[node].Right;
             }
 
-            long prediction = tree[node].Predictor == JxlPredictor.Weighted ? weighted : gradient;
+            long prediction = tree[node].Predictor switch
+            {
+                JxlPredictor.Weighted => weighted,
+                JxlPredictor.Gradient => gradient,
+                JxlPredictor predictor => JxlMaTree.Predict(predictor, neighbours, weighted),
+            };
             tokens.Add(leafOf[node], PackSigned(pixel - prediction));
         }
     }

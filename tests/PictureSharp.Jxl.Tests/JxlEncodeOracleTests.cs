@@ -54,7 +54,7 @@ public sealed class JxlEncodeOracleTests
         byte[] rgba = Pixels(70, 50, Pattern.Gradient, alpha: false);
         using Image image = Image.LoadPixelData(rgba, 70, 50, PixelFormat.Rgba32, 280);
         image.Metadata.IccProfile = icc;
-        byte[] encoded = image.ToJxl(new JxlEncoderOptions { Configuration = formats });
+        byte[] encoded = image.ToJxl(new JxlEncoderOptions { Configuration = formats, Distance = 0 });
         byte[] edited = Image.EditMetadata((ReadOnlyMemory<byte>)encoded, metadata =>
         {
             byte[] changed = metadata.IccProfile!;

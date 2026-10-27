@@ -1,26 +1,72 @@
 namespace PictureSharp.Formats.Jxl;
 
 /// <summary>
-/// Options for the JPEG XL encoder, which writes the root frame losslessly as one 8-bit Modular frame: gray when every
-/// pixel is gray (unless an RGB ICC profile is written), with an alpha channel when any pixel is not opaque, keeping the
-/// colour of fully transparent pixels. When <see cref="EncoderOptions.Metadata"/> allows them, the ICC profile is stored
-/// in the codestream and EXIF and XMP in Exif and xml boxes of a container; without an ICC profile the colour
-/// description (gamma, chromaticities, sRGB) becomes the enumerated colour encoding. The orientation is stored in the
-/// codestream, where JPEG XL readers apply it.
+/// Options for the JPEG XL encoder. By default the root frame is encoded lossily (VarDCT in the XYB colour space) at
+/// butteraugli distance 1.0 and effort 7, as <c>cjxl</c> does for non-JPEG input; <see cref="Quality"/> 100 or
+/// <see cref="Distance"/> 0 encode losslessly as one 8-bit Modular frame. Alpha is always stored losslessly. The image
+/// is gray when every pixel is gray (unless an RGB ICC profile is written). When <see cref="EncoderOptions.Metadata"/>
+/// allows them, the ICC profile is stored in the codestream and EXIF and XMP in Exif and xml boxes of a container;
+/// without an ICC profile the colour description (gamma, chromaticities, sRGB) becomes the enumerated colour encoding.
+/// The orientation is stored in the codestream, where JPEG XL readers apply it.
 /// </summary>
 /// <example>
 /// <code>
-/// image.SaveAsJxl("photo.jxl", new JxlEncoderOptions { CompressMetadata = true });
+/// image.SaveAsJxl("photo.jxl", new JxlEncoderOptions { Quality = 85, Effort = 5 });
+/// image.SaveAsJxl("exact.jxl", new JxlEncoderOptions { Distance = 0 });
 /// </code>
 /// </example>
 public sealed record JxlEncoderOptions : EncoderOptions
 {
+    /// <summary>The default <see cref="Quality"/>, which corresponds to distance 1.0.</summary>
+    public const float DefaultQuality = 90;
+
+    /// <summary>The default <see cref="Effort"/>.</summary>
+    public const int DefaultEffort = 7;
+
     /// <inheritdoc/>
     public override ImageFormat Format => JxlFormat.Descriptor;
+
+    /// <summary>
+    /// Quality 0–100 on <c>cjxl -q</c>'s scale: 100 is lossless, 90 is distance 1.0 (visually lossless), and from 30
+    /// down to 0 the distance rises to 25. It is used when <see cref="Distance"/> is null. Default:
+    /// <see cref="DefaultQuality"/>.
+    /// </summary>
+    public float Quality
+    {
+        get;
+        init => field = value is >= 0 and <= 100 ? value : throw new ArgumentOutOfRangeException(nameof(Quality), value, "Use a value from 0 to 100.");
+    } = DefaultQuality;
+
+    /// <summary>
+    /// The butteraugli distance 0–25 as <c>cjxl -d</c>: 0 is lossless, 1.0 visually lossless, higher is smaller and
+    /// less faithful; values between 0 and 0.05 are encoded at 0.05, and from 10 the frame is stored at half size and
+    /// upsampled by the decoder. When set it takes precedence over <see cref="Quality"/>. Default: null.
+    /// </summary>
+    public float? Distance
+    {
+        get;
+        init => field = value is null or (>= 0 and <= 25) ? value : throw new ArgumentOutOfRangeException(nameof(Distance), value, "Use a value from 0 to 25.");
+    }
+
+    /// <summary>
+    /// Encoder effort 1–9 as <c>cjxl -e</c> for lossy frames: higher searches more transforms and quantization choices
+    /// and is slower. Efforts 8 and 9 currently behave as 7 (the butteraugli-guided quantization of libjxl is not
+    /// implemented); lossless frames always use the effort-7 Modular encoder. Default: <see cref="DefaultEffort"/>.
+    /// </summary>
+    public int Effort
+    {
+        get;
+        init => field = value is >= 1 and <= 9 ? value : throw new ArgumentOutOfRangeException(nameof(Effort), value, "Use a value from 1 to 9.");
+    } = DefaultEffort;
 
     /// <summary>
     /// Whether EXIF and XMP are Brotli-compressed into brob boxes, as cjxl does by default. Readers without Brotli
     /// support then cannot see them. Default: false.
     /// </summary>
     public bool CompressMetadata { get; init; }
+
+    /// <summary>The distance that will be encoded: <see cref="Distance"/>, or <see cref="Quality"/> mapped as cjxl does.</summary>
+    public float EffectiveDistance => Distance ?? (float)(Quality >= 100 ? 0
+        : Quality >= 30 ? 0.1 + (100 - Quality) * 0.09
+        : 53.0 / 3000.0 * Quality * Quality - 23.0 / 20.0 * Quality + 25.0);
 }

@@ -347,7 +347,7 @@ internal sealed class JxlMaTree
         return Predict(predictor, neighbours, weightedPrediction);
     }
 
-    private static long Predict(JxlPredictor predictor, in JxlNeighbours n, long weighted) => predictor switch
+    internal static long Predict(JxlPredictor predictor, in JxlNeighbours n, long weighted) => predictor switch
     {
         JxlPredictor.Zero => 0,
         JxlPredictor.Left => n.W,

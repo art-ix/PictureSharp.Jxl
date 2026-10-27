@@ -10,14 +10,17 @@ namespace PictureSharp.Formats.Jxl.Codestream.Color;
 /// <remarks>Implements ICC.1:2022 sections 7 (header and tag table) and 10.6, 10.18 and 10.31 (curv, para, XYZ).</remarks>
 internal sealed class JxlIccTarget
 {
-    private JxlIccTarget(bool gray, float[] fromXyzD50, JxlToneCurve[] curves)
+    private JxlIccTarget(bool gray, float[] toXyzD50, float[] fromXyzD50, JxlToneCurve[] curves)
     {
         IsGray = gray;
+        ToXyzD50 = toXyzD50;
         FromXyzD50 = fromXyzD50;
         Curves = curves;
     }
 
     public bool IsGray { get; }
+    /// <summary>Linear device RGB to XYZ (D50): the colourants as columns, row-major; unused for gray.</summary>
+    public float[] ToXyzD50 { get; }
     /// <summary>XYZ (D50, the profile connection space) to linear device RGB, row-major; unused for gray.</summary>
     public float[] FromXyzD50 { get; }
     /// <summary>The inverse tone curves, one per output channel.</summary>
@@ -77,7 +80,7 @@ internal sealed class JxlIccTarget
 
         if (gray)
         {
-            return JxlToneCurve.TryCreate(Data("kTRC")) is { } curve ? new JxlIccTarget(true, [], [curve]) : null;
+            return JxlToneCurve.TryCreate(Data("kTRC")) is { } curve ? new JxlIccTarget(true, [], [], [curve]) : null;
         }
 
         float[]? red = Xyz(Data("rXYZ"));
@@ -92,7 +95,7 @@ internal sealed class JxlIccTarget
 
         double[] m = [red[0], green[0], blue[0], red[1], green[1], blue[1], red[2], green[2], blue[2]];
         float[]? inverse = Invert(m);
-        return inverse is null ? null : new JxlIccTarget(false, inverse, [r, g, b]);
+        return inverse is null ? null : new JxlIccTarget(false, [.. m.Select(value => (float)value)], inverse, [r, g, b]);
     }
 
     private static float[]? Xyz(ReadOnlySpan<byte> tag)
@@ -173,6 +176,21 @@ internal sealed class JxlToneCurve
         float high = forward[i + 1];
         float fraction = high > low ? (value - low) / (high - low) : 0.0f;
         return (i + fraction) / last;
+    }
+
+    /// <summary>The linear value of encoded <paramref name="value"/> on [0, 1]: the curve itself, interpolated.</summary>
+    public float Decode(float value)
+    {
+        value = Math.Clamp(value, 0.0f, 1.0f);
+        if (forward is null)
+        {
+            return gamma == 1.0f ? value : MathF.Pow(value, gamma);
+        }
+
+        float position = value * (forward.Length - 1);
+        int i = Math.Min((int)position, forward.Length - 2);
+        float fraction = position - i;
+        return forward[i] + (forward[i + 1] - forward[i]) * fraction;
     }
 
     public static JxlToneCurve? TryCreate(ReadOnlySpan<byte> tag)

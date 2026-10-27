@@ -75,6 +75,7 @@ internal sealed class JxlQuantWeights
     private static readonly JxlQuantEncoding[] Library = CreateLibrary();
 
     private readonly float[]?[] tables = new float[Tables][];
+    private readonly float[]?[] inverseTables = new float[Tables][];
     private JxlQuantEncoding[] encodings = LibraryEncodings();
 
     public float[] DcQuant { get; } = [1.0f / 4096.0f, 1.0f / 512.0f, 1.0f / 256.0f];
@@ -106,6 +107,7 @@ internal sealed class JxlQuantWeights
     {
         encodings = LibraryEncodings();
         Array.Clear(tables);
+        Array.Clear(inverseTables);
         if (reader.ReadBool())
         {
             return;
@@ -127,6 +129,29 @@ internal sealed class JxlQuantWeights
     {
         int table = StrategyTable[(int)strategy];
         return tables[table] ??= Compute(encodings[table].Mode == JxlQuantMode.Library ? Library[table] : encodings[table], table);
+    }
+
+    /// <summary>
+    /// The quantization weights of <paramref name="strategy"/> (the reciprocals of <see cref="Matrix"/>, InvMatrix), with
+    /// zeros at the lowest frequencies, which the DC codes.
+    /// </summary>
+    public float[] InverseMatrix(JxlAcStrategyType strategy)
+    {
+        int table = StrategyTable[(int)strategy];
+        if (inverseTables[table] is { } cached) return cached;
+        float[] weights = Weights(encodings[table].Mode == JxlQuantMode.Library ? Library[table] : encodings[table], table);
+        int xs = Math.Max(RequiredSizeX[table], RequiredSizeY[table]);
+        int ys = Math.Min(RequiredSizeX[table], RequiredSizeY[table]);
+        int size = weights.Length / 3;
+        for (int c = 0; c < 3; c++)
+        {
+            for (int y = 0; y < ys; y++)
+            {
+                weights.AsSpan(c * size + y * N * xs, xs).Clear();
+            }
+        }
+
+        return inverseTables[table] = weights;
     }
 
     private static JxlQuantEncoding ReadEncoding(ref JxlBitReader reader, int index, RawTableReader readRaw)
@@ -206,7 +231,9 @@ internal sealed class JxlQuantWeights
     }
 
     /// <summary>The dequantisation multipliers (1 / weight) of a table (ComputeQuantTable).</summary>
-    private static float[] Compute(JxlQuantEncoding encoding, int table)
+    private static float[] Compute(JxlQuantEncoding encoding, int table) => Invert(Weights(encoding, table));
+
+    private static float[] Weights(JxlQuantEncoding encoding, int table)
     {
         int rows = N * RequiredSizeX[table];
         int columns = N * RequiredSizeY[table];
@@ -238,7 +265,7 @@ internal sealed class JxlQuantWeights
                 throw new InvalidOperationException("Library encodings are resolved before computing a table.");
         }
 
-        return Invert(weights);
+        return weights;
     }
 
     private static float[] Invert(float[] weights)

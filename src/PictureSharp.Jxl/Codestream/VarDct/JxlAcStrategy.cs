@@ -305,6 +305,10 @@ internal sealed class JxlBlockContextMap
         206, 206, 206, 206, 206, 206, 206, 206, 206, 206, 206, 206, 206, 206, 206,
     ];
 
+    private readonly int[][] dcLimits;
+    private readonly uint[] qfLimits;
+    private readonly byte[] map;
+
     private JxlBlockContextMap(int[][] dcThresholds, uint[] qfThresholds, byte[] map)
     {
         DcThresholds = dcThresholds;
@@ -312,16 +316,24 @@ internal sealed class JxlBlockContextMap
         Map = map;
         Contexts = map.Max() + 1;
         DcContexts = dcThresholds.Aggregate(1, (product, thresholds) => product * (thresholds.Length + 1));
+        dcLimits = dcThresholds;
+        qfLimits = qfThresholds;
+        this.map = map;
     }
 
     public static JxlBlockContextMap Default { get; } = new([[], [], []], [], DefaultMap);
 
+    /// <summary>A map without DC thresholds that splits the quantisation field at <paramref name="qfThresholds"/>.</summary>
+    public static JxlBlockContextMap Create(uint[] qfThresholds, byte[] map) => new([[], [], []], qfThresholds, map);
+
     /// <summary>Thresholds of the quantised X, Y and B DC values.</summary>
-    private int[][] DcThresholds { get; }
+    public IReadOnlyList<int[]> DcThresholds { get; }
 
-    private uint[] QfThresholds { get; }
+    public IReadOnlyList<uint> QfThresholds { get; }
 
-    private byte[] Map { get; }
+    public IReadOnlyList<byte> Map { get; }
+
+    public bool IsDefault => ReferenceEquals(this, Default);
 
     public int Contexts { get; }
 
@@ -373,7 +385,7 @@ internal sealed class JxlBlockContextMap
     public int Context(int dcIndex, int qf, int order, int c)
     {
         int qfIndex = 0;
-        foreach (uint threshold in QfThresholds)
+        foreach (uint threshold in qfLimits)
         {
             if (qf > threshold)
             {
@@ -383,17 +395,17 @@ internal sealed class JxlBlockContextMap
 
         int index = c < 2 ? c ^ 1 : 2;
         index = index * JxlAcStrategy.Orders + order;
-        index = index * (QfThresholds.Length + 1) + qfIndex;
-        return Map[index * DcContexts + dcIndex];
+        index = index * (qfLimits.Length + 1) + qfIndex;
+        return map[index * DcContexts + dcIndex];
     }
 
     /// <summary>The DC bucket of quantised X, Y and B values (DequantDC).</summary>
     public int DcBucket(int x, int y, int b)
     {
-        int bucketX = DcThresholds[0].Count(t => x > t);
-        int bucketY = DcThresholds[1].Count(t => y > t);
-        int bucketB = DcThresholds[2].Count(t => b > t);
-        return (bucketX * (DcThresholds[2].Length + 1) + bucketB) * (DcThresholds[1].Length + 1) + bucketY;
+        int bucketX = dcLimits[0].Count(t => x > t);
+        int bucketY = dcLimits[1].Count(t => y > t);
+        int bucketB = dcLimits[2].Count(t => b > t);
+        return (bucketX * (dcLimits[2].Length + 1) + bucketB) * (dcLimits[1].Length + 1) + bucketY;
     }
 
     public int ZeroDensityContextsOffset(int blockContext) => Contexts * NonZeroBuckets + ZeroDensityContextCount * blockContext;

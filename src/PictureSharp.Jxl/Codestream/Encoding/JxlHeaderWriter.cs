@@ -216,6 +216,102 @@ internal static class JxlHeaderWriter
         JxlFieldWriter.NoExtensions(writer);
     }
 
+    /// <summary>
+    /// A frame header as <see cref="IO.JxlFrameHeaderReader"/> reads it, for the frames this encoder writes: regular
+    /// or reference-only, one pass, no animation, replace blending, an optional custom size without an origin, and
+    /// loop filters with default parameters.
+    /// </summary>
+    public static void Frame(JxlBitWriter writer, JxlFrameHeader frame, JxlImageMetadata metadata)
+    {
+        if (frame.Type is not (JxlFrameType.Regular or JxlFrameType.ReferenceOnly) || frame.Passes.Count != 1 || frame.X0 != 0 || frame.Y0 != 0
+            || metadata.Animation is not null || frame.Name.Length != 0)
+        {
+            throw new ArgumentException("The frame header cannot be written.", nameof(frame));
+        }
+
+        writer.Write(false);                                      // all_default
+        writer.Write(2, (uint)frame.Type);
+        writer.Write(frame.Encoding == JxlFrameEncoding.Modular);
+        JxlFieldWriter.U64(writer, (ulong)frame.Flags);
+        if (!metadata.XybEncoded) writer.Write(false);            // do_YCbCr
+        writer.Write(2, UpsamplingSelector(frame.Upsampling));
+        for (int i = 0; i < metadata.ExtraChannels.Count; i++)
+        {
+            writer.Write(2, UpsamplingSelector(frame.ExtraChannelUpsampling[i] >> (int)metadata.ExtraChannels[i].DimShift));
+        }
+
+        if (frame.Encoding == JxlFrameEncoding.Modular) writer.Write(2, (uint)frame.GroupSizeShift);
+        if (frame.Encoding == JxlFrameEncoding.VarDct && metadata.XybEncoded)
+        {
+            writer.Write(3, frame.XQmScale);
+            writer.Write(3, frame.BQmScale);
+        }
+
+        if (frame.Type != JxlFrameType.ReferenceOnly) writer.Write(2, 0);   // one pass
+        writer.Write(frame.CustomSizeOrOrigin);
+        bool positioned = frame.Type == JxlFrameType.Regular;
+        if (frame.CustomSizeOrOrigin)
+        {
+            if (positioned)
+            {
+                FrameCoordinate(writer, 0);
+                FrameCoordinate(writer, 0);
+            }
+
+            FrameCoordinate(writer, frame.Width);
+            FrameCoordinate(writer, frame.Height);
+        }
+
+        if (positioned)
+        {
+            for (int i = 0; i <= metadata.ExtraChannels.Count; i++) writer.Write(2, 0);   // blend mode: replace
+            writer.Write(frame.IsLast);
+        }
+
+        bool last = positioned && frame.IsLast;
+        if (!last) writer.Write(2, frame.SaveAsReference);
+        if (!last && (positioned ? !frame.IsPartial : frame.Type == JxlFrameType.ReferenceOnly))
+        {
+            writer.Write(frame.SaveBeforeColorTransform);
+        }
+
+        writer.Write(2, 0);                                       // name: empty
+        LoopFilter(writer, frame.LoopFilter, frame.Encoding == JxlFrameEncoding.Modular);
+        JxlFieldWriter.NoExtensions(writer);
+    }
+
+    private static uint UpsamplingSelector(uint upsampling) => upsampling switch
+    {
+        1 => 0,
+        2 => 1,
+        4 => 2,
+        8 => 3,
+        _ => throw new ArgumentOutOfRangeException(nameof(upsampling)),
+    };
+
+    private static void FrameCoordinate(JxlBitWriter writer, uint value) =>
+        JxlFieldWriter.U32(writer, value, Bits32(8), BitsOffset(11, 256), BitsOffset(14, 2304), BitsOffset(30, 18688));
+
+    // Gaborish and EPF with their default weights and parameters.
+    private static void LoopFilter(JxlBitWriter writer, JxlLoopFilter filter, bool modular)
+    {
+        bool allDefault = filter.Gaborish && filter.EpfIterations == 2 && !modular;
+        writer.Write(allDefault);
+        if (allDefault) return;
+        writer.Write(filter.Gaborish);
+        if (filter.Gaborish) writer.Write(false);                 // default Gaborish weights
+        writer.Write(2, filter.EpfIterations);
+        if (filter.EpfIterations > 0)
+        {
+            if (modular) throw new ArgumentException("EPF in Modular frames cannot be written.", nameof(filter));
+            writer.Write(false);                                  // default sharpness LUT
+            writer.Write(false);                                  // default channel scales
+            writer.Write(false);                                  // default sigma parameters
+        }
+
+        JxlFieldWriter.NoExtensions(writer);
+    }
+
     /// <summary>A TOC without permutation; the writer is byte-aligned afterwards.</summary>
     public static void Toc(JxlBitWriter writer, IReadOnlyList<int> sizes)
     {

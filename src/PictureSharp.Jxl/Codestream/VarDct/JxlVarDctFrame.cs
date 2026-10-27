@@ -119,14 +119,7 @@ internal sealed class JxlVarDctFrame
         uint globalScale = JxlFields.U32(ref reader, JxlU32.BitsOffset(11, 1), JxlU32.BitsOffset(11, 2049), JxlU32.BitsOffset(12, 4097),
             JxlU32.BitsOffset(16, 8193));
         uint quantDc = JxlFields.U32(ref reader, JxlU32.Val(16), JxlU32.BitsOffset(5, 1), JxlU32.BitsOffset(8, 1), JxlU32.BitsOffset(16, 1));
-        QuantScale = (float)(globalScale * (1.0 / 65536));
-        invGlobalScale = (float)(1.0 * 65536 / globalScale);
-        float invQuantDc = invGlobalScale / quantDc;
-        for (int c = 0; c < 3; c++)
-        {
-            mulDc[c] = invQuantDc * matrices.DcQuant[c];
-        }
-
+        SetQuantizer(globalScale, quantDc);
         BlockContexts = JxlBlockContextMap.Read(ref reader);
         int yToXDc = 0;
         int yToBDc = 0;
@@ -151,6 +144,36 @@ internal sealed class JxlVarDctFrame
     }
 
     public JxlBlockContextMap BlockContexts { get; private set; } = JxlBlockContextMap.Default;
+
+    /// <summary>The quantiser of the frame (QuantizerParams), set by <see cref="ReadGlobal"/> or by an encoder.</summary>
+    public void SetQuantizer(uint globalScale, uint quantDc)
+    {
+        QuantScale = (float)(globalScale * (1.0 / 65536));
+        invGlobalScale = (float)(1.0 * 65536 / globalScale);
+        float invQuantDc = invGlobalScale / quantDc;
+        for (int c = 0; c < 3; c++)
+        {
+            mulDc[c] = invQuantDc * matrices.DcQuant[c];
+        }
+    }
+
+    /// <summary>
+    /// Sets the state an encoder chose, so <see cref="RenderGroup"/> reconstructs its frame: the dequantised DC of
+    /// every block (X, Y, B) and the strategies in use; the varblocks, quantisation and chroma-from-luma maps are
+    /// written into their arrays by the caller.
+    /// </summary>
+    public void SetEncoded(float[][] dequantizedDc, JxlAcStrategySet usedStrategies)
+    {
+        for (int c = 0; c < 3; c++)
+        {
+            dequantizedDc[c].CopyTo(dc[c], 0);
+        }
+
+        UsedStrategies = usedStrategies;
+    }
+
+    /// <summary>The dequantisation step of quantised DC values of channel <paramref name="c"/> (X, Y, B).</summary>
+    public float DcStep(int c) => mulDc[c];
 
     private float YToXRatio(int factor) => baseCorrelationX + factor * colorScale;
 

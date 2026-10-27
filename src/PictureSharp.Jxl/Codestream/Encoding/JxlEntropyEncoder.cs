@@ -230,7 +230,7 @@ internal sealed class JxlEntropyEncoder
     }
 
     // The cheapest of the simple code (up to 8 clusters) and an entropy-coded map with or without move-to-front.
-    private static void WriteContextMap(JxlBitWriter writer, byte[] map, int clusters)
+    internal static void WriteContextMap(JxlBitWriter writer, byte[] map, int clusters)
     {
         int bits = CeilLog2(clusters);
         JxlBitWriter? best = null;

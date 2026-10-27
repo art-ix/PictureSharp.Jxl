@@ -3,10 +3,11 @@ using PictureSharp.Formats.Jxl.Codestream.Numerics;
 namespace PictureSharp.Formats.Jxl.Codestream.VarDct;
 
 /// <summary>
-/// The VarDCT inverse transforms (TransformToPixels) and the forward DCT that turns DC values into the lowest
-/// coefficients of large varblocks (LowestFrequenciesFromDC). Scalar ports, column by column, of libjxl v0.12.0
-/// lib/jxl/dct-inl.h, lib/jxl/dec_transforms-inl.h and lib/jxl/transpose-inl.h (BSD-3-Clause), with the same
-/// operation order and fused multiply-adds.
+/// The VarDCT inverse transforms (TransformToPixels), the forward DCT that turns DC values into the lowest
+/// coefficients of large varblocks (LowestFrequenciesFromDC), and the encoder's forward transforms
+/// (TransformFromPixels, DCFromLowestFrequencies). Scalar ports, column by column, of libjxl v0.12.0
+/// lib/jxl/dct-inl.h, lib/jxl/dec_transforms-inl.h, lib/jxl/enc_transforms-inl.h and lib/jxl/transpose-inl.h
+/// (BSD-3-Clause), with the same operation order and fused multiply-adds.
 /// </summary>
 internal static class JxlDct
 {
@@ -89,6 +90,298 @@ internal static class JxlDct
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// The coefficients of a varblock (TransformFromPixels), laid out as <see cref="TransformToPixels"/> reads them:
+    /// <paramref name="pixels"/> starts at the top-left pixel with the given stride.
+    /// </summary>
+    public static void TransformFromPixels(JxlAcStrategyType strategy, ReadOnlySpan<float> pixels, int stride, Span<float> coefficients,
+        Span<float> scratch)
+    {
+        switch (strategy)
+        {
+            case JxlAcStrategyType.Identity:
+                ForwardIdentity(pixels, stride, coefficients);
+                break;
+            case JxlAcStrategyType.Dct8X4:
+            case JxlAcStrategyType.Dct4X8:
+                ForwardDct4X8(strategy == JxlAcStrategyType.Dct8X4, pixels, stride, coefficients, scratch);
+                break;
+            case JxlAcStrategyType.Dct4X4:
+                ForwardDct4X4(pixels, stride, coefficients, scratch);
+                break;
+            case JxlAcStrategyType.Dct2X2:
+                ForwardDct2X2(pixels, stride, coefficients);
+                break;
+            case JxlAcStrategyType.Afv0 or JxlAcStrategyType.Afv1 or JxlAcStrategyType.Afv2 or JxlAcStrategyType.Afv3:
+                ForwardAfv(strategy - JxlAcStrategyType.Afv0, pixels, stride, coefficients, scratch);
+                break;
+            default:
+                ScaledDct(8 * strategy.BlocksY, 8 * strategy.BlocksX, pixels, stride, coefficients, scratch);
+                break;
+        }
+    }
+
+    /// <summary>
+    /// The DC values of the blocks a varblock covers, from its lowest-frequency coefficients (DCFromLowestFrequencies):
+    /// the inverse of <see cref="LowestFrequenciesFromDc"/>. <paramref name="dc"/> is written with <paramref name="dcStride"/>.
+    /// </summary>
+    public static void DcFromLowestFrequencies(JxlAcStrategyType strategy, ReadOnlySpan<float> block, Span<float> dc, int dcStride,
+        Span<float> scratch)
+    {
+        int rows = strategy.BlocksY;
+        int columns = strategy.BlocksX;
+        if (rows * columns == 1)
+        {
+            dc[0] = block[0];
+            return;
+        }
+
+        // ReinterpretingIDCT: the lowest coefficients rescaled to a rows×columns DCT, then its IDCT.
+        Span<float> lowest = scratch[..(rows * columns)];
+        Span<float> rest = scratch[(rows * columns)..];
+        ReadOnlySpan<float> rowScales = DownsampleScales(rows);
+        ReadOnlySpan<float> columnScales = DownsampleScales(columns);
+        int inputStride = 8 * Math.Max(rows, columns);
+        if (rows < columns)
+        {
+            for (int y = 0; y < rows; y++)
+            {
+                for (int x = 0; x < columns; x++)
+                {
+                    lowest[y * columns + x] = block[y * inputStride + x] * rowScales[y] * columnScales[x];
+                }
+            }
+        }
+        else
+        {
+            for (int y = 0; y < columns; y++)
+            {
+                for (int x = 0; x < rows; x++)
+                {
+                    lowest[y * rows + x] = block[y * inputStride + x] * columnScales[y] * rowScales[x];
+                }
+            }
+        }
+
+        ScaledIdct(rows, columns, lowest, dc, dcStride, rest);
+    }
+
+    // DCTResampleScales from 8n to n coefficients: the reciprocals of ResampleScales.
+    private static ReadOnlySpan<float> DownsampleScales(int blocks) => blocks switch
+    {
+        1 => DownsampleTables.Value[0],
+        2 => DownsampleTables.Value[1],
+        4 => DownsampleTables.Value[2],
+        8 => DownsampleTables.Value[3],
+        16 => DownsampleTables.Value[4],
+        _ => DownsampleTables.Value[5],
+    };
+
+    private static readonly Lazy<float[][]> DownsampleTables = new(() =>
+        [.. new[] { 1, 2, 4, 8, 16, 32 }.Select(n => ResampleScales(n).ToArray().Select(scale => (float)(1.0 / scale)).ToArray())]);
+
+    private static void ForwardIdentity(ReadOnlySpan<float> pixels, int stride, Span<float> coefficients)
+    {
+        for (int y = 0; y < 2; y++)
+        {
+            for (int x = 0; x < 2; x++)
+            {
+                float blockDc = 0;
+                for (int iy = 0; iy < 4; iy++)
+                {
+                    for (int ix = 0; ix < 4; ix++)
+                    {
+                        blockDc += pixels[(y * 4 + iy) * stride + x * 4 + ix];
+                    }
+                }
+
+                blockDc *= 1.0f / 16;
+                float center = pixels[(y * 4 + 1) * stride + x * 4 + 1];
+                for (int iy = 0; iy < 4; iy++)
+                {
+                    for (int ix = 0; ix < 4; ix++)
+                    {
+                        if (ix == 1 && iy == 1)
+                        {
+                            continue;
+                        }
+
+                        coefficients[(y + iy * 2) * 8 + x + ix * 2] = pixels[(y * 4 + iy) * stride + x * 4 + ix] - center;
+                    }
+                }
+
+                coefficients[(y + 2) * 8 + x + 2] = coefficients[y * 8 + x];
+                coefficients[y * 8 + x] = blockDc;
+            }
+        }
+
+        ForwardQuarterDcs(coefficients);
+    }
+
+    // The top-left 2x2 coefficients from the DCs of the four quarters (the inverse of QuarterDcs).
+    private static void ForwardQuarterDcs(Span<float> coefficients)
+    {
+        float block00 = coefficients[0];
+        float block01 = coefficients[1];
+        float block10 = coefficients[8];
+        float block11 = coefficients[9];
+        coefficients[0] = (block00 + block01 + block10 + block11) * 0.25f;
+        coefficients[1] = (block00 + block01 - block10 - block11) * 0.25f;
+        coefficients[8] = (block00 - block01 + block10 - block11) * 0.25f;
+        coefficients[9] = (block00 - block01 - block10 + block11) * 0.25f;
+    }
+
+    private static void ForwardDct4X8(bool sideBySide, ReadOnlySpan<float> pixels, int stride, Span<float> coefficients, Span<float> scratch)
+    {
+        Span<float> block = stackalloc float[32];
+        for (int half = 0; half < 2; half++)
+        {
+            if (sideBySide)
+            {
+                ScaledDct(8, 4, pixels[(half * 4)..], stride, block, scratch);
+            }
+            else
+            {
+                ScaledDct(4, 8, pixels[(half * 4 * stride)..], stride, block, scratch);
+            }
+
+            for (int iy = 0; iy < 4; iy++)
+            {
+                for (int ix = 0; ix < 8; ix++)
+                {
+                    coefficients[(half + iy * 2) * 8 + ix] = block[iy * 8 + ix];
+                }
+            }
+        }
+
+        float block0 = coefficients[0];
+        float block1 = coefficients[8];
+        coefficients[0] = (block0 + block1) * 0.5f;
+        coefficients[8] = (block0 - block1) * 0.5f;
+    }
+
+    private static void ForwardDct4X4(ReadOnlySpan<float> pixels, int stride, Span<float> coefficients, Span<float> scratch)
+    {
+        Span<float> block = stackalloc float[16];
+        for (int y = 0; y < 2; y++)
+        {
+            for (int x = 0; x < 2; x++)
+            {
+                ScaledDct(4, 4, pixels[(y * 4 * stride + x * 4)..], stride, block, scratch);
+                for (int iy = 0; iy < 4; iy++)
+                {
+                    for (int ix = 0; ix < 4; ix++)
+                    {
+                        coefficients[(y + iy * 2) * 8 + x + ix * 2] = block[iy * 4 + ix];
+                    }
+                }
+            }
+        }
+
+        ForwardQuarterDcs(coefficients);
+    }
+
+    private static void ForwardDct2X2(ReadOnlySpan<float> pixels, int stride, Span<float> coefficients)
+    {
+        Span<float> block = stackalloc float[64];
+        for (int y = 0; y < 8; y++)
+        {
+            pixels.Slice(y * stride, 8).CopyTo(block[(y * 8)..]);
+        }
+
+        Dct2TopBlock(8, block);
+        Dct2TopBlock(4, block);
+        Dct2TopBlock(2, block);
+        block.CopyTo(coefficients);
+    }
+
+    // One level of the 2x2 Haar pyramid on the top-left size×size corner (DCT2TopBlock).
+    private static void Dct2TopBlock(int size, Span<float> block)
+    {
+        Span<float> temp = stackalloc float[64];
+        int count = size / 2;
+        for (int y = 0; y < count; y++)
+        {
+            for (int x = 0; x < count; x++)
+            {
+                float c00 = block[y * 2 * 8 + x * 2];
+                float c01 = block[y * 2 * 8 + x * 2 + 1];
+                float c10 = block[(y * 2 + 1) * 8 + x * 2];
+                float c11 = block[(y * 2 + 1) * 8 + x * 2 + 1];
+                temp[y * 8 + x] = (c00 + c01 + c10 + c11) * 0.25f;
+                temp[y * 8 + count + x] = (c00 + c01 - c10 - c11) * 0.25f;
+                temp[(y + count) * 8 + x] = (c00 - c01 + c10 - c11) * 0.25f;
+                temp[(y + count) * 8 + count + x] = (c00 - c01 - c10 + c11) * 0.25f;
+            }
+        }
+
+        for (int y = 0; y < size; y++)
+        {
+            temp.Slice(y * 8, size).CopyTo(block[(y * 8)..]);
+        }
+    }
+
+    private static void ForwardAfv(int afvKind, ReadOnlySpan<float> pixels, int stride, Span<float> coefficients, Span<float> scratch)
+    {
+        int afvX = afvKind & 1;
+        int afvY = afvKind / 2;
+        Span<float> block = stackalloc float[32];
+        for (int iy = 0; iy < 4; iy++)
+        {
+            for (int ix = 0; ix < 4; ix++)
+            {
+                block[(afvY == 1 ? 3 - iy : iy) * 4 + (afvX == 1 ? 3 - ix : ix)] = pixels[(iy + 4 * afvY) * stride + ix + 4 * afvX];
+            }
+        }
+
+        // AFVDCT4x4: the transpose of the inverse basis.
+        ReadOnlySpan<float> basis = JxlDctTables.AfvBasis;
+        Span<float> coeff = stackalloc float[16];
+        for (int i = 0; i < 16; i++)
+        {
+            float sum = 0;
+            for (int j = 0; j < 16; j++)
+            {
+                sum = JxlFastMath.Fma(block[j], basis[i * 16 + j], sum);
+            }
+
+            coeff[i] = sum;
+        }
+
+        for (int iy = 0; iy < 4; iy++)
+        {
+            for (int ix = 0; ix < 4; ix++)
+            {
+                coefficients[iy * 2 * 8 + ix * 2] = coeff[iy * 4 + ix];
+            }
+        }
+
+        ScaledDct(4, 4, pixels[(afvY * 4 * stride + (afvX == 1 ? 0 : 4))..], stride, block, scratch);
+        for (int iy = 0; iy < 4; iy++)
+        {
+            for (int ix = 0; ix < 4; ix++)
+            {
+                coefficients[iy * 2 * 8 + ix * 2 + 1] = block[iy * 4 + ix];
+            }
+        }
+
+        ScaledDct(4, 8, pixels[((afvY == 1 ? 0 : 4) * stride)..], stride, block, scratch);
+        for (int iy = 0; iy < 4; iy++)
+        {
+            for (int ix = 0; ix < 8; ix++)
+            {
+                coefficients[(1 + iy * 2) * 8 + ix] = block[iy * 8 + ix];
+            }
+        }
+
+        float block00 = coefficients[0] * 0.25f;
+        float block01 = coefficients[1];
+        float block10 = coefficients[8];
+        coefficients[0] = (block00 + block01 + 2 * block10) * 0.25f;
+        coefficients[1] = (block00 - block01) * 0.5f;
+        coefficients[8] = (block00 + block01 - 2 * block10) * 0.25f;
     }
 
     private static ReadOnlySpan<float> ResampleScales(int blocks) => blocks switch

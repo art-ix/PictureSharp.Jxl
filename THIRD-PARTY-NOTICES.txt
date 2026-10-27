@@ -75,6 +75,17 @@ sources. The modular refactoring preserves their algorithms and source attributi
   enc_palette.cc
 - Codestream/Metadata/JxlIccStream.cs (Predict): lib/jxl/enc_icc_codec.cc
 - Container/JxlContainerWriter.cs: lib/jxl/encode.cc (box order)
+- Codestream/Color/JxlXybInput.cs: lib/jxl/enc_xyb.cc, cms/opsin_params.h
+- Codestream/Encoding/JxlModularStreamSet.cs: lib/jxl/enc_modular.cc,
+  modular/encoding/enc_encoding.cc (predefined and merged trees)
+- Codestream/Encoding/Lossy/: lib/jxl/enc_frame.cc, enc_heuristics.cc,
+  enc_params.h, enc_cache.cc, enc_xyb.cc, enc_adaptive_quantization.cc,
+  convolve_symmetric5.cc, enc_gaborish.cc, enc_chroma_from_luma.cc,
+  enc_ac_strategy.cc, quantizer.cc, quantizer.h, enc_group.cc, enc_coeff_order.cc,
+  lehmer_code.h, enc_entropy_coder.cc, image_ops.cc, enc_patch_dictionary.cc,
+  enc_modular.cc
+- Codestream/VarDct/JxlDct.cs (forward transforms): lib/jxl/enc_transforms-inl.h,
+  dct-inl.h; JxlQuantWeights.cs (inverse matrices): lib/jxl/quant_weights.cc
 
 libjxl is distributed under the following license:
 

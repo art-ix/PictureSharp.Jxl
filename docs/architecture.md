@@ -21,7 +21,7 @@ uses only PictureSharp's public SPI. All implementation types remain internal.
 | Codestream.Metadata | ICC entropy stream, prediction decoding and its simplest prediction for writing | IO, Entropy |
 | Codestream.Frames | One-image session, frame scheduling, support policy, section readers | Codec modules above |
 | Codestream.Numerics | Scalar numerical primitives and integer helpers (`JxlIntMath`) | None; every module may use it |
-| Codestream.Encoding | Bit/field/header writers, ANS entropy encoder, MA tree learner, lossless Modular frame encoder, header rewriting | Model, Buffers, IO, Entropy, Modular, Metadata |
+| Codestream.Encoding | Bit/field/header writers, ANS entropy encoder, MA tree learner, lossless Modular frame encoder, lossy VarDCT encoder (`Lossy/`), header rewriting | Model, Buffers, IO, Entropy, Modular, Metadata, VarDct, Rendering |
 
 `JxlDescriptor` is the shared exception/format boundary and holds the codestream and container signatures. The codec does not use
 PictureSharp images, contexts, options or pixels directly. The compiled module
@@ -67,6 +67,13 @@ compiler-generated lambdas. No dependency-injection container is needed.
 3. `JxlContainerWriter` adds the Exif and xml boxes (optionally brob) when there are any.
 4. `JxlMetadataRewriter` (EditMetadata) rewrites ImageMetadata and the ICC stream by bit positions the header
    reader records, copies the transform data bits and all frame bytes, and replaces only the changed boxes.
+
+Lossy frames take another path from step 2: `JxlXybInput` converts the pixels to XYB, and `JxlVarDctEncoder`
+runs libjxl's pipeline (patches, adaptive quantization, inverse Gaborish, chroma-from-luma, transform search,
+quantization, nonlinear DC, coefficient orders, tokens) and writes the sections, with the AC metadata, DC and alpha
+streams through `JxlModularStreamSet`. Patches go first as a reference-only Modular frame (`JxlPatchEncoder`). The
+EPF sharpness search reconstructs the frame with the decoder's `JxlVarDctFrame` and `JxlFrameRenderer`, so encoder
+and decoder share dequantization, transforms and filters.
 
 The encoder is stateless and single-threaded; each call owns its planes and tokens.
 
@@ -128,9 +135,10 @@ colour space (its ICC profile when `JxlIccTarget` can use it) or, for
   fallback for lookup-table profiles reports sRGB and the adapter attaches no
   profile, so converted sRGB samples are never labelled with the original one.
   A full CMS (lookup-table profiles) would extend `JxlIccTarget`, not the adapter.
-- **Encoding:** lossy VarDCT (0.7.0) adds a frame encoder beside `JxlModularEncoder`
-  and options for quality and effort; the header, entropy and container writers are
-  shared. Parallel groups need per-group token streams, which the layout already has.
+- **Encoding:** lossless JPEG recompression (0.7.1) adds a transcoder that writes
+  the JPEG's DCT coefficients as a VarDCT frame plus a `jbrd` box; it reuses the
+  VarDCT writer. Parallel groups need per-group token streams, which the layout
+  already has.
 - **Animation:** extend session composition and map displayed frames, durations
   and looping onto PictureSharp's existing frame model. Reference/DC frames are
   not displayed frames. Until supported, animation still throws explicitly.

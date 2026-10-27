@@ -6,13 +6,24 @@ PictureSharp.Formats.Jxl.JxlEncoderOptions
   Boolean get_CompressMetadata()
   Boolean op_Equality(PictureSharp.Formats.Jxl.JxlEncoderOptions, PictureSharp.Formats.Jxl.JxlEncoderOptions)
   Boolean op_Inequality(PictureSharp.Formats.Jxl.JxlEncoderOptions, PictureSharp.Formats.Jxl.JxlEncoderOptions)
+  Int32 Effort
   Int32 GetHashCode()
+  Int32 get_Effort()
   PictureSharp.Formats.Jxl.JxlEncoderOptions <Clone>$()
   PictureSharp.ImageFormat Format
   PictureSharp.ImageFormat get_Format()
+  Single EffectiveDistance
+  Single Quality
+  Single get_EffectiveDistance()
+  Single get_Quality()
+  System.Nullable`1[System.Single] Distance
+  System.Nullable`1[System.Single] get_Distance()
   System.String ToString()
   Void .ctor()
   Void set_CompressMetadata(Boolean)
+  Void set_Distance(System.Nullable`1[System.Single])
+  Void set_Effort(Int32)
+  Void set_Quality(Single)
 PictureSharp.Formats.Jxl.JxlFormat
   Boolean IsSupported(System.ReadOnlySpan`1[System.Byte])
   Int32 HeaderSize

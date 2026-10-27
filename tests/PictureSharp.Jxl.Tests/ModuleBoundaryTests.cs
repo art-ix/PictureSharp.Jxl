@@ -77,7 +77,8 @@ public sealed class ModuleBoundaryTests
         "VarDct" => target is "Model" or "Buffers" or "IO" or "Entropy" or "Modular" or "Rendering" or "Numerics",
         "Metadata" => target is "IO" or "Entropy",
         "Frames" => target is "Model" or "Buffers" or "IO" or "Entropy" or "Modular" or "VarDct" or "Rendering" or "Metadata" or "Color",
-        "Encoding" => target is "Model" or "Buffers" or "IO" or "Entropy" or "Modular" or "Metadata",
+        // The lossy encoder shares the decoder's transforms and tables and reconstructs frames with its renderer.
+        "Encoding" => target is "Model" or "Buffers" or "IO" or "Entropy" or "Modular" or "Metadata" or "VarDct" or "Rendering",
         _ => false
     };
 

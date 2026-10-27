@@ -42,6 +42,7 @@ internal static class JxlModularTransformChooser
         for (int i = 0; i < planes[0].Length; i++)
         {
             if ((i & CancellationCheckMask) == 0) cancellationToken.ThrowIfCancellationRequested();
+            if (!Fits16Bits(planes, i)) return null;
             long key = Key(planes, i);
             if (colors.TryAdd(key, 0) && colors.Count > limit) return null;
         }
@@ -51,7 +52,7 @@ internal static class JxlModularTransformChooser
         var palette = new JxlChannel(sorted.Length, count, -1, -1);
         for (int i = 0; i < sorted.Length; i++)
         {
-            for (int c = 0; c < count; c++) palette.Pixels[c * sorted.Length + i] = (int)((sorted[i] >> (16 * c)) & 0xFFFF);
+            for (int c = 0; c < count; c++) palette.Pixels[c * sorted.Length + i] = Sample(sorted[i], c);
         }
 
         var indices = new JxlChannel(width, height);
@@ -63,7 +64,7 @@ internal static class JxlModularTransformChooser
         return new PaletteResult(transform, palette, indices);
     }
 
-    // The 16-bit samples of pixel i packed into one key.
+    // The signed 16-bit samples of pixel i packed into one key.
     private static long Key(int[][] planes, int i)
     {
         long key = 0;
@@ -71,9 +72,21 @@ internal static class JxlModularTransformChooser
         return key;
     }
 
+    private static bool Fits16Bits(int[][] planes, int i)
+    {
+        foreach (int[] plane in planes)
+        {
+            if (plane[i] is < short.MinValue or > short.MaxValue) return false;
+        }
+
+        return true;
+    }
+
+    private static int Sample(long key, int c) => (short)((key >> (16 * c)) & 0xFFFF);
+
     private static long Luma(long key, int count) => count < 3
-        ? key & 0xFFFF
-        : 299 * (key & 0xFFFF) + 587 * ((key >> 16) & 0xFFFF) + 114 * ((key >> 32) & 0xFFFF);
+        ? Sample(key, 0)
+        : 299L * Sample(key, 0) + 587L * Sample(key, 1) + 114L * Sample(key, 2);
 
     /// <summary>
     /// The RCT type whose channels cost least with the gradient predictor on a sample of rows; none when no transform

@@ -1,4 +1,5 @@
 using PictureSharp.Formats.Jxl.Codestream.Buffers;
+using PictureSharp.Formats.Jxl.Codestream.Encoding.Lossy;
 using PictureSharp.Formats.Jxl.Codestream.IO;
 using PictureSharp.Formats.Jxl.Codestream.Metadata;
 using PictureSharp.Formats.Jxl.Codestream.Model;
@@ -9,7 +10,14 @@ namespace PictureSharp.Formats.Jxl.Codestream.Encoding;
 internal sealed record JxlEncodeImage(int Width, int Height, int[][] Color, int[]? Alpha, JxlColorEncoding ColorEncoding, byte[]? Icc,
     uint Orientation);
 
-/// <summary>Writes a complete codestream: headers, the ICC profile and one lossless Modular frame.</summary>
+/// <summary>
+/// A still image to encode lossily: its XYB pixels (gray images with equal channels before conversion), optional
+/// straight 8-bit alpha, and the colour encoding the XYB pixels are rendered to.
+/// </summary>
+internal sealed record JxlLossyEncodeImage(int Width, int Height, JxlImage3F Xyb, int[]? Alpha, bool Gray, JxlColorEncoding ColorEncoding,
+    byte[]? Icc, uint Orientation, JxlLossySettings Settings);
+
+/// <summary>Writes a complete codestream: headers, the ICC profile and one lossless Modular or lossy VarDCT frame.</summary>
 internal static class JxlCodestreamWriter
 {
     public const int BitDepth = 8;
@@ -52,6 +60,37 @@ internal static class JxlCodestreamWriter
         }
 
         JxlModularEncoder.WriteFrame(writer, channels, image.Color.Length, cancellationToken);
+        return writer.ToArray();
+    }
+
+    /// <summary>Writes the headers and one VarDCT frame of XYB-encoded <paramref name="image"/>.</summary>
+    public static byte[] WriteLossy(JxlLossyEncodeImage image, CancellationToken cancellationToken = default)
+    {
+        JxlColorEncoding color = image.Icc is not null
+            ? new JxlColorEncoding { WantIcc = true, ColorSpace = image.Gray ? JxlColorSpace.Gray : JxlColorSpace.Rgb }
+            : image.ColorEncoding;
+        if ((color.ColorSpace == JxlColorSpace.Gray) != image.Gray)
+        {
+            throw new ArgumentException("The colour encoding does not match the image.", nameof(image));
+        }
+
+        var metadata = new JxlImageMetadata
+        {
+            Orientation = image.Orientation,
+            BitDepth = new JxlBitDepth(false, BitDepth, 0),
+            ExtraChannels = image.Alpha is null ? [] : [JxlExtraChannelInfo.Default],
+            XybEncoded = true,
+            Color = color,
+        };
+
+        var writer = new JxlBitWriter();
+        JxlHeaderWriter.Signature(writer);
+        JxlHeaderWriter.Size(writer, new JxlSizeHeader((uint)image.Width, (uint)image.Height));
+        JxlHeaderWriter.ImageMetadata(writer, metadata);
+        JxlHeaderWriter.DefaultTransformData(writer);
+        if (image.Icc is not null) Icc(writer, image.Icc);
+        writer.ZeroPadToByte();
+        JxlVarDctEncoder.WriteFrame(writer, image.Xyb, image.Width, image.Height, image.Alpha, metadata, image.Settings, cancellationToken);
         return writer.ToArray();
     }
 

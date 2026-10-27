@@ -19,9 +19,20 @@ internal static class JxlModularEncoder
     /// Writes the frame header, TOC and sections of <paramref name="channels"/> (colour channels, then extra channels,
     /// all of the image size). The writer must be at a byte boundary and stays at one.
     /// </summary>
-    public static void WriteFrame(JxlBitWriter writer, IReadOnlyList<JxlChannel> channels, int colorChannels, CancellationToken cancellationToken)
+    /// <param name="writer">The codestream, at a byte boundary.</param>
+    /// <param name="channels">The colour channels, then the extra channels, all of the frame size.</param>
+    /// <param name="colorChannels">The number of colour channels (1 or 3).</param>
+    /// <param name="cancellationToken">Cancels encoding.</param>
+    /// <param name="header">
+    /// The frame header to write with <paramref name="metadata"/>, for other frames than the image's only one (a patch
+    /// reference frame); by default a regular, last frame of the channels' size.
+    /// </param>
+    /// <param name="metadata">The image metadata <paramref name="header"/> is written against.</param>
+    /// <param name="dcQuant">Custom DC quantization steps of X, Y and B (the scale of XYB samples), or the defaults.</param>
+    public static void WriteFrame(JxlBitWriter writer, IReadOnlyList<JxlChannel> channels, int colorChannels, CancellationToken cancellationToken,
+        JxlFrameHeader? header = null, JxlImageMetadata? metadata = null, float[]? dcQuant = null)
     {
-        var frame = new JxlFrameHeader
+        JxlFrameHeader frame = header ?? new JxlFrameHeader
         {
             Encoding = JxlFrameEncoding.Modular, Width = (uint)channels[0].Width, Height = (uint)channels[0].Height, GroupSizeShift = GroupSizeShift,
         };
@@ -35,7 +46,12 @@ internal static class JxlModularEncoder
         JxlEntropyEncoder code = JxlEntropyEncoder.Build(leafOf.Count(leaf => leaf >= 0), tokens);
 
         var global = new JxlBitWriter();
-        global.Write(true);                  // default DC quantization
+        global.Write(dcQuant is null);       // default DC quantization
+        if (dcQuant is not null)
+        {
+            foreach (float step in dcQuant) JxlFieldWriter.F16(global, step * 128.0f);
+        }
+
         global.Write(true);                  // global tree
         JxlEntropyEncoder.WriteStandalone(global, JxlMaTree.TreeContexts, treeTokens);
         code.WriteHeader(global);
@@ -55,7 +71,8 @@ internal static class JxlModularEncoder
             code.WriteStream(groupSections[g], tokens[g + 1]);
         }
 
-        JxlHeaderWriter.LosslessModularFrame(writer, channels.Count - colorChannels, GroupSizeShift);
+        if (header is null) JxlHeaderWriter.LosslessModularFrame(writer, channels.Count - colorChannels, GroupSizeShift);
+        else JxlHeaderWriter.Frame(writer, header, metadata!);
         WriteSections(writer, frame, global, groupSections);
     }
 

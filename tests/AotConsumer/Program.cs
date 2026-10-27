@@ -63,12 +63,25 @@ using (var source = new Image(37, 21))
     Span<Rgba32> pixels = source.GetPixelMemory().Span;
     for (int i = 0; i < pixels.Length; i++) pixels[i] = new Rgba32((byte)(i * 7), (byte)(i * 13), (byte)(i >> 2), (byte)(i % 3 == 0 ? 0 : i));
     source.Metadata.Xmp = "<x/>"u8.ToArray();
-    byte[] encoded = source.ToJxl(new JxlEncoderOptions { CompressMetadata = true });
+    byte[] encoded = source.ToJxl(new JxlEncoderOptions { CompressMetadata = true, Distance = 0 });
     using var decoded = Image.Load(encoded);
     if (!decoded.GetPixelMemory().Span.SequenceEqual(source.GetPixelMemory().Span) || !decoded.Metadata.Xmp!.AsSpan().SequenceEqual("<x/>"u8))
         throw new InvalidOperationException("Lossless encoding did not round-trip.");
     byte[] edited = Image.EditMetadata((ReadOnlyMemory<byte>)encoded, edit => edit.Orientation = ExifOrientation.RightTop);
     if (Image.Identify(edited).Orientation != ExifOrientation.RightTop)
         throw new InvalidOperationException("Editing the metadata failed.");
+}
+// The default lossy encoding stays close to the image and keeps alpha exact.
+using (var source = new Image(96, 64))
+{
+    Span<Rgba32> pixels = source.GetPixelMemory().Span;
+    for (int i = 0; i < pixels.Length; i++) pixels[i] = new Rgba32((byte)(i % 96 * 2), (byte)(i / 96 * 3), 120, (byte)(i % 96 < 24 ? 0 : 255));
+    using var decoded = Image.Load(source.ToJxl());
+    ReadOnlySpan<Rgba32> actual = decoded.GetPixelMemory().Span;
+    for (int i = 0; i < pixels.Length; i++)
+    {
+        if (actual[i].A != pixels[i].A || pixels[i].A != 0 && Math.Abs(actual[i].R - pixels[i].R) + Math.Abs(actual[i].G - pixels[i].G) > 24)
+            throw new InvalidOperationException("Lossy encoding did not round-trip.");
+    }
 }
 Console.WriteLine("Package consumer: registration, detection, Identify, decoding, encoding and metadata passed.");

@@ -211,13 +211,13 @@ internal sealed class JxlColorOutput
     private static ReadOnlySpan<float> SrgbPrimaries =>
         [(float)0.639998686, (float)0.330010138, (float)0.300003784, (float)0.600003357, (float)0.150002046, (float)0.059997204];
 
-    private static float[] SrgbToXyzD50()
+    internal static float[] SrgbToXyzD50()
     {
         (float wx, float wy) = ((float)JxlColorEncoding.D65.X, (float)JxlColorEncoding.D65.Y);
         return Multiply(AdaptToXyzD50(wx, wy), PrimariesToXyz(SrgbPrimaries, wx, wy));
     }
 
-    private static float[] SrgbToOriginal(JxlColorEncoding color)
+    internal static float[] SrgbToOriginal(JxlColorEncoding color)
     {
         float[] srgbToXyzD50 = SrgbToXyzD50();
         (float wx, float wy) = ((float)color.WhitePointXy.X, (float)color.WhitePointXy.Y);
@@ -261,7 +261,7 @@ internal sealed class JxlColorOutput
     }
 
     // Matrix products accumulate in double precision and round to float, as libjxl's Mul3x3Matrix.
-    private static float[] Multiply(float[] a, float[] b)
+    internal static float[] Multiply(float[] a, float[] b)
     {
         float[] c = new float[9];
         for (int x = 0; x < 3; x++)
@@ -292,7 +292,7 @@ internal sealed class JxlColorOutput
         return c;
     }
 
-    private static float[] Invert(float[] m)
+    internal static float[] Invert(float[] m)
     {
         double[] t = new double[9];
         double determinant = JxlMatrix3.Adjugate([.. m.Select(value => (double)value)], t);
