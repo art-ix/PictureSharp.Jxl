@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using PictureSharp.Formats.Jxl.Codestream.Entropy;
 using PictureSharp.Formats.Jxl.Codestream.Model;
 using static PictureSharp.Formats.Jxl.Codestream.Numerics.JxlIntMath;
@@ -23,6 +24,8 @@ internal sealed class JxlTreeLearner
     // The residual tokens the cost estimates use (libjxl's TreeSamples).
     private static readonly JxlHybridUint SampleConfig = new(4, 1, 2);
     private const float MinProbability = 1.0f / JxlEntropyCode.AnsTabSize;
+    // The largest range of sample values quantized by counting rather than sorting.
+    private const long MaxCountedRange = 1 << 20;
 
     private readonly int[] properties;
     private readonly JxlPredictor[] predictors;
@@ -71,22 +74,7 @@ internal sealed class JxlTreeLearner
         for (int p = 0; p < properties.Length; p++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            int[] sorted = [.. values[p]];
-            Array.Sort(sorted);
-            var cuts = new List<int>();
-            for (int k = 1; k < maxPropertyValues; k++)
-            {
-                int v = sorted[(int)((long)k * count / maxPropertyValues)];
-                if (v < sorted[^1] && (cuts.Count == 0 || v > cuts[^1])) cuts.Add(v);
-            }
-
-            thresholds[p] = [.. cuts];
-            bins[p] = new byte[count];
-            for (int i = 0; i < count; i++)
-            {
-                int index = Array.BinarySearch(thresholds[p], values[p][i]);
-                bins[p][i] = (byte)(index >= 0 ? index : ~index);
-            }
+            (thresholds[p], bins[p]) = Quantize(CollectionsMarshal.AsSpan(values[p]));
         }
 
         byte[][] tok = [.. tokens.Select(list => list.ToArray())];
@@ -118,9 +106,87 @@ internal sealed class JxlTreeLearner
         return tree;
     }
 
+    // The cut values at the quantiles of the samples, and the bin of every sample: the number of cuts below it. A
+    // counting sort over the value range when it is small, else a sort; both give the same quantiles.
+    private (int[] Cuts, byte[] Bins) Quantize(ReadOnlySpan<int> samples)
+    {
+        int count = samples.Length;
+        int min = int.MaxValue;
+        int max = int.MinValue;
+        foreach (int v in samples)
+        {
+            min = Math.Min(min, v);
+            max = Math.Max(max, v);
+        }
+
+        var cuts = new List<int>();
+        byte[] bins = new byte[count];
+        if ((long)max - min < MaxCountedRange)
+        {
+            // Counts per value, then the value at each quantile position from the running total.
+            int[] histogram = new int[max - min + 1];
+            foreach (int v in samples) histogram[v - min]++;
+            int value = 0;
+            long below = histogram[0];
+            for (int k = 1; k < maxPropertyValues; k++)
+            {
+                long position = (long)k * count / maxPropertyValues;
+                while (below <= position) below += histogram[++value];
+                int v = value + min;
+                if (v < max && (cuts.Count == 0 || v > cuts[^1])) cuts.Add(v);
+            }
+
+            // The bin of every value: the number of cuts below it.
+            byte[] binOf = new byte[histogram.Length];
+            int bin = 0;
+            for (int v = 0; v < binOf.Length; v++)
+            {
+                while (bin < cuts.Count && cuts[bin] < v + min) bin++;
+                binOf[v] = (byte)bin;
+            }
+
+            for (int i = 0; i < count; i++) bins[i] = binOf[samples[i] - min];
+            return ([.. cuts], bins);
+        }
+
+        int[] sorted = samples.ToArray();
+        Array.Sort(sorted);
+        for (int k = 1; k < maxPropertyValues; k++)
+        {
+            int v = sorted[(int)((long)k * count / maxPropertyValues)];
+            if (v < sorted[^1] && (cuts.Count == 0 || v > cuts[^1])) cuts.Add(v);
+        }
+
+        int[] thresholds = [.. cuts];
+        for (int i = 0; i < count; i++)
+        {
+            int index = Array.BinarySearch(thresholds, samples[i]);
+            bins[i] = (byte)(index >= 0 ? index : ~index);
+        }
+
+        return (thresholds, bins);
+    }
+
     private sealed class Search(byte[][] bins, byte[][] tokens, byte[][] extra, int[][] thresholds, float threshold)
     {
         private readonly float changePenalty = 800.0f / (100.0f + threshold);
+
+        // Buffers reused between nodes, grown as needed.
+        private int[][] counts = [];
+        private int[][] present = [];
+        private int[] presentCount = [];
+        private long[] totalExtra = [];
+        private int[] below = [];
+        private int[] above = [];
+        private int[] used = [];
+        private float[] costLeft = [];
+        private float[] costRight = [];
+        private float[] scoreLeft = [];
+        private float[] scoreRight = [];
+        private int[] predictorLeft = [];
+        private int[] predictorRight = [];
+        private int[] increase = [];
+        private long[] extraIncrease = [];
 
         public bool FindSplit(int begin, int end, int current, out int bestProperty, out int bestBin, out int bestPosition,
             out int bestLeft, out int bestRight)
@@ -133,31 +199,52 @@ internal sealed class JxlTreeLearner
                 for (int i = begin; i < end; i++) symbols = Math.Max(symbols, tokens[p][i] + 1);
             }
 
-            int[][] counts = new int[predictorCount][];
-            long[] totalExtra = new long[predictorCount];
+            if (counts.Length != predictorCount)
+            {
+                counts = [.. tokens.Select(_ => Array.Empty<int>())];
+                present = [.. tokens.Select(_ => Array.Empty<int>())];
+                presentCount = new int[predictorCount];
+                totalExtra = new long[predictorCount];
+            }
+
             for (int p = 0; p < predictorCount; p++)
             {
-                counts[p] = new int[symbols];
+                Reuse(ref counts[p], symbols);
+                Reuse(ref present[p], symbols);
+                int[] pc = counts[p];
+                byte[] tok = tokens[p];
+                byte[] ext = extra[p];
+                long sumExtra = 0;
                 for (int i = begin; i < end; i++)
                 {
-                    counts[p][tokens[p][i]]++;
-                    totalExtra[p] += extra[p][i];
+                    pc[tok[i]]++;
+                    sumExtra += ext[i];
                 }
+
+                totalExtra[p] = sumExtra;
+                // The symbols of the node in increasing order: the cost sums skip the others, which add nothing.
+                int n = 0;
+                for (int t = 0; t < symbols; t++)
+                {
+                    if (pc[t] != 0) present[p][n++] = t;
+                }
+
+                presentCount[p] = n;
             }
 
             int total = end - begin;
-            float baseBits = EstimateBits(counts[current], total) + totalExtra[current];
+            float baseBits = EstimateBits(counts[current], present[current], presentCount[current], total) + totalExtra[current];
             if (baseBits <= threshold) return false;
 
             float bestCost = float.MaxValue;
-            int[] below = new int[symbols];
-            int[] above = new int[symbols];
+            Reuse(ref below, symbols);
+            Reuse(ref above, symbols);
             for (int property = 0; property < bins.Length; property++)
             {
                 byte[] bin = bins[property];
                 int binCount = thresholds[property].Length + 1;
                 if (binCount < 2) continue;
-                int[] used = new int[binCount];
+                Reuse(ref used, binCount);
                 int first = binCount;
                 int last = 0;
                 for (int i = begin; i < end; i++)
@@ -168,20 +255,25 @@ internal sealed class JxlTreeLearner
                 }
 
                 if (first == last) continue;
-                float[] costLeft = new float[last - first];
-                float[] costRight = new float[last - first];
-                float[] scoreLeft = new float[last - first];
-                float[] scoreRight = new float[last - first];
-                int[] predictorLeft = new int[last - first];
-                int[] predictorRight = new int[last - first];
-                Array.Fill(scoreLeft, float.MaxValue);
-                Array.Fill(scoreRight, float.MaxValue);
-                int[] increase = new int[binCount * symbols];
-                long[] extraIncrease = new long[binCount];
+                int splits = last - first;
+                Reuse(ref costLeft, splits);
+                Reuse(ref costRight, splits);
+                Reuse(ref scoreLeft, splits);
+                Reuse(ref scoreRight, splits);
+                Reuse(ref predictorLeft, splits);
+                Reuse(ref predictorRight, splits);
+                scoreLeft.AsSpan(0, splits).Fill(float.MaxValue);
+                scoreRight.AsSpan(0, splits).Fill(float.MaxValue);
+                Reuse(ref increase, binCount * symbols);
+                Reuse(ref extraIncrease, binCount);
                 for (int p = 0; p < predictorCount; p++)
                 {
-                    Array.Clear(increase);
-                    Array.Clear(extraIncrease);
+                    if (p > 0)
+                    {
+                        increase.AsSpan(0, binCount * symbols).Clear();
+                        extraIncrease.AsSpan(0, binCount).Clear();
+                    }
+
                     byte[] tok = tokens[p];
                     byte[] ext = extra[p];
                     for (int i = begin; i < end; i++)
@@ -190,8 +282,15 @@ internal sealed class JxlTreeLearner
                         extraIncrease[bin[i]] += ext[i];
                     }
 
-                    Array.Copy(counts[p], above, symbols);
-                    Array.Clear(below);
+                    int[] symbolsOf = present[p];
+                    int n = presentCount[p];
+                    int[] pc = counts[p];
+                    for (int j = 0; j < n; j++)
+                    {
+                        above[symbolsOf[j]] = pc[symbolsOf[j]];
+                        below[symbolsOf[j]] = 0;
+                    }
+
                     long extraBelow = 0;
                     int countBelow = 0;
                     // Discourage changing the predictor, but never moving away from the first (Weighted) one.
@@ -201,16 +300,18 @@ internal sealed class JxlTreeLearner
                         if (used[b] == 0) continue;
                         extraBelow += extraIncrease[b];
                         countBelow += used[b];
-                        for (int s = 0; s < symbols; s++)
+                        int row = b * symbols;
+                        for (int j = 0; j < n; j++)
                         {
-                            int v = increase[b * symbols + s];
-                            above[s] -= v;
-                            below[s] += v;
+                            int t = symbolsOf[j];
+                            int v = increase[row + t];
+                            above[t] -= v;
+                            below[t] += v;
                         }
 
                         // Samples at or below the split go right; the decoder takes the left child for property > split.
-                        float right = EstimateBits(below, countBelow) + extraBelow;
-                        float left = EstimateBits(above, total - countBelow) + totalExtra[p] - extraBelow;
+                        float right = EstimateBits(below, symbolsOf, n, countBelow) + extraBelow;
+                        float left = EstimateBits(above, symbolsOf, n, total - countBelow) + totalExtra[p] - extraBelow;
                         int k = b - first;
                         if (right + penalty < scoreRight[k])
                         {
@@ -250,6 +351,13 @@ internal sealed class JxlTreeLearner
             return bestCost + threshold < baseBits;
         }
 
+        // A cleared buffer of at least length elements.
+        private static void Reuse<T>(ref T[] buffer, int length)
+        {
+            if (buffer.Length < length) buffer = new T[Math.Max(length, buffer.Length * 2)];
+            else buffer.AsSpan(0, length).Clear();
+        }
+
         /// <summary>Moves the samples with bins at most <paramref name="bin"/> to [begin, position).</summary>
         public void Partition(int begin, int position, int end, int property, int bin)
         {
@@ -272,14 +380,16 @@ internal sealed class JxlTreeLearner
             foreach (byte[] array in extra) (array[a], array[b]) = (array[b], array[a]);
         }
 
-        // Entropy of the symbols with probabilities floored at 1/4096, as ANS cannot code less likely symbols.
-        private static float EstimateBits(int[] counts, int total)
+        // Entropy of the symbols with probabilities floored at 1/4096, as ANS cannot code less likely symbols; only the
+        // listed symbols, in order, may have counts.
+        private static float EstimateBits(int[] counts, int[] symbols, int symbolCount, int total)
         {
             if (total == 0) return 0;
             float inverse = 1.0f / total;
             float bits = 0;
-            foreach (int count in counts)
+            for (int j = 0; j < symbolCount; j++)
             {
+                int count = counts[symbols[j]];
                 if (count == 0 || count == total) continue;
                 bits -= count * MathF.Log2(Math.Max(count * inverse, MinProbability));
             }

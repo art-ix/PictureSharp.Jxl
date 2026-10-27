@@ -100,7 +100,8 @@ internal sealed class JxlEntropyEncoder
                 state >>= 16;
             }
 
-            state = ((state / frequency) << LogTabSize) + table.Slot(token, state % frequency);
+            uint quotient = table.Quotient(token, state);
+            state = (quotient << LogTabSize) + table.Slot(token, state - quotient * frequency);
         }
 
         writer.Write(32, state);

@@ -117,8 +117,8 @@ internal static class JxlModularTransformChooser
             {
                 for (int x = 0; x < width; x++)
                 {
-                    forward.Apply(planes, (y - 1) * width + x, above.AsSpan(3 * x, 3));
-                    forward.Apply(planes, y * width + x, row.AsSpan(3 * x, 3));
+                    (above[3 * x], above[3 * x + 1], above[3 * x + 2]) = forward.Apply(planes, (y - 1) * width + x);
+                    (row[3 * x], row[3 * x + 1], row[3 * x + 2]) = forward.Apply(planes, y * width + x);
                 }
 
                 for (int x = 1; x < width; x++)
@@ -151,13 +151,14 @@ internal static class JxlModularTransformChooser
         int[][] planes = [image[0].Pixels, image[1].Pixels, image[2].Pixels];
         var outputs = new JxlChannel[3];
         for (int c = 0; c < 3; c++) outputs[c] = new JxlChannel(image[c].Width, image[c].Height);
-        Span<int> values = stackalloc int[3];
         var forward = new ForwardRctStep(type);
-        for (int i = 0; i < planes[0].Length; i++)
+        int[] first = outputs[0].Pixels;
+        int[] second = outputs[1].Pixels;
+        int[] third = outputs[2].Pixels;
+        for (int i = 0; i < first.Length; i++)
         {
             if ((i & CancellationCheckMask) == 0) cancellationToken.ThrowIfCancellationRequested();
-            forward.Apply(planes, i, values);
-            for (int c = 0; c < 3; c++) outputs[c].Pixels[i] = values[c];
+            (first[i], second[i], third[i]) = forward.Apply(planes, i);
         }
 
         for (int c = 0; c < 3; c++) image[c] = outputs[c];
@@ -174,7 +175,7 @@ internal static class JxlModularTransformChooser
         private readonly int secondMode = type.SecondChannelMode;
         private readonly bool subtractsFirst = type.SubtractsFirstFromThird;
 
-        public void Apply(int[][] planes, int i, Span<int> result)
+        public (int First, int Second, int Third) Apply(int[][] planes, int i)
         {
             int a = planes[first][i];
             int s = planes[second][i];
@@ -184,14 +185,13 @@ internal static class JxlModularTransformChooser
                 int co = a - t;
                 int tmp = t + (co >> 1);
                 int cg = s - tmp;
-                (result[0], result[1], result[2]) = (tmp + (cg >> 1), co, cg);
-                return;
+                return (tmp + (cg >> 1), co, cg);
             }
 
             if (secondMode == 1) s -= a;
             else if (secondMode == 2) s -= (a + t) >> 1;
             if (subtractsFirst) t -= a;
-            (result[0], result[1], result[2]) = (a, s, t);
+            return (a, s, t);
         }
     }
 }

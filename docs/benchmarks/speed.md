@@ -1,4 +1,4 @@
-# Speed measurements — 0.7.3–0.7.6 (scalar)
+# Speed measurements — 0.7.3–0.7.7 (scalar)
 
 Measured on 2026-10-27, Linux x64, Intel Core i5-12500H, .NET 10, one thread (`DOTNET_PROCESSOR_COUNT=1`).
 libjxl 0.12.0 (`4128790`) times are its own `--num_reps=3` geomean with `--num_threads=1`, PNG I/O excluded, AVX2 enabled.
@@ -125,6 +125,35 @@ stage of the 12 MP decode now (Stopwatch around each stage, median per run): deq
 EPF 89, AC tokens 71, colour conversion 71, Gaborish 68, Rgba32 writing 56. Not kept: a dedicated 8×8 IDCT without
 transposes and an IDCT writing its last butterfly straight into the plane (no measurable change; most of the area of
 this image is DCT32 and DCT64, and the IDCT costs about 3 ns per sample).
+
+## Modular encoding (0.7.7)
+
+The scan that samples pixels for tree learning records the weighted predictor's error of every pixel, and
+tokenization rebuilds the weighted prediction and its error property from those errors instead of running the
+predictor a second time (a channel whose errors would not reproduce every prediction falls back to the predictor).
+Tokenization resolves the channel and stream decisions of the tree per channel and walks a whole row through the tree
+together, one level at a time without branches, so the steps of different pixels do not wait for each other. The
+sampling scan computes the local properties of sampled pixels only. Tree learning quantizes properties with a
+counting sort, reuses its buffers between nodes and sums the costs over the node's symbols only (the same float
+operations in the same order). ANS encoding divides by an exact 64-bit reciprocal, the bit writer stores up to seven
+bytes at once, and the forward RCT no longer goes through a span per pixel. Encoded files are unchanged (all 1142
+golden results identical to 0.7.2).
+Lossless encoding, 3 runs pinned to one core, two alternating rounds against the 0.7.2 build (mean of the two medians):
+
+| Case | 0.7.2 (ms) | Now (ms) | Speed-up | libjxl 1 thread (ms) |
+| --- | ---: | ---: | ---: | ---: |
+| encode/photo12-d0-e7 | 8070 | 4428 | 1.82× | 8485 |
+| encode/photo1-d0-e7 | 1525 | 867 | 1.76× | 634 |
+| encode/photo1-d0-e3 | 1480 | 870 | 1.70× | 94 |
+| encode/screen-d0-e7 | 670 | 678 | 0.99× | 260 |
+
+Allocations of the 12 MP encode grow from 1828 to 1947 MB: the recorded errors take four bytes per pixel until
+tokenization. Time per stage of the 12 MP encode before (Stopwatch around each stage, median per run): sampling scan
+1565 ms, tokenization 3137, tree learning 646 (quantization 250, split search 500), group ANS streams 545, colour
+transforms 256. Now: sampling scan about 1450, tokenization 1750, tree learning 415, ANS streams 410, transforms 150.
+The plan's target of half the 0.7.2 time (4.15 s) is not quite reached. Not kept: a branch-free walk of one pixel
+at a time (slower), walking rows in chunks of 16–64 pixels (no change), writing properties in place or as a compact
+row of the learner's six properties (no gain), and one sample pass for both predictors in the split search (slower).
 
 ## Reproduce
 

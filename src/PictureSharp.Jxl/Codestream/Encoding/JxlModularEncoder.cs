@@ -40,9 +40,10 @@ internal static class JxlModularEncoder
         (List<JxlChannel> image, List<JxlTransform> transforms, int meta) = ApplyTransforms(channels, colorChannels, cancellationToken);
         List<(int Id, List<JxlChannel> Channels)> streams = SplitIntoStreams(frame, image, meta);
 
-        List<JxlTreeNode> tree = JxlModularTreeEncoder.Learn(streams, cancellationToken);
+        var errors = new Dictionary<JxlChannel, int[]>(ReferenceEqualityComparer.Instance);
+        List<JxlTreeNode> tree = JxlModularTreeEncoder.Learn(streams, cancellationToken, errors);
         (JxlTokens treeTokens, int[] leafOf) = JxlModularTreeEncoder.Tokenize(tree);
-        List<JxlTokens> tokens = JxlModularTreeEncoder.TokenizeStreams(streams, tree, leafOf, cancellationToken);
+        List<JxlTokens> tokens = JxlModularTreeEncoder.TokenizeStreams(streams, tree, leafOf, cancellationToken, errors);
         JxlEntropyEncoder code = JxlEntropyEncoder.Build(leafOf.Count(leaf => leaf >= 0), tokens);
 
         var global = new JxlBitWriter();

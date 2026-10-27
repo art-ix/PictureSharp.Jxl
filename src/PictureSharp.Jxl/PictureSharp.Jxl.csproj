@@ -6,12 +6,12 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <PackageId>PictureSharp.Jxl</PackageId>
-    <Description>Pure C# JPEG XL plugin for PictureSharp. Version 0.7.6 detects and identifies JPEG XL files (raw codestream and container), decodes still lossy (VarDCT, XYB) and lossless (Modular) images, including recompressed JPEGs, patches and progressive files, encodes images lossily (VarDCT with quality, distance and effort 1-9, about as small as cjxl, the default) or losslessly (8-bit Modular, about as small as cjxl -d 0 -e 7), losslessly transcodes sequential and progressive 8-bit JPEG with byte-exact original reconstruction, and reads, writes and edits the ICC profile, EXIF and XMP (also Brotli-compressed).</Description>
+    <Description>Pure C# JPEG XL plugin for PictureSharp. Version 0.7.7 detects and identifies JPEG XL files (raw codestream and container), decodes still lossy (VarDCT, XYB) and lossless (Modular) images, including recompressed JPEGs, patches and progressive files, encodes images lossily (VarDCT with quality, distance and effort 1-9, about as small as cjxl, the default) or losslessly (8-bit Modular, about as small as cjxl -d 0 -e 7), losslessly transcodes sequential and progressive 8-bit JPEG with byte-exact original reconstruction, and reads, writes and edits the ICC profile, EXIF and XMP (also Brotli-compressed).</Description>
     <PackageTags>picturesharp;image;jxl;jpegxl</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/art-ix/picturesharp.jxl</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageReleaseNotes>0.7.6: faster lossy (VarDCT) decoding with lower memory use: the edge-preserving filter runs as one loop per stage, Gaborish and EPF filter in place (no second set of planes), Gaborish slides a 3x3 window, unrolled sRGB/PQ curves. 12 MP decode about 1.1x faster (ToSrgb 1.17x), peak memory about 40 % lower. Output is byte-identical to 0.7.2.</PackageReleaseNotes>
+    <PackageReleaseNotes>0.7.7: faster lossless (Modular) encoding: the weighted predictor runs once per pixel (its errors from the tree-learning scan are reused for tokenization), the MA tree is resolved per channel and walked a row at a time, property quantization by counting, reused split-search buffers, ANS division by exact reciprocals, faster bit writing and forward RCT. 12 MP lossless e7 encode about 1.8x faster than 0.7.2, 1 MP about 1.7x. Output is byte-identical to 0.7.2.</PackageReleaseNotes>
   </PropertyGroup>
   <ItemGroup><PackageReference Include="PictureSharp" Version="$(PictureSharpVersion)" /></ItemGroup>
   <ItemGroup>

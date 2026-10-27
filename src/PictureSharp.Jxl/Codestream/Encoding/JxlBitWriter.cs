@@ -1,3 +1,5 @@
+using System.Buffers.Binary;
+
 namespace PictureSharp.Formats.Jxl.Codestream.Encoding;
 
 /// <summary>
@@ -21,12 +23,7 @@ internal sealed class JxlBitWriter
         if (count == 0) return;
         buffer |= (value & ((1UL << count) - 1)) << bufferedBits;
         bufferedBits += count;
-        while (bufferedBits >= 8)
-        {
-            Push((byte)buffer);
-            buffer >>= 8;
-            bufferedBits -= 8;
-        }
+        if (bufferedBits >= 8) Flush();
     }
 
     public void Write(bool value) => Write(1, value ? 1UL : 0UL);
@@ -70,10 +67,16 @@ internal sealed class JxlBitWriter
         return result;
     }
 
-    private void Push(byte value)
+    // Moves the whole bytes of the buffer (at most 7, as it holds at most 63 bits) to the array with one store; the
+    // bytes past them are overwritten by later writes.
+    private void Flush()
     {
-        Reserve(1);
-        bytes[length++] = value;
+        int whole = bufferedBits >> 3;
+        Reserve(sizeof(ulong));
+        BinaryPrimitives.WriteUInt64LittleEndian(bytes.AsSpan(length), buffer);
+        length += whole;
+        buffer >>= whole * 8;
+        bufferedBits &= 7;
     }
 
     private void Reserve(int count)

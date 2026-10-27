@@ -94,16 +94,43 @@ internal sealed class JxlWeightedPredictor(JxlWeightedHeader header, int width)
         return (prediction + Round) >> ExtraBits;
     }
 
-    public void Update(long value, int x, int y)
+    /// <summary>Records the actual value of the pixel; returns its error, which later predictions read.</summary>
+    public int Update(long value, int x, int y)
     {
         int current = (y & 1) != 0 ? 0 : rowStride;
         int previous = (y & 1) != 0 ? rowStride : 0;
         value = AddBits(value);
-        errors[current + x] = unchecked((int)(prediction - value));
+        int error = unchecked((int)(prediction - value));
+        errors[current + x] = error;
         UpdateErrors(predictionErrors0, prediction0, value, current + x, previous + x + 1);
         UpdateErrors(predictionErrors1, prediction1, value, current + x, previous + x + 1);
         UpdateErrors(predictionErrors2, prediction2, value, current + x, previous + x + 1);
         UpdateErrors(predictionErrors3, prediction3, value, current + x, previous + x + 1);
+        return error;
+    }
+
+    /// <summary>
+    /// The prediction <see cref="Predict"/> returned for a pixel of <paramref name="value"/> whose error was
+    /// <paramref name="error"/>, assuming the error did not wrap around.
+    /// </summary>
+    public static long FromError(int error, long value) => (error + AddBits(value) + Round) >> ExtraBits;
+
+    /// <summary>
+    /// The weighted error property of the pixel at (x, y) from the errors <see cref="Update"/> returned for the
+    /// previous pixels, as <see cref="Predict"/> computes it; <paramref name="row"/> and <paramref name="previous"/>
+    /// are the errors of row y and y − 1 (zeros for the first row).
+    /// </summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    public static int MaxError(ReadOnlySpan<int> row, ReadOnlySpan<int> previous, int x)
+    {
+        int property = x == 0 ? 0 : row[x - 1];
+        int errorN = previous[x];
+        int errorNw = x > 0 ? previous[x - 1] : errorN;
+        int errorNe = x < previous.Length - 1 ? previous[x + 1] : errorN;
+        if (Math.Abs((long)errorN) > Math.Abs((long)property)) property = errorN;
+        if (Math.Abs((long)errorNw) > Math.Abs((long)property)) property = errorNw;
+        if (Math.Abs((long)errorNe) > Math.Abs((long)property)) property = errorNe;
+        return property;
     }
 
     private static void UpdateErrors(uint[] errorsOf, long predicted, long value, int position, int positionNe)
