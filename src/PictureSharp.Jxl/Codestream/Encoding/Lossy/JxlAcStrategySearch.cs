@@ -45,6 +45,8 @@ internal sealed class JxlAcStrategySearch
         (JxlAcStrategyType.Dct32X64, 6, EntropyMul64X32),
     ];
 
+    private static readonly double[] ChannelMul = [Math.Pow(8.2, 8.0), 1.0, Math.Pow(1.03, 8.0)];
+
     private readonly JxlImage3F image;
     private readonly float[] quantField;
     private readonly float[] mask1X1;
@@ -464,36 +466,42 @@ internal sealed class JxlAcStrategySearch
         }
 
         ReadOnlySpan<float> masku = [12.0f, 0.0f, 4.0f];
-        ReadOnlySpan<double> channelMul = [Math.Pow(8.2, 8.0), 1.0, Math.Pow(1.03, 8.0)];
         float entropy = 0;
         double loss = 0;
         float[] dequant = matrices.Matrix(type);
         float[] quant = matrices.InverseMatrix(type);
         int pixelWidth = blocksX * 8;
+        ReadOnlySpan<float> yBlock = block.AsSpan(size, size);
+        Span<float> errors = error.AsSpan(0, size);
         for (int c = 0; c < 3; c++)
         {
             float entropySum = 0;
             int nonZeros = 0;
             int offset = c * size;
             float cmapFactor = cmap[c];
-            for (int i = 0; i < size; i++)
+            ReadOnlySpan<float> coefficients = block.AsSpan(offset, size);
+            ReadOnlySpan<float> quantRow = quant.AsSpan(offset, size);
+            ReadOnlySpan<float> dequantRow = dequant.AsSpan(offset, size);
+            for (int i = 0; i < errors.Length; i++)
             {
-                float value = (block[offset + i] - block[size + i] * cmapFactor) * (quant[offset + i] * quantNorm16);
+                float value = (coefficients[i] - yBlock[i] * cmapFactor) * (quantRow[i] * quantNorm16);
                 float rounded = MathF.Round(value);
-                error[i] = dequant[offset + i] * (value - rounded);
+                errors[i] = dequantRow[i] * (value - rounded);
                 float q = Math.Abs(rounded);
                 entropySum += MathF.Sqrt(q);
-                if (q != 0) nonZeros++;
+                nonZeros += q != 0 ? 1 : 0;
             }
 
-            JxlDct.TransformToPixels(type, error.AsSpan(0, size), pixels, pixelWidth, scratch);
+            JxlDct.TransformToPixels(type, errors, pixels, pixelWidth, scratch);
             double channelLoss = 0;
+            float maskOffset = masku[c];
             for (int py = 0; py < blocksY * 8; py++)
             {
-                int maskRow = (y + py) * stride + x;
-                for (int px = 0; px < pixelWidth; px++)
+                ReadOnlySpan<float> maskRow = mask1X1.AsSpan((y + py) * stride + x, pixelWidth);
+                ReadOnlySpan<float> pixelRow = pixels.AsSpan(py * pixelWidth, pixelWidth);
+                for (int px = 0; px < pixelRow.Length; px++)
                 {
-                    float v = (mask1X1[maskRow + px] + masku[c]) * pixels[py * pixelWidth + px];
+                    float v = (maskRow[px] + maskOffset) * pixelRow[px];
                     v *= v;
                     v *= v;
                     v *= v;
@@ -501,7 +509,7 @@ internal sealed class JxlAcStrategySearch
                 }
             }
 
-            loss += channelMul[c] * channelLoss;
+            loss += ChannelMul[c] * channelLoss;
             entropy += costDelta * entropySum;
             int bits = CeilLog2(nonZeros + 1) + 1;
             entropy += zerosMul * (CeilLog2(bits + 17) + bits);

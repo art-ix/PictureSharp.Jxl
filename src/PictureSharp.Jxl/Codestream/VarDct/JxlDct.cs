@@ -469,6 +469,17 @@ internal static class JxlDct
     {
         System.Diagnostics.Debug.Assert(fromStride == count);
         Span<float> data = from[..(n * count)];
+        if (n == 8)
+        {
+            // The leaf kernel writes straight to the destination rows instead of in place and a copy.
+            for (int c = 0; c < count; c++)
+            {
+                Idct8(data, c, count, to, c, toStride);
+            }
+
+            return;
+        }
+
         IdctColumns(n, count, data, scratch);
         for (int i = 0; i < n; i++)
         {
@@ -484,13 +495,24 @@ internal static class JxlDct
     {
         System.Diagnostics.Debug.Assert(toStride == count);
         Span<float> data = to[..(n * count)];
+        float scale = 1.0f / n;
+        if (n == 8)
+        {
+            // The leaf kernel reads the source rows and stores scaled results, without the copy and scaling passes.
+            for (int c = 0; c < count; c++)
+            {
+                Dct8(from, c, fromStride, data, c, count, scale);
+            }
+
+            return;
+        }
+
         for (int i = 0; i < n; i++)
         {
             from.Slice(i * fromStride, count).CopyTo(data[(i * count)..]);
         }
 
         DctColumns(n, count, data, scratch);
-        float scale = 1.0f / n;
         for (int i = 0; i < data.Length; i++)
         {
             data[i] = scale * data[i];
@@ -580,21 +602,25 @@ internal static class JxlDct
     }
 
     // The 8-point IDCT of the column starting at data[offset] with the given stride, in place.
-    private static void Idct8(Span<float> data, int offset, int stride)
+    private static void Idct8(Span<float> data, int offset, int stride) => Idct8(data, offset, stride, data, offset, stride);
+
+    // The 8-point IDCT of the column at from[fromOffset] (step fromStride), stored at to[toOffset] (step toStride).
+    private static void Idct8(ReadOnlySpan<float> from, int fromOffset, int fromStride, Span<float> to, int toOffset, int toStride)
     {
-        float in0 = data[offset], in1 = data[offset + stride], in2 = data[offset + 2 * stride], in3 = data[offset + 3 * stride];
-        float in4 = data[offset + 4 * stride], in5 = data[offset + 5 * stride], in6 = data[offset + 6 * stride], in7 = data[offset + 7 * stride];
+        float in0 = from[fromOffset], in1 = from[fromOffset + fromStride], in2 = from[fromOffset + 2 * fromStride], in3 = from[fromOffset + 3 * fromStride];
+        float in4 = from[fromOffset + 4 * fromStride], in5 = from[fromOffset + 5 * fromStride], in6 = from[fromOffset + 6 * fromStride];
+        float in7 = from[fromOffset + 7 * fromStride];
         Idct4(in0, in2, in4, in6, out float e0, out float e1, out float e2, out float e3);
         Idct4(in1 * Sqrt2, in3 + in1, in5 + in3, in7 + in5, out float o0, out float o1, out float o2, out float o3);
         ReadOnlySpan<float> m = JxlDctTables.Multipliers8;
-        data[offset + 7 * stride] = JxlFastMath.Fma(-m[0], o0, e0);
-        data[offset] = JxlFastMath.Fma(m[0], o0, e0);
-        data[offset + 6 * stride] = JxlFastMath.Fma(-m[1], o1, e1);
-        data[offset + stride] = JxlFastMath.Fma(m[1], o1, e1);
-        data[offset + 5 * stride] = JxlFastMath.Fma(-m[2], o2, e2);
-        data[offset + 2 * stride] = JxlFastMath.Fma(m[2], o2, e2);
-        data[offset + 4 * stride] = JxlFastMath.Fma(-m[3], o3, e3);
-        data[offset + 3 * stride] = JxlFastMath.Fma(m[3], o3, e3);
+        to[toOffset + 7 * toStride] = JxlFastMath.Fma(-m[0], o0, e0);
+        to[toOffset] = JxlFastMath.Fma(m[0], o0, e0);
+        to[toOffset + 6 * toStride] = JxlFastMath.Fma(-m[1], o1, e1);
+        to[toOffset + toStride] = JxlFastMath.Fma(m[1], o1, e1);
+        to[toOffset + 5 * toStride] = JxlFastMath.Fma(-m[2], o2, e2);
+        to[toOffset + 2 * toStride] = JxlFastMath.Fma(m[2], o2, e2);
+        to[toOffset + 4 * toStride] = JxlFastMath.Fma(-m[3], o3, e3);
+        to[toOffset + 3 * toStride] = JxlFastMath.Fma(m[3], o3, e3);
     }
 
     private static void Idct4(float in0, float in1, float in2, float in3, out float out0, out float out1, out float out2, out float out3)
@@ -691,6 +717,26 @@ internal static class JxlDct
             even.Slice(i * count, count).CopyTo(data[(2 * i * count)..]);
             odd.Slice(i * count, count).CopyTo(data[((2 * i + 1) * count)..]);
         }
+    }
+
+    // The 8-point DCT of the column at from[fromOffset] (step fromStride), each result times scale stored at
+    // to[toOffset] (step toStride): the same values as Dct8 below followed by a separate scaling pass.
+    private static void Dct8(ReadOnlySpan<float> from, int fromOffset, int fromStride, Span<float> to, int toOffset, int toStride, float scale)
+    {
+        float m0 = from[fromOffset], m1 = from[fromOffset + fromStride], m2 = from[fromOffset + 2 * fromStride], m3 = from[fromOffset + 3 * fromStride];
+        float m4 = from[fromOffset + 4 * fromStride], m5 = from[fromOffset + 5 * fromStride], m6 = from[fromOffset + 6 * fromStride];
+        float m7 = from[fromOffset + 7 * fromStride];
+        ReadOnlySpan<float> m = JxlDctTables.Multipliers8;
+        Dct4(m0 + m7, m1 + m6, m2 + m5, m3 + m4, out float t0, out float t2, out float t4, out float t6);
+        Dct4((m0 - m7) * m[0], (m1 - m6) * m[1], (m2 - m5) * m[2], (m3 - m4) * m[3], out float u0, out float u1, out float u2, out float u3);
+        to[toOffset] = scale * t0;
+        to[toOffset + toStride] = scale * JxlFastMath.Fma(u0, Sqrt2, u1);
+        to[toOffset + 2 * toStride] = scale * t2;
+        to[toOffset + 3 * toStride] = scale * (u1 + u2);
+        to[toOffset + 4 * toStride] = scale * t4;
+        to[toOffset + 5 * toStride] = scale * (u2 + u3);
+        to[toOffset + 6 * toStride] = scale * t6;
+        to[toOffset + 7 * toStride] = scale * u3;
     }
 
     // The 8-point DCT of the column starting at data[offset] with the given stride, in place.

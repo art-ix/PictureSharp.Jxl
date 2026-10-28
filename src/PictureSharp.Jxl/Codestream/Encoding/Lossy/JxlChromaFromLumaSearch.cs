@@ -23,6 +23,8 @@ internal sealed class JxlChromaFromLumaSearch(JxlImage3F image, JxlQuantWeights 
     private readonly float[] x = new float[TileCoefficients];
     private readonly float[] yb = new float[TileCoefficients];
     private readonly float[] b = new float[TileCoefficients];
+    private readonly float[] slope = new float[TileCoefficients];
+    private readonly float[] offset = new float[TileCoefficients];
     private readonly float[] scratch = new float[JxlDct.ScratchSize(MaxCoefficients)];
 
     /// <summary>
@@ -83,10 +85,17 @@ internal sealed class JxlChromaFromLumaSearch(JxlImage3F image, JxlQuantWeights 
     }
 
     // The factor minimizing a smooth estimate of the coded size of s - (base + factor / 84) m, rounded towards zero.
-    private static sbyte FindBestMultiplier(float[] m, float[] s, int count, float baseCorrelation, bool fast)
+    private sbyte FindBestMultiplier(float[] m, float[] s, int count, float baseCorrelation, bool fast)
     {
         if (count == 0) return 0;
         const float invColorFactor = 1.0f / ColorFactor;
+        // The residual at factor x is a x + b; a and b do not depend on x and are computed once.
+        for (int i = 0; i < count; i++)
+        {
+            slope[i] = invColorFactor * m[i];
+            offset[i] = baseCorrelation * m[i] - s[i];
+        }
+
         float x;
         if (fast)
         {
@@ -94,10 +103,9 @@ internal sealed class JxlChromaFromLumaSearch(JxlImage3F image, JxlQuantWeights 
             float cb = 0;
             for (int i = 0; i < count; i++)
             {
-                float a = invColorFactor * m[i];
-                float b = baseCorrelation * m[i] - s[i];
+                float a = slope[i];
                 ca = MathF.FusedMultiplyAdd(a, a, ca);
-                cb = MathF.FusedMultiplyAdd(a, b, cb);
+                cb = MathF.FusedMultiplyAdd(a, offset[i], cb);
             }
 
             x = -cb / (ca + count * DistanceMultiplier * 0.5f);
@@ -109,7 +117,7 @@ internal sealed class JxlChromaFromLumaSearch(JxlImage3F image, JxlQuantWeights 
             x = 0;
             for (int i = 0; i < 20; i++)
             {
-                float derivative = Derivatives(m, s, count, baseCorrelation, x, eps, out float plus, out float minus);
+                float derivative = Derivatives(count, x, eps, out float plus, out float minus);
                 float second = (plus - minus) / (2 * eps);
                 const float stabilizer = 0.85f;
                 float step = derivative / (second + stabilizer);
@@ -124,34 +132,39 @@ internal sealed class JxlChromaFromLumaSearch(JxlImage3F image, JxlQuantWeights 
     }
 
     // CFLFunction::Compute: the derivative of the cost at x, x + eps and x - eps.
-    private static float Derivatives(float[] m, float[] s, int count, float baseCorrelation, float x, float eps, out float plus, out float minus)
+    private float Derivatives(int count, float x, float eps, out float plus, out float minus)
     {
-        const float invColorFactor = 1.0f / ColorFactor;
         const float threshold = 100.0f;
         const float coefficientX2 = 2.0f / 3;
+        float xPlus = x + eps;
+        float xMinus = x - eps;
+        ReadOnlySpan<float> slopes = slope.AsSpan(0, count);
+        ReadOnlySpan<float> offsets = offset.AsSpan(0, count);
         float sum = 0;
         float sumPlus = 0;
         float sumMinus = 0;
-        for (int i = 0; i < count; i++)
+        for (int i = 0; i < slopes.Length; i++)
         {
-            float a = invColorFactor * m[i];
-            float b = baseCorrelation * m[i] - s[i];
+            float a = slopes[i];
+            float b = offsets[i];
             float v = MathF.FusedMultiplyAdd(a, x, b);
-            float vp = MathF.FusedMultiplyAdd(a, x + eps, b);
-            float vm = MathF.FusedMultiplyAdd(a, x - eps, b);
-            float scale = coefficientX2 * a;
             // Values far from zero at x are left out of all three derivatives.
             if (Math.Abs(v) >= threshold) continue;
+            float vp = MathF.FusedMultiplyAdd(a, xPlus, b);
+            float vm = MathF.FusedMultiplyAdd(a, xMinus, b);
+            float scale = coefficientX2 * a;
             sum += Signed(scale * (Math.Abs(v) + 1), v);
             sumPlus += Signed(scale * (Math.Abs(vp) + 1), vp);
             sumMinus += Signed(scale * (Math.Abs(vm) + 1), vm);
         }
 
-        plus = 2 * DistanceMultiplier * count * (x + eps) + sumPlus;
-        minus = 2 * DistanceMultiplier * count * (x - eps) + sumMinus;
+        plus = 2 * DistanceMultiplier * count * xPlus + sumPlus;
+        minus = 2 * DistanceMultiplier * count * xMinus + sumMinus;
         return 2 * DistanceMultiplier * count * x + sum;
     }
 
-    // d, negated where v is negative (IfThenElse(v < 0, -d, d)).
-    private static float Signed(float d, float v) => v < 0 ? -d : d;
+    // d, negated where v is negative (IfThenElse(v < 0, -d, d)): the sign bit flipped without a branch, as the signs
+    // of v are close to random.
+    private static float Signed(float d, float v) =>
+        BitConverter.Int32BitsToSingle(BitConverter.SingleToInt32Bits(d) ^ ((v < 0 ? 1 : 0) << 31));
 }

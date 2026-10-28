@@ -132,3 +132,30 @@ https://github.com/libjxl/libjxl/blob/v0.12.0/PATENTS
 That grant is not reproduced here and is not extended to this port by this notice.
 The downloaded reference sources (ignored by Git, not redistributed) retain their
 LICENSE and PATENTS files.
+
+------------------------------------------------------------------------------
+CORE-MATH (src/binary32/cbrt/cbrtf.c, revision f7c7408d, as included in glibc)
+https://core-math.gitlabpages.inria.fr/
+
+Codestream/Numerics/JxlCbrt.cs is a C# port of the correctly rounded cbrtf.
+CORE-MATH is distributed under the following license:
+
+Copyright (c) 2023, 2024 Alexei Sibidanov.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.

@@ -219,6 +219,40 @@ Peak RSS of the 12 MP encodes nearly doubles (5.5 GB): full Rgba64 copy plus 16-
   dominates small nodes. Then `Scan` 26 %, `TokenizeRecorded` 9 %, `ChooseRct` 7.5 %.
 - `encode16` lossy: same as 8-bit (`EstimateEntropy` 56 %, `ChromaFromLumaSearch` 22 %, DCT/IDCT 24 %); `ToXyb` 2 %.
 
+## Lossy encoding (0.7.9, in progress)
+
+Chroma from luma computes the slope and offset of each coefficient's residual once per search instead of in each of
+its up to 20 Newton steps, and flips the sign of its derivative terms with a bit operation instead of a branch on a
+close to random sign. The AC strategy entropy estimate no longer recomputes two `Math.Pow` constants per call and
+reads its rows through spans. The 8-point DCT and IDCT leaves read their source rows and write scaled results
+directly, without the copy and scaling passes. The encoder reads the image's own pixel buffer instead of a full copy
+(12 MP: 48 MB Rgba32, 96 MB Rgba64 less). The XYB conversion takes its cube roots from a port of CORE-MATH's correctly rounded cbrtf (MIT,
+`Codestream/Numerics/JxlCbrt.cs`, 4.3 instead of 10.6 ns for `MathF.Cbrt`, the same result on every platform).
+Output is unchanged (all encode and decode golden results identical to
+0.7.8) except for the cbrt: glibc 2.39's cbrtf is not correctly rounded (it differs on 10.6 % of floats by one ulp),
+which changes 32 of 521 lossy golden results (sizes −0.0055 % in total, at most 0.18 % for one file; ssimulacra2
+within ±0.04 and butteraugli unchanged on 15 test encodes, all decoded by djxl). These results are the new lossy
+baseline (`scripts/golden-hash.sh 0.7.9`, file artifacts/golden/baseline-0.7.9.txt). Three runs pinned to one core, tiering off, three alternating rounds against the 0.7.8 package (median):
+
+| Case | 0.7.8 (ms) | Now (ms) | Speed-up |
+| --- | ---: | ---: | ---: |
+| encode/photo1-d1-e7 | 1651 | 1390 | 1.19× |
+| encode16/photo1-16-d1-e7 | 1700 | 1421 | 1.20× |
+| encode/screen-d1-e7 | 2413 | 2369 | 1.02× |
+| encode/photo1-d1-e3 | 94 | 91 | 1.03× |
+| encode/photo1-d1-e3, with cbrt (5 runs) | 96 | 79 | 1.22× |
+| encode/photo1-d1-e1, with cbrt (5 runs) | 96 | 79 | 1.22× |
+| encode/photo1-d1-e7, with cbrt (5 runs) | 1692 | 1423 | 1.19× |
+| encode/photo1-d0-e7 | 811 | 813 | 1.00× |
+| decode/photo1-d1-e7 | 66 | 63 | 1.04× |
+| decode/screen-d1-e7 | 125 | 118 | 1.06× |
+
+Before the cbrt change 35 % of the e3 encode was the XYB conversion, almost all of it `MathF.Cbrt`. Not kept:
+replacing the threshold branch of the chroma-from-luma derivative by a mask (slower), caching entropy estimates per
+tile (only 1.2 % of the calls repeat a transform and position), cached 16-bit transfer tables (building one costs
+~1 ms per encode). The plan's target (12 MP d1 e7 within 2× of cjxl, now ~6×) is out of reach without changing the
+search itself.
+
 ## Reproduce
 
 ```bash

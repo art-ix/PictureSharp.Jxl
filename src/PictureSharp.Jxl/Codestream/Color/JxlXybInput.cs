@@ -1,4 +1,5 @@
 using PictureSharp.Formats.Jxl.Codestream.Model;
+using PictureSharp.Formats.Jxl.Codestream.Numerics;
 
 namespace PictureSharp.Formats.Jxl.Codestream.Color;
 
@@ -25,7 +26,7 @@ internal sealed class JxlXybInput
     private readonly float[][] linear;
     private readonly float[]? toSrgb;
     private readonly float[] absorbance = new float[9];
-    private readonly float negativeBiasCbrt = -MathF.Cbrt(Bias);
+    private readonly float negativeBiasCbrt = -JxlCbrt.Cbrt(Bias);
 
     private JxlXybInput(float[][] linear, float[]? toSrgb, float intensityTarget)
     {
@@ -95,9 +96,9 @@ internal sealed class JxlXybInput
             float mixed0 = MathF.FusedMultiplyAdd(m[0], red, MathF.FusedMultiplyAdd(m[1], green, MathF.FusedMultiplyAdd(m[2], blue, Bias)));
             float mixed1 = MathF.FusedMultiplyAdd(m[3], red, MathF.FusedMultiplyAdd(m[4], green, MathF.FusedMultiplyAdd(m[5], blue, Bias)));
             float mixed2 = MathF.FusedMultiplyAdd(m[6], red, MathF.FusedMultiplyAdd(m[7], green, MathF.FusedMultiplyAdd(m[8], blue, Bias)));
-            mixed0 = MathF.Cbrt(Math.Max(mixed0, 0)) + negativeBiasCbrt;
-            mixed1 = MathF.Cbrt(Math.Max(mixed1, 0)) + negativeBiasCbrt;
-            mixed2 = MathF.Cbrt(Math.Max(mixed2, 0)) + negativeBiasCbrt;
+            mixed0 = JxlCbrt.Cbrt(Math.Max(mixed0, 0)) + negativeBiasCbrt;
+            mixed1 = JxlCbrt.Cbrt(Math.Max(mixed1, 0)) + negativeBiasCbrt;
+            mixed2 = JxlCbrt.Cbrt(Math.Max(mixed2, 0)) + negativeBiasCbrt;
             x[i] = 0.5f * (mixed0 - mixed1);
             y[i] = 0.5f * (mixed0 + mixed1);
             b[i] = mixed2;

@@ -38,10 +38,9 @@ internal sealed partial class JxlEncoder : IImageFormatEncoder<JxlEncoderOptions
         int width = image.Width;
         int height = image.Height;
         bool wide = image.PixelType == PixelType.Rgba64;
-        Rgba32[] pixels = wide ? [] : new Rgba32[(long)width * height];
-        Rgba64[] pixels64 = wide ? new Rgba64[(long)width * height] : [];
-        if (wide) image.Frames.RootFrame.CopyPixelDataTo<Rgba64>(pixels64);
-        else image.Frames.RootFrame.CopyPixelDataTo<Rgba32>(pixels);
+        // The encoder only reads the pixels, so it works on the frame's own buffer instead of a copy.
+        ReadOnlySpan<Rgba32> pixels = wide ? default : image.Frames.RootFrame.GetPixelSpan<Rgba32>();
+        ReadOnlySpan<Rgba64> pixels64 = wide ? image.Frames.RootFrame.GetPixelSpan<Rgba64>() : default;
         int bitDepth = wide ? 16 : 8;
         ImageMetadata metadata = image.Metadata;
         byte[]? icc = options.Metadata.HasFlag(MetadataKinds.Icc) ? metadata.IccProfile : null;
@@ -74,8 +73,6 @@ internal sealed partial class JxlEncoder : IImageFormatEncoder<JxlEncoderOptions
             // Profiles and transfer functions XYB cannot be converted from (lookup tables, HLG) stay lossless.
             JxlImage3F xyb = wide ? ToXyb(pixels64, width, height, xybInput, cancellationToken) : ToXyb(pixels, width, height, xybInput, cancellationToken);
             int[]? alphaPlane = alpha ? (wide ? AlphaPlane(pixels64, cancellationToken) : AlphaPlane(pixels, cancellationToken)) : null;
-            pixels = [];
-            pixels64 = [];
             // Alpha stays lossless at full size, so frames with alpha are not downsampled at high distances.
             var settings = JxlLossySettings.Create(Math.Max(distance, JxlLossySettings.MinDistance), options.Effort, resample: !alpha);
             codestream = JxlCodestreamWriter.WriteLossy(new JxlLossyEncodeImage(width, height, xyb, alphaPlane, gray, encoding, icc, orientation, settings, bitDepth),
@@ -84,8 +81,6 @@ internal sealed partial class JxlEncoder : IImageFormatEncoder<JxlEncoderOptions
         else
         {
             (int[][] color, int[]? alphaPlane) = wide ? SplitPlanes(pixels64, gray, alpha, cancellationToken) : SplitPlanes(pixels, gray, alpha, cancellationToken);
-            pixels = [];
-            pixels64 = [];
             var input = new JxlEncodeImage(width, height, color, alphaPlane, encoding, icc, orientation, bitDepth);
             codestream = JxlCodestreamWriter.Write(input, cancellationToken);
         }
