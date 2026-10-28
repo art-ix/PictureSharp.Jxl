@@ -11,10 +11,18 @@ and transcoded JPEGs.
 - ANS alias table entries are packed into 8 bytes, and the symbol reader has a shorter path for the common case
   without LZ77.
 
-Single-thread warm medians compared with 0.7.3: lossless decoding is 1.2–1.5× faster for files from `cjxl -d 0`
-at efforts 1–3 and for a synthetic screenshot, and about 1.05× at effort 7, where the tree walk's data-dependent
-branches dominate. Lossy decoding and encoding are unchanged. See the
-[speed measurements](https://github.com/art-ix/PictureSharp.Jxl/blob/v0.7.4/docs/benchmarks/speed.md), including
+Single-thread warm medians of lossless decoding compared with 0.7.3:
+
+| Case | 0.7.3 | 0.7.4 | Speed-up |
+| --- | ---: | ---: | ---: |
+| photo1, cjxl -d 0 -e 3 | 243 ms | 163 ms | 1.49× |
+| photo12, cjxl -d 0 -e 1 | 1002 ms | 824 ms | 1.22× |
+| photo12, cjxl -d 0 -e 2 | 1137 ms | 820 ms | 1.39× |
+| screen, cjxl -d 0 -e 7 | 140 ms | 107 ms | 1.31× |
+| photo1, cjxl -d 0 -e 7 | 299 ms | 286 ms | 1.05× |
+| photo12, cjxl -d 0 -e 7 | 3118 ms | 2968 ms | 1.05× |
+
+At effort 7 the tree walk's data-dependent branches dominate. Lossy decoding and encoding are unchanged. See the [speed measurements](https://github.com/art-ix/PictureSharp.Jxl/blob/v0.7.4/docs/benchmarks/speed.md), including
 the effort 7 approaches that were measured and not kept.
 
 No API changes. Also available on [NuGet](https://www.nuget.org/packages/PictureSharp.Jxl/0.7.4):

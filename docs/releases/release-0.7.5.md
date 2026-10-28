@@ -10,11 +10,16 @@ and transcoded JPEGs.
 - Both prediction loops are compiled fully optimised from the start; the clamped gradient no longer branches, and the
   bit reader no longer counts its position on every read.
 
-Single-thread warm medians compared with 0.7.4 on a 12 MP photo: lossless decoding is 1.34× faster at effort 1 and
-1.14× at effort 2; effort 7 and the smaller cases change by a few percent at most. Lossy decoding and encoding are
-unchanged. See the
-[speed measurements](https://github.com/art-ix/PictureSharp.Jxl/blob/v0.7.5/docs/benchmarks/speed.md), including
-the approaches that were measured and not kept.
+Single-thread warm medians of lossless decoding compared with 0.7.4:
+
+| Case | 0.7.4 | 0.7.5 | Speed-up |
+| --- | ---: | ---: | ---: |
+| photo12, cjxl -d 0 -e 1 | 833 ms | 621 ms | 1.34× |
+| photo12, cjxl -d 0 -e 2 | 813 ms | 715 ms | 1.14× |
+| photo1, cjxl -d 0 -e 7 | 282 ms | 263 ms | 1.07× |
+| photo12, cjxl -d 0 -e 7 | 2978 ms | 2921 ms | 1.02× |
+
+The smaller effort 3 and screenshot cases stay within noise. Lossy decoding and encoding are unchanged. See the [speed measurements](https://github.com/art-ix/PictureSharp.Jxl/blob/v0.7.5/docs/benchmarks/speed.md), including the approaches that were measured and not kept.
 
 No API changes. Also available on [NuGet](https://www.nuget.org/packages/PictureSharp.Jxl/0.7.5):
 `dotnet add package PictureSharp.Jxl --version 0.7.5`.
