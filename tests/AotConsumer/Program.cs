@@ -18,7 +18,7 @@ try
 catch (ImageFormatException) { }
 using (var image = Image.Load(data))
 {
-    if (image.Width != 1 || image.Height != 1 || image.HasAlpha || image.GetPixelMemory().Span[0] != new Rgba32(0, 0, 0, 255))
+    if (image.Width != 1 || image.Height != 1 || image.HasAlpha || image.GetPixelMemory<Rgba32>().Span[0] != new Rgba32(0, 0, 0, 255))
         throw new InvalidOperationException("Lossless decoding returned the wrong pixel.");
 }
 // An 8×8 lossy (VarDCT, XYB) codestream of the colour (200, 100, 50), from cjxl -d 1.
@@ -30,7 +30,7 @@ byte[] lossy =
 ];
 using (var image = Image.Load(lossy))
 {
-    foreach (Rgba32 pixel in image.GetPixelMemory().Span)
+    foreach (Rgba32 pixel in image.GetPixelMemory<Rgba32>().Span)
     {
         if (image.Width != 8 || Math.Abs(pixel.R - 200) > 2 || Math.Abs(pixel.G - 100) > 2 || Math.Abs(pixel.B - 51) > 2 || pixel.A != 255)
             throw new InvalidOperationException($"Lossy decoding returned {pixel}.");
@@ -60,12 +60,12 @@ if (!metadata.ExifProfile.TryGetValue(ExifTag.Make, out string? make) || make !=
 // Lossless encoding keeps every sample, including the colour of transparent pixels, and the metadata.
 using (var source = new Image(37, 21))
 {
-    Span<Rgba32> pixels = source.GetPixelMemory().Span;
+    Span<Rgba32> pixels = source.GetPixelMemory<Rgba32>().Span;
     for (int i = 0; i < pixels.Length; i++) pixels[i] = new Rgba32((byte)(i * 7), (byte)(i * 13), (byte)(i >> 2), (byte)(i % 3 == 0 ? 0 : i));
     source.Metadata.Xmp = "<x/>"u8.ToArray();
     byte[] encoded = source.ToJxl(new JxlEncoderOptions { CompressMetadata = true, Distance = 0 });
     using var decoded = Image.Load(encoded);
-    if (!decoded.GetPixelMemory().Span.SequenceEqual(source.GetPixelMemory().Span) || !decoded.Metadata.Xmp!.AsSpan().SequenceEqual("<x/>"u8))
+    if (!decoded.GetPixelMemory<Rgba32>().Span.SequenceEqual(source.GetPixelMemory<Rgba32>().Span) || !decoded.Metadata.Xmp!.AsSpan().SequenceEqual("<x/>"u8))
         throw new InvalidOperationException("Lossless encoding did not round-trip.");
     byte[] edited = Image.EditMetadata((ReadOnlyMemory<byte>)encoded, edit => edit.Orientation = ExifOrientation.RightTop);
     if (Image.Identify(edited).Orientation != ExifOrientation.RightTop)
@@ -74,14 +74,28 @@ using (var source = new Image(37, 21))
 // The default lossy encoding stays close to the image and keeps alpha exact.
 using (var source = new Image(96, 64))
 {
-    Span<Rgba32> pixels = source.GetPixelMemory().Span;
+    Span<Rgba32> pixels = source.GetPixelMemory<Rgba32>().Span;
     for (int i = 0; i < pixels.Length; i++) pixels[i] = new Rgba32((byte)(i % 96 * 2), (byte)(i / 96 * 3), 120, (byte)(i % 96 < 24 ? 0 : 255));
     using var decoded = Image.Load(source.ToJxl());
-    ReadOnlySpan<Rgba32> actual = decoded.GetPixelMemory().Span;
+    ReadOnlySpan<Rgba32> actual = decoded.GetPixelMemory<Rgba32>().Span;
     for (int i = 0; i < pixels.Length; i++)
     {
         if (actual[i].A != pixels[i].A || pixels[i].A != 0 && Math.Abs(actual[i].R - pixels[i].R) + Math.Abs(actual[i].G - pixels[i].G) > 24)
             throw new InvalidOperationException("Lossy encoding did not round-trip.");
+    }
+}
+// Exercise both 16-bit encoder paths and typed pixel access after trimming and Native AOT.
+using (var source = new Image(48, 32, PixelType.Rgba64))
+{
+    Span<Rgba64> pixels = source.GetPixelSpan<Rgba64>();
+    for (int i = 0; i < pixels.Length; i++) pixels[i] = new Rgba64((ushort)(i * 37), (ushort)(i * 31), (ushort)(i * 17), (ushort)(i * 41));
+    foreach (float distance in new[] { 0f, 1f })
+    {
+        using Image decoded = Image.Load(source.ToJxl(new JxlEncoderOptions { Distance = distance, Effort = 1 }), new DecoderOptions { PreserveBitDepth = true });
+        if (decoded.PixelType != PixelType.Rgba64 || distance == 0 && !decoded.GetPixelSpan<Rgba64>().SequenceEqual(pixels))
+            throw new InvalidOperationException("16-bit JPEG XL did not round-trip.");
+        for (int i = 0; i < pixels.Length; i++)
+            if (pixels[i].A != decoded.GetPixelSpan<Rgba64>()[i].A) throw new InvalidOperationException("16-bit alpha changed.");
     }
 }
 // Consume the package's public coefficient transcoder, including cjxl-generated JXL and asynchronous APIs.

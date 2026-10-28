@@ -10,7 +10,7 @@ keep it at most 600 lines by condensing the oldest entries.
 - Public API: PictureSharp.Formats.Jxl. Implementation types stay internal.
 - Keep 0.7.x honest: Decode handles still single-image codestreams (VarDCT, Modular, patches, DC
   frames) and throws NotSupportedException for every other valid feature until it is implemented.
-  The encoder writes one 8-bit frame: lossy VarDCT (default, distance 1.0) or lossless Modular;
+  The encoder writes one 8-bit or 16-bit frame: lossy VarDCT (default, distance 1.0) or lossless Modular;
   metadata is read, written and edited (ICC, EXIF, XMP, brob via the BCL Brotli codecs). Lossless
   output must decode exactly with djxl; lossy output within 1 of djxl, alpha exact.
 - 0.7.1 JxlTranscoder preserves sequential/progressive 8-bit Huffman gray/YCbCr JPEG as integer coefficients,
@@ -19,7 +19,7 @@ keep it at most 600 lines by condensing the oldest entries.
 - Preserve nullable, warnings as errors, XML docs, trimming and Native AOT compatibility.
 - Future decoders reserve pixels/metadata before allocation and honor cancellation.
   Corrupt data: ImageFormatException; unsupported features: NotSupportedException.
-- Future pixels use Rgba32 with straight alpha. Document precision reduction.
+- Pixels use straight alpha: Rgba32 by default, Rgba64 for sources above 8 bits with PreserveBitDepth. Encode Rgba64 without an 8-bit intermediate; charge its pixels twice through ReservePixels.
 - Port scalar code first from pinned references, record origin and license notices.
 - Tests use TUnit / Microsoft.Testing.Platform; public API changes require snapshot review.
   Parsers under src/.../Container and Codestream stay self-contained (they may use only

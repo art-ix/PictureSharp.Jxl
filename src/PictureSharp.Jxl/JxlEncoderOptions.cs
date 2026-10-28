@@ -3,7 +3,7 @@ namespace PictureSharp.Formats.Jxl;
 /// <summary>
 /// Options for the JPEG XL encoder. By default the root frame is encoded lossily (VarDCT in the XYB colour space) at
 /// butteraugli distance 1.0 and effort 7, as <c>cjxl</c> does for non-JPEG input; <see cref="Quality"/> 100 or
-/// <see cref="Distance"/> 0 encode losslessly as one 8-bit Modular frame. Alpha is always stored losslessly. The image
+/// <see cref="Distance"/> 0 encode losslessly as one 8-bit or 16-bit Modular frame. Alpha is always stored losslessly. The image
 /// is gray when every pixel is gray (unless an RGB ICC profile is written). When <see cref="EncoderOptions.Metadata"/>
 /// allows them, the ICC profile is stored in the codestream (lossy frames store a profile that an enumerated colour
 /// encoding describes, such as Display P3, as that encoding, like <c>cjxl</c>) and EXIF and XMP in Exif and xml boxes of a container;

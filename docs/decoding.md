@@ -29,10 +29,23 @@ Still images, lossy and lossless, as `cjxl` produces them:
 
 ### Conversion to 8 bits
 
-`Image` holds 8-bit straight-alpha RGBA, so samples are reduced as libjxl does for 8-bit output:
+By default `Image` holds `Rgba32`, and samples are reduced as libjxl does for 8-bit output:
 
 - 32×32 blue-noise dither, clamping, round-half-to-even; 10–16-bit integers are first scaled to [0, 1] in single precision.
 - Grayscale is replicated to RGB. The first alpha channel becomes alpha; other extra channels are decoded and dropped.
+
+### Preserving sample precision
+
+With `DecoderOptions.PreserveBitDepth = true`, colour or alpha declared above 8 bits returns `Rgba64`; 8-bit files
+still return `Rgba32`. Rendered float samples are clamped and rounded once to 0–65535, without an 8-bit intermediate
+or dithering. Grayscale is replicated to RGB. A 16-bit output pixel counts twice against `MaxPixels`.
+
+```csharp
+using Image image = Image.Load("scan.jxl", new DecoderOptions { PreserveBitDepth = true });
+```
+
+`ToSrgb` of a deeper source converts before reducing to `Rgba32` when that output is requested. XYB is rendered
+directly to sRGB; Modular profiles use PictureSharp's 16-bit colour conversion.
 
 ### Colour
 

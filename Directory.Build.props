@@ -24,6 +24,6 @@
     <!-- Single source of the version: the VERSION file in the repository root. -->
     <Version>$([System.IO.File]::ReadAllText('$(MSBuildThisFileDirectory)VERSION').Trim())</Version>
     <!-- The minimum PictureSharp package the plugin is built and tested against; only its public API is used. -->
-    <PictureSharpVersion>0.8.5</PictureSharpVersion>
+    <PictureSharpVersion>0.9.0</PictureSharpVersion>
   </PropertyGroup>
 </Project>

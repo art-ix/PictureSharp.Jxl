@@ -30,6 +30,17 @@ Original JPEG bytes can be preserved with the separate [JPEG transcoder](transco
 `EffectiveDistance` reports the distance actually used. Quality maps like `cjxl`: 0.1 + (100 − q) × 0.09 from 30 up,
 quadratically to 25 below. Distances in (0, 0.05) become 0.05.
 
+## Sample precision
+
+`Rgba32` images are written at 8 bits; `Rgba64` images at 16 bits. `Distance = 0` preserves every sample, including
+colour under transparent alpha. Lossy VarDCT converts 16-bit input directly to XYB using full-resolution transfer
+curves; alpha remains lossless at 16 bits. Load with `PreserveBitDepth` to retain that precision on decoding.
+
+```csharp
+using Image scan = Image.Load("scan.png", new DecoderOptions { PreserveBitDepth = true });
+scan.SaveAsJxl("scan.jxl", new JxlEncoderOptions { Distance = 0 });
+```
+
 ## Lossy frames
 
 One VarDCT frame, a scalar port of libjxl 0.12.0's encoder with the same decisions per effort:
@@ -66,7 +77,7 @@ Not optimized yet: the first 12 MP photo takes 37 s and 2.6 GB at effort 7 on on
 
 ## Lossless frames
 
-One 8-bit Modular frame, chosen like `cjxl -d 0 -e 7`:
+One 8-bit or 16-bit Modular frame, chosen like `cjxl -d 0 -e 7`:
 
 - **Channels:** gray when R = G = B everywhere (unless an RGB ICC profile is written), else RGB; alpha when any pixel
   is not opaque.

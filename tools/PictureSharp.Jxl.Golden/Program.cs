@@ -106,7 +106,7 @@ return 0;
 
 static string Hash(ReadOnlySpan<byte> bytes) => $"{bytes.Length}:{Convert.ToHexString(SHA256.HashData(bytes))[..16]}";
 
-static string Pixels(Image image) => $"{image.Width}x{image.Height} {Hash(MemoryMarshal.AsBytes(image.GetPixelMemory().Span))}";
+static string Pixels(Image image) => $"{image.Width}x{image.Height} {Hash(MemoryMarshal.AsBytes(image.GetPixelMemory<Rgba32>().Span))}";
 
 static string Meta(ImageMetadata m) =>
     $"icc={(m.IccProfile is { } i ? Hash(i) : "-")} exif={(m.Exif is { } e ? Hash(e) : "-")} xmp={(m.Xmp is { } x ? Hash(x) : "-")} " +
@@ -127,7 +127,7 @@ static string Try(Func<string> action)
 static Image Synthetic(int width, int height, int kind)
 {
     var image = new Image(width, height);
-    Span<Rgba32> pixels = image.GetPixelMemory().Span;
+    Span<Rgba32> pixels = image.GetPixelMemory<Rgba32>().Span;
     for (int i = 0; i < pixels.Length; i++)
     {
         int x = i % width, y = i / width;

@@ -54,7 +54,7 @@ public sealed class JxlDecodeOracleTests
     {
         byte[] rgba = new byte[image.Width * image.Height * 4];
         int i = 0;
-        foreach (Rgba32 pixel in image.GetPixelMemory().Span)
+        foreach (Rgba32 pixel in image.GetPixelMemory<Rgba32>().Span)
         {
             rgba[i++] = pixel.R;
             rgba[i++] = pixel.G;

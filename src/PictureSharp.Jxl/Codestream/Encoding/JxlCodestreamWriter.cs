@@ -6,22 +6,20 @@ using PictureSharp.Formats.Jxl.Codestream.Model;
 
 namespace PictureSharp.Formats.Jxl.Codestream.Encoding;
 
-/// <summary>A still image to encode losslessly: 8-bit colour channels (gray or RGB), optional straight alpha.</summary>
+/// <summary>A still image to encode losslessly: integer colour channels (gray or RGB), optional straight alpha.</summary>
 internal sealed record JxlEncodeImage(int Width, int Height, int[][] Color, int[]? Alpha, JxlColorEncoding ColorEncoding, byte[]? Icc,
-    uint Orientation);
+    uint Orientation, int BitDepth = 8);
 
 /// <summary>
 /// A still image to encode lossily: its XYB pixels (gray images with equal channels before conversion), optional
-/// straight 8-bit alpha, and the colour encoding the XYB pixels are rendered to.
+/// straight integer alpha, and the colour encoding the XYB pixels are rendered to.
 /// </summary>
 internal sealed record JxlLossyEncodeImage(int Width, int Height, JxlImage3F Xyb, int[]? Alpha, bool Gray, JxlColorEncoding ColorEncoding,
-    byte[]? Icc, uint Orientation, JxlLossySettings Settings);
+    byte[]? Icc, uint Orientation, JxlLossySettings Settings, int BitDepth = 8);
 
 /// <summary>Writes a complete codestream: headers, the ICC profile and one lossless Modular or lossy VarDCT frame.</summary>
 internal static class JxlCodestreamWriter
 {
-    public const int BitDepth = 8;
-
     public static byte[] Write(JxlEncodeImage image, CancellationToken cancellationToken = default)
     {
         if (image.Color.Length is not (1 or 3)) throw new ArgumentException("Expected one or three colour channels.", nameof(image));
@@ -37,8 +35,10 @@ internal static class JxlCodestreamWriter
         var metadata = new JxlImageMetadata
         {
             Orientation = image.Orientation,
-            BitDepth = new JxlBitDepth(false, BitDepth, 0),
-            ExtraChannels = image.Alpha is null ? [] : [JxlExtraChannelInfo.Default],
+            Modular16BitBufferSufficient = image.BitDepth <= 12,
+            BitDepth = new JxlBitDepth(false, (uint)image.BitDepth, 0),
+            ExtraChannels = image.Alpha is null ? [] :
+                [image.BitDepth == 8 ? JxlExtraChannelInfo.Default : JxlExtraChannelInfo.Default with { BitDepth = new JxlBitDepth(false, (uint)image.BitDepth, 0) }],
             XybEncoded = false,
             Color = color,
         };
@@ -77,8 +77,10 @@ internal static class JxlCodestreamWriter
         var metadata = new JxlImageMetadata
         {
             Orientation = image.Orientation,
-            BitDepth = new JxlBitDepth(false, BitDepth, 0),
-            ExtraChannels = image.Alpha is null ? [] : [JxlExtraChannelInfo.Default],
+            Modular16BitBufferSufficient = image.BitDepth <= 12,
+            BitDepth = new JxlBitDepth(false, (uint)image.BitDepth, 0),
+            ExtraChannels = image.Alpha is null ? [] :
+                [image.BitDepth == 8 ? JxlExtraChannelInfo.Default : JxlExtraChannelInfo.Default with { BitDepth = new JxlBitDepth(false, (uint)image.BitDepth, 0) }],
             XybEncoded = true,
             Color = color,
         };

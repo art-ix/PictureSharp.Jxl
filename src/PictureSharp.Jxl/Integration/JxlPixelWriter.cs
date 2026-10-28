@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using PictureSharp.Formats.Jxl.Codestream.Buffers;
 using PictureSharp.Formats.Jxl.Codestream.Color;
 
@@ -10,10 +11,10 @@ internal static class JxlPixelWriter
     {
         cancellationToken.ThrowIfCancellationRequested();
         JxlPlane? alpha = decoded.Alpha;
-        var image = alpha is not null ? new Image(decoded.Width, decoded.Height) : new Image(decoded.Width, decoded.Height, new Rgba32(0, 0, 0, 255));
+        var image = CreateNarrowImage(decoded.Width, decoded.Height, alpha is not null);
         try
         {
-            Span<Rgba32> pixels = image.GetPixelMemory().Span;
+            Span<Rgba32> pixels = image.GetPixelMemory<Rgba32>().Span;
             JxlPlane red = decoded.Color[0];
             JxlPlane green = decoded.Color[decoded.Color.Length == 3 ? 1 : 0];
             JxlPlane blue = decoded.Color[^1];
@@ -42,6 +43,44 @@ internal static class JxlPixelWriter
             throw;
         }
     }
+
+    // Keep image construction out of the row loop's JIT frame when the core's constructors inline.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static Image CreateNarrowImage(int width, int height, bool alpha) =>
+        alpha ? new Image(width, height) : new Image(width, height, new Rgba32(0, 0, 0, 255));
+
+    public static Image WriteWide(JxlDecodedImage decoded, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        var image = decoded.Alpha is null
+            ? new Image(decoded.Width, decoded.Height, PixelType.Rgba64, new Rgba64(0, 0, 0, ushort.MaxValue))
+            : new Image(decoded.Width, decoded.Height, PixelType.Rgba64);
+        try
+        {
+            for (int y = 0; y < decoded.Height; y++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                Span<Rgba64> row = image.GetRowSpan<Rgba64>(y);
+                ReadOnlySpan<float> r = decoded.Color[0].Row(y);
+                ReadOnlySpan<float> g = decoded.IsGrayscale ? r : decoded.Color[1].Row(y);
+                ReadOnlySpan<float> b = decoded.IsGrayscale ? r : decoded.Color[2].Row(y);
+                ReadOnlySpan<float> a = decoded.Alpha is null ? default : decoded.Alpha.Row(y);
+                for (int x = 0; x < row.Length; x++)
+                {
+                    row[x] = new Rgba64(ToUInt16(r[x]), ToUInt16(g[x]), ToUInt16(b[x]), a.IsEmpty ? ushort.MaxValue : ToUInt16(a[x]));
+                }
+            }
+
+            return image;
+        }
+        catch
+        {
+            image.Dispose();
+            throw;
+        }
+    }
+
+    private static ushort ToUInt16(float value) => (ushort)Math.Clamp(MathF.Floor((value * 65535.0f) + 0.5f), 0, 65535);
 
     // Without alpha the row has no alpha samples and every pixel is opaque.
     private static void WriteGrayRow(ReadOnlySpan<float> v, ReadOnlySpan<float> a, Span<Rgba32> row, int y)

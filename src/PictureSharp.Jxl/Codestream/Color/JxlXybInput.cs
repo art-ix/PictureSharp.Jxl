@@ -3,7 +3,7 @@ using PictureSharp.Formats.Jxl.Codestream.Model;
 namespace PictureSharp.Formats.Jxl.Codestream.Color;
 
 /// <summary>
-/// Converts 8-bit samples in the image's colour space to XYB, the inverse of the XYB rendering of
+/// Converts 8-bit or 16-bit samples in the image's colour space to XYB, the inverse of the XYB rendering of
 /// <see cref="JxlColorOutput"/>: the transfer function (or ICC tone curves) to linear light, the primaries to linear
 /// sRGB, then the opsin absorbance and cube root. Ported from libjxl v0.12.0 lib/jxl/enc_xyb.cc (ToXYB,
 /// LinearRGBToXYB) and lib/jxl/cms/opsin_params.h (BSD-3-Clause); libjxl converts other spaces with a colour management
@@ -43,7 +43,7 @@ internal sealed class JxlXybInput
     /// The conversion of samples described by <paramref name="color"/> (or <paramref name="icc"/> when the colour
     /// encoding wants an ICC profile), or null when they cannot be converted: lookup-table ICC profiles and HLG.
     /// </summary>
-    public static JxlXybInput? TryCreate(JxlColorEncoding color, JxlIccTarget? icc, float intensityTarget)
+    public static JxlXybInput? TryCreate(JxlColorEncoding color, JxlIccTarget? icc, float intensityTarget, int bitDepth = 8)
     {
         bool gray = color.ColorSpace == JxlColorSpace.Gray;
         if (color.WantIcc)
@@ -53,7 +53,8 @@ internal sealed class JxlXybInput
                 return null;
             }
 
-            float[][] curves = [.. icc.Curves.Select(curve => Table(curve.Decode))];
+            float[][] curves = new float[icc.Curves.Length][];
+            for (int c = 0; c < curves.Length; c++) curves[c] = Table(icc.Curves[c].Decode, bitDepth);
             float[]? matrix = gray ? null : JxlColorOutput.Multiply(JxlColorOutput.Invert(JxlColorOutput.SrgbToXyzD50()), icc.ToXyzD50);
             return new JxlXybInput(curves, matrix, intensityTarget);
         }
@@ -63,7 +64,7 @@ internal sealed class JxlXybInput
             return null;
         }
 
-        float[] table = Table(ToLinear(color, intensityTarget));
+        float[] table = Table(ToLinear(color, intensityTarget), bitDepth);
         float[]? primaries = !gray && (color.Primaries != JxlPrimaries.Srgb || color.WhitePoint != JxlWhitePoint.D65)
             ? JxlColorOutput.Invert(JxlColorOutput.SrgbToOriginal(color))
             : null;
@@ -71,7 +72,7 @@ internal sealed class JxlXybInput
     }
 
     /// <summary>
-    /// Converts one row in place: <paramref name="x"/>, <paramref name="y"/> and <paramref name="b"/> hold the 8-bit
+    /// Converts one row in place: <paramref name="x"/>, <paramref name="y"/> and <paramref name="b"/> hold the integer
     /// red, green and blue samples (gray: equal) on entry and X, Y and B on return.
     /// </summary>
     public void Convert(Span<float> x, Span<float> y, Span<float> b)
@@ -132,12 +133,12 @@ internal sealed class JxlXybInput
                 _ => throw new ArgumentOutOfRangeException(nameof(color), color.TransferFunction, "No inverse for this transfer function."),
             };
 
-    private static float[] Table(Func<float, float> transfer)
+    private static float[] Table(Func<float, float> transfer, int bitDepth)
     {
-        float[] table = new float[256];
+        float[] table = new float[1 << bitDepth];
         for (int i = 0; i < table.Length; i++)
         {
-            table[i] = transfer(i / 255.0f);
+            table[i] = transfer(i / (float)(table.Length - 1));
         }
 
         return table;

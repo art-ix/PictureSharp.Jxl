@@ -25,7 +25,10 @@ internal sealed class JxlDecoder : IImageFormatDecoder
             throw JxlDescriptor.Unsupported("image dimensions exceed the largest supported size.");
 
         JxlMetadataReader.EnsureConvertible(headers.Metadata.Color, options);
-        context.ReservePixels((int)headers.Size.Width, (int)headers.Size.Height);
+        PixelType pixelType = options.PreserveBitDepth && (headers.Metadata.BitDepth.BitsPerSample > 8
+            || headers.Metadata.ExtraChannels.Any(channel => channel.Type == JxlExtraChannelType.Alpha && channel.BitDepth.BitsPerSample > 8))
+            ? PixelType.Rgba64 : PixelType.Rgba32;
+        context.ReservePixels((int)headers.Size.Width, (int)headers.Size.Height, pixelType);
         // The ICC profile is part of the codestream: with IgnoreMetadata it is decoded (as libjxl does) within libjxl's
         // limit, but neither charged nor reported. ToSrgb renders XYB frames as sRGB in floating point, so they are
         // quantized once and get no colour description for PictureSharp to convert again.
@@ -34,7 +37,9 @@ internal sealed class JxlDecoder : IImageFormatDecoder
             : new JxlDecodeSession(codestream, headers, context.CancellationToken, options.MaxMetadataBytes, context.ReserveMetadata,
                 renderSrgb: options.ColorConversion == ColorConversionMode.ToSrgb);
         JxlDecodedImage decoded = session.Decode();
-        Image image = JxlPixelWriter.Write(decoded, context.CancellationToken);
+        Image image = pixelType == PixelType.Rgba64
+            ? JxlPixelWriter.WriteWide(decoded, context.CancellationToken)
+            : JxlPixelWriter.Write(decoded, context.CancellationToken);
         try
         {
             if (!options.IgnoreMetadata)

@@ -11,7 +11,7 @@ namespace PictureSharp.Formats.Jxl.Integration;
 /// not opaque, lossy in XYB or lossless, the colour encoding of the ICC profile or colour description, the orientation,
 /// and Exif and xml boxes in a container when there are any.
 /// </summary>
-internal sealed class JxlEncoder : IImageFormatEncoder<JxlEncoderOptions>
+internal sealed partial class JxlEncoder : IImageFormatEncoder<JxlEncoderOptions>
 {
     // Level 5 limits (ISO/IEC 18181-2 Annex A); larger images need level 10 and its jxll box.
     private const long Level5MaxDimension = 1 << 18;
@@ -20,6 +20,8 @@ internal sealed class JxlEncoder : IImageFormatEncoder<JxlEncoderOptions>
     private const int CancellationCheckMask = 0xFFFF;
 
     public static JxlEncoder Instance { get; } = new();
+
+    public bool SupportsPixelType(PixelType pixelType) => pixelType is PixelType.Rgba32 or PixelType.Rgba64;
 
     public void Encode(Image image, Stream output, JxlEncoderOptions options, CancellationToken cancellationToken)
     {
@@ -35,16 +37,21 @@ internal sealed class JxlEncoder : IImageFormatEncoder<JxlEncoderOptions>
     {
         int width = image.Width;
         int height = image.Height;
-        var pixels = new Rgba32[(long)width * height];
-        image.Frames.RootFrame.CopyPixelDataTo(pixels);
+        bool wide = image.PixelType == PixelType.Rgba64;
+        Rgba32[] pixels = wide ? [] : new Rgba32[(long)width * height];
+        Rgba64[] pixels64 = wide ? new Rgba64[(long)width * height] : [];
+        if (wide) image.Frames.RootFrame.CopyPixelDataTo<Rgba64>(pixels64);
+        else image.Frames.RootFrame.CopyPixelDataTo<Rgba32>(pixels);
+        int bitDepth = wide ? 16 : 8;
         ImageMetadata metadata = image.Metadata;
         byte[]? icc = options.Metadata.HasFlag(MetadataKinds.Icc) ? metadata.IccProfile : null;
         JxlColorSpace? iccSpace = icc is null ? null
             : JxlMetadataWriter.RequireIccColorSpace(icc, "JPEG XL images can only carry RGB or gray ICC profiles without CMYK samples.");
+        bool grayPixels = wide ? IsGray(pixels64) : IsGray(pixels);
         bool gray = iccSpace switch
         {
-            null => IsGray(pixels),
-            JxlColorSpace.Gray => IsGray(pixels) ? true : throw new NotSupportedException("A gray ICC profile cannot describe an image with colour pixels."),
+            null => grayPixels,
+            JxlColorSpace.Gray => grayPixels ? true : throw new NotSupportedException("A gray ICC profile cannot describe an image with colour pixels."),
             _ => false,
         };
         bool alpha = !image.Frames.RootFrame.IsOpaque();
@@ -60,24 +67,26 @@ internal sealed class JxlEncoder : IImageFormatEncoder<JxlEncoderOptions>
 
         JxlXybInput? xybInput = distance == 0 ? null
             : JxlXybInput.TryCreate(icc is null ? encoding : new JxlColorEncoding { WantIcc = true, ColorSpace = gray ? JxlColorSpace.Gray : JxlColorSpace.Rgb },
-                icc is null ? null : JxlIccTarget.TryCreate(icc, gray), JxlToneMapping.Default.IntensityTarget);
+                icc is null ? null : JxlIccTarget.TryCreate(icc, gray), JxlToneMapping.Default.IntensityTarget, bitDepth);
         byte[] codestream;
         if (xybInput is not null)
         {
             // Profiles and transfer functions XYB cannot be converted from (lookup tables, HLG) stay lossless.
-            JxlImage3F xyb = ToXyb(pixels, width, height, xybInput, cancellationToken);
-            int[]? alphaPlane = alpha ? AlphaPlane(pixels, cancellationToken) : null;
+            JxlImage3F xyb = wide ? ToXyb(pixels64, width, height, xybInput, cancellationToken) : ToXyb(pixels, width, height, xybInput, cancellationToken);
+            int[]? alphaPlane = alpha ? (wide ? AlphaPlane(pixels64, cancellationToken) : AlphaPlane(pixels, cancellationToken)) : null;
             pixels = [];
+            pixels64 = [];
             // Alpha stays lossless at full size, so frames with alpha are not downsampled at high distances.
             var settings = JxlLossySettings.Create(Math.Max(distance, JxlLossySettings.MinDistance), options.Effort, resample: !alpha);
-            codestream = JxlCodestreamWriter.WriteLossy(new JxlLossyEncodeImage(width, height, xyb, alphaPlane, gray, encoding, icc, orientation, settings),
+            codestream = JxlCodestreamWriter.WriteLossy(new JxlLossyEncodeImage(width, height, xyb, alphaPlane, gray, encoding, icc, orientation, settings, bitDepth),
                 cancellationToken);
         }
         else
         {
-            (int[][] color, int[]? alphaPlane) = SplitPlanes(pixels, gray, alpha, cancellationToken);
+            (int[][] color, int[]? alphaPlane) = wide ? SplitPlanes(pixels64, gray, alpha, cancellationToken) : SplitPlanes(pixels, gray, alpha, cancellationToken);
             pixels = [];
-            var input = new JxlEncodeImage(width, height, color, alphaPlane, encoding, icc, orientation);
+            pixels64 = [];
+            var input = new JxlEncodeImage(width, height, color, alphaPlane, encoding, icc, orientation, bitDepth);
             codestream = JxlCodestreamWriter.Write(input, cancellationToken);
         }
 

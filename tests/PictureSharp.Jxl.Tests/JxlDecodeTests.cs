@@ -181,7 +181,7 @@ public sealed class JxlDecodeTests
     public async Task Decode_GrayscaleIsReplicated()
     {
         using Image image = Image.Load(CorpusPath("gray8-lossless.jxl"), Options());
-        foreach (Rgba32 pixel in image.GetPixelMemory().Span)
+        foreach (Rgba32 pixel in image.GetPixelMemory<Rgba32>().Span)
         {
             if (pixel.R != pixel.G || pixel.G != pixel.B || pixel.A != 255)
             {
@@ -267,7 +267,7 @@ public sealed class JxlDecodeTests
 
         using Image gray = Image.Load(CorpusPath("lossy-gray.jxl"), Options());
         await Assert.That(gray.HasAlpha).IsFalse();
-        foreach (Rgba32 pixel in gray.GetPixelMemory().Span)
+        foreach (Rgba32 pixel in gray.GetPixelMemory<Rgba32>().Span)
         {
             if (pixel.R != pixel.G || pixel.G != pixel.B)
             {

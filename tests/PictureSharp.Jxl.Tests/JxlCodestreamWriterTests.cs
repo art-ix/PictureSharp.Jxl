@@ -69,7 +69,7 @@ public sealed class JxlCodestreamWriterTests
         using Image image = Image.Load(encoded, Options());
         if (image.Width != width || image.Height != height) return $"size {image.Width}x{image.Height}";
         int i = 0;
-        foreach (Rgba32 pixel in image.GetPixelMemory().Span)
+        foreach (Rgba32 pixel in image.GetPixelMemory<Rgba32>().Span)
         {
             byte r = rgba[i], g = gray ? rgba[i] : rgba[i + 1], b = gray ? rgba[i] : rgba[i + 2], a = rgba[i + 3];
             if (pixel.R != r || pixel.G != g || pixel.B != b || pixel.A != a)
