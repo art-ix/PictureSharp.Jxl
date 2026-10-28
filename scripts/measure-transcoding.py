@@ -52,7 +52,7 @@ def main():
             for sampling in (0, 1, 2):
                 image.save(CORPUS / f'color-{sampling}-{int(progressive)}.jpg', quality=87, subsampling=sampling, progressive=progressive)
             image.convert('L').save(CORPUS / f'gray-{int(progressive)}.jpg', quality=93, progressive=progressive)
-    env = dict(os.environ, DOTNET_PROCESSOR_COUNT='1')
+    env = dict(os.environ)  # no DOTNET_PROCESSOR_COUNT=1, see measure-speed.py
     subprocess.run(['dotnet', 'build', str(HARNESS), '-c', 'Release', '-v', 'q'], check=True, env=env)
     dll = HARNESS / 'bin/Release/net10.0/PictureSharp.Jxl.Speed.dll'
     tools = Path(os.environ['JXL_TOOLS']) if 'JXL_TOOLS' in os.environ else None

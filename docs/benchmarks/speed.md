@@ -155,6 +155,70 @@ The plan's target of half the 0.7.2 time (4.15 s) is not quite reached. Not kept
 at a time (slower), walking rows in chunks of 16–64 pixels (no change), writing properties in place or as a compact
 row of the learner's six properties (no gain), and one sample pass for both predictors in the split search (slower).
 
+## 16-bit baseline (0.7.8, step 0.7.9a)
+
+Measured on 2026-10-28 with the 0.7.8 sources, same machine and method as above, two full runs of the suite (12 MP
+encodes once). New inputs from `scripts/make-speed-inputs.py` (suffix `-16`): `photo12-16` is the photo decoded by
+djxl to float sRGB and rounded to 16 bits, `photo1-16` its 1280×800 crop, `screen-16` the screen image widened from
+8 bits (v × 257). `decode/*-16-*` decodes the 16-bit files to Rgba32 (default), `decode16/*` with `PreserveBitDepth`
+to Rgba64, `encode16/*` encodes Rgba64 sources. libjxl references read and write 16-bit PNGs
+(`djxl --bits_per_sample=16`). Golden harness: 1283 results identical to the 0.7.8 package; 8-bit results equal the
+0.7.2 baseline except the three intended high-depth ToSrgb changes.
+
+| Case | Run 1 (ms) | Run 2 (ms) | libjxl 1 thread (ms) | Allocated (MiB) | Peak RSS (MiB) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| decode/photo1-d0-e7 | 284 | 276 | 142 | 54 | 97 |
+| decode/photo1-16-d0-e7 | 378 | 376 | 185 | 61 | 170 |
+| decode16/photo1-16-d0-e7 | 345 | 343 | 185 | 65 | 110 |
+| decode/photo1-d1-e7 | 57 | 59 | 16 | 32 | 127 |
+| decode/photo1-16-d1-e7 | 64 | 150 ¹ | 16 | 32 | 124 |
+| decode16/photo1-16-d1-e7 | 269 ¹ | 271 ¹ | 16 | 36 | 128 |
+| decode/photo12-d0-e7 | 3042 | 3030 | 1731 | 577 | 1033 |
+| decode/photo12-16-d0-e7 | 4016 | 3949 | 2169 | 707 | 1099 |
+| decode16/photo12-16-d0-e7 | 3913 | 3945 | 2173 | 753 | 1661 |
+| decode/photo12-d1-e7 | 648 | 656 | 216 | 363 | 767 |
+| decode/photo12-16-d1-e7 | 721 | 724 | 233 | 363 | 783 |
+| decode16/photo12-16-d1-e7 | 729 | 694 | 226 | 410 | 663 |
+| decode-srgb/photo12-d1-e7 | 726 | 816 | 247 | 363 | 643 |
+| decode16-srgb/photo12-16-d1-e7 | 695 | 689 | 226 | 410 | 574 |
+| decode/screen-d0-e7 | 137 | 146 | 58 | 76 | 211 |
+| decode16/screen-16-d0-e7 | 106 | 109 | 60 | 83 | 217 |
+| decode/screen-d1-e7 | 300 ¹ | 386 ¹ | 28 | 49 | 152 |
+| decode/screen-16-d1-e7 | 399 ¹ | 403 ¹ | 28 | 49 | 152 |
+| decode16/screen-16-d1-e7 | 108 | 107 | 31 | 55 | 166 |
+| encode/photo1-d0-e7 | 817 | 822 | 640 | 228 | 524 |
+| encode16/photo1-16-d0-e7 | 1103 | 1137 | 1724 | 258 | 651 |
+| encode/photo1-d1-e7 | 1403 | 1419 | 217 | 147 | 503 |
+| encode16/photo1-16-d1-e7 | 1439 | 1464 | 224 | 151 | 476 |
+| encode/screen-d0-e7 | 650 | 667 | 256 | 177 | 446 |
+| encode16/screen-16-d0-e7 | 727 | 745 | 254 | 385 | 898 |
+| encode/screen-d1-e7 | 2138 | 2159 | 378 | 318 | 531 |
+| encode16/screen-16-d1-e7 | 2078 | 2124 | 373 | 324 | 774 |
+| encode/photo12-d0-e7 | 4337 | – | 8444 | 1857 | 3095 |
+| encode16/photo12-16-d0-e7 | 4859 | – | 19292 | 2130 | 5586 |
+| encode/photo12-d1-e7 | 18612 | – | 2487 | 1589 | 2917 |
+| encode16/photo12-16-d1-e7 | 19789 | – | 2696 | 2824 | 5545 |
+
+¹ Harness artefact, not a 16-bit cost: with `DOTNET_PROCESSOR_COUNT=1` the runtime often never promoted any method
+to Tier1 by call counting (only OSR), so VarDCT decoding took ~265–400 ms in most processes and ~65/105 ms in the
+others (`DOTNET_JitDisasmSummary=1`). The scripts no longer set it (the codec is single-threaded); two runs since:
+decode/photo1-16-d1-e7 66/64, decode16/photo1-16-d1-e7 63/62, decode/screen-d1-e7 103/104,
+decode/screen-16-d1-e7 103/105, decode16/screen-16-d1-e7 103/103, decode-srgb/photo12-d1-e7 712/698 ms.
+Earlier tables in this file were measured with the setting; their VarDCT screen numbers may contain the slow mode.
+
+Findings: 16-bit decoding costs 0–30 % more than 8-bit on the same image (larger residuals in Modular, no dithering
+with Rgba64); lossy encoding is unchanged; lossless encoding of the 16-bit photo is 35 % slower (1 MP) and 12 % (12 MP).
+Peak RSS of the 12 MP encodes nearly doubles (5.5 GB): full Rgba64 copy plus 16-bit planes. Profiles (top exclusive):
+
+- `decode16` Modular: `JxlMaTree.DecodeChannel` 44 %, `FilteredTree.Lookup` 16 % (8-bit: 45 %, 13 %), weighted
+  predictor 15 %, `ReadClustered` 8 %; `ToPlane` 1 %, `WriteWide` 1 % — the int → float → ushort round trip is cheap.
+- `decode16` VarDCT: IDCT 30 %, `JxlColorOutput.Apply` (XYB → sRGB polynomial per sample, the same path as 8-bit)
+  21 % inclusive; `WriteWide` 3.5 %.
+- `encode16` lossless: `FindSplit` 39 % inclusive, of which `ZeroMemoryInternal` 20 % (8-bit 6 %) — `Reuse` clears
+  `increase` (bins × symbols) for every property and predictor; 16-bit residuals have more symbols, so clearing
+  dominates small nodes. Then `Scan` 26 %, `TokenizeRecorded` 9 %, `ChooseRct` 7.5 %.
+- `encode16` lossy: same as 8-bit (`EstimateEntropy` 56 %, `ChromaFromLumaSearch` 22 %, DCT/IDCT 24 %); `ToXyb` 2 %.
+
 ## Reproduce
 
 ```bash
@@ -165,5 +229,5 @@ python3 scripts/measure-speed.py --all                    # adds the 12 MP encod
 python3 scripts/measure-speed.py decode/photo1            # only cases whose id contains a filter
 python3 scripts/compare-speed.py artifacts/speed-measurements/baseline-0.7.2.json artifacts/speed-measurements/current.json
 scripts/profile-speed.sh decode/photo1-d1-e7              # hotspots of one case
-scripts/golden-hash.sh 0.7.2                              # output identical to 0.7.2
+scripts/golden-hash.sh                                    # output identical to 0.7.8 (8-bit and 16-bit)
 ```

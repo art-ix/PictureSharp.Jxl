@@ -2,8 +2,9 @@
 """Measure decode/encode speed of the managed codec against pinned cjxl/djxl, one thread, Linux.
 
 Inputs: scripts/make-speed-inputs.py (artifacts/speed-inputs) and the ignored samples/private photos.
-Each case runs in its own process (DOTNET_PROCESSOR_COUNT=1): one cold call (includes JIT), ~2 s of warm-up for tiered
-JIT, then N timed calls (default 5);
+Each case runs in its own process: one cold call (includes JIT), ~2 s of warm-up for tiered JIT, then N timed calls
+(default 5); the codec is single-threaded. No DOTNET_PROCESSOR_COUNT=1: with it the runtime often never promotes
+methods to Tier1 (only OSR), and VarDCT decoding ran 2.5-4x slower in most processes.
 reports the warm median, allocations, GC counts and peak RSS of the process (/usr/bin/time, includes the runtime).
 The reference is libjxl's own timing (MP/s over --num_reps=3, PNG I/O excluded, its SIMD enabled).
 Usage: measure-speed.py [substring filter...] [--runs N] [--no-reference] [--package x.y.z] [--all]. --package measures a
@@ -24,7 +25,7 @@ import time
 ROOT = Path(__file__).resolve().parents[1]
 HARNESS = ROOT / 'benchmarks/PictureSharp.Jxl.Speed'
 OUT = ROOT / 'artifacts/speed-measurements'
-LONG = ('encode/photo12-',)
+LONG = ('encode/photo12-', 'encode16/photo12-')
 TOOLS = Path(os.environ['JXL_TOOLS']) if 'JXL_TOOLS' in os.environ else None
 
 
@@ -58,7 +59,7 @@ def main():
     everything = '--all' in args
     started = time.monotonic()
     filters = [a for i, a in enumerate(args) if not a.startswith('--') and (i == 0 or args[i - 1] not in ('--runs', '--package'))]
-    env = dict(os.environ, DOTNET_PROCESSOR_COUNT='1', DOTNET_TieredPGO='1')
+    env = dict(os.environ, DOTNET_TieredPGO='1')
     build = ROOT / 'artifacts/speed-build' / (package or 'source')
     subprocess.run(['dotnet', 'build', str(HARNESS), '-c', 'Release', '-v', 'q', '--artifacts-path', str(build),
                     *([f'-p:JxlPackageVersion={package}'] if package else [])], check=True, env=env, stdout=subprocess.DEVNULL)

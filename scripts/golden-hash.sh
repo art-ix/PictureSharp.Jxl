@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# Compares every observable output of the current sources with a released package (default 0.7.2).
+# Compares every observable output of the current sources with a released package (default 0.7.8; the harness uses the
+# PictureSharp 0.9.0 PreserveBitDepth API, so older baselines need the harness from their own tag).
 # Usage: scripts/golden-hash.sh [baseline version] [regex]. A regex limits the check to results whose "name kind" matches
 # (the baseline is always complete and filtered here). Inputs: corpus, samples/private, artifacts/speed-inputs
 # (scripts/make-speed-inputs.py). Results under ignored artifacts/golden; exit code 1 on any difference.
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
-baseline="${1:-0.7.2}"
+baseline="${1:-0.7.8}"
 filter="${2:-}"
 tool="$root/tools/PictureSharp.Jxl.Golden"
 out="$root/artifacts/golden"

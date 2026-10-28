@@ -1,14 +1,19 @@
 #!/usr/bin/env python3
 """Create the speed benchmark / golden-hash inputs under ignored artifacts/speed-inputs.
 
-Needs Pillow 10.2+ and pinned cjxl/djxl 0.12.0 (PATH or JXL_TOOLS). The photo comes from the ignored
+Needs Pillow 10.2+, NumPy and pinned cjxl/djxl 0.12.0 (PATH or JXL_TOOLS). The photo comes from the ignored
 samples/private/IMG_0160_q80.jxl (12 MP); without it only the synthetic screen image is created.
 Decode inputs are encoded by cjxl so they exercise the streams libjxl writes; encode inputs are PNGs.
+16-bit inputs (name suffix -16, crop16-*): the photo decoded by djxl to float sRGB and rounded to 16 bits (real 16-bit values
+from the lossy original) and the screen widened from 8 bits (v * 257).
 """
 import os
 from pathlib import Path
+import struct
 import subprocess
+import zlib
 
+import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -44,6 +49,55 @@ def cjxl(source, target, *options):
     subprocess.run([CJXL, str(source), str(target), '--num_threads=1', '--quiet', *options], check=True)
 
 
+def write_png16(path, pixels):
+    """Writes an H x W x C uint16 array (C = 1 gray, 2 gray+alpha, 3 RGB, 4 RGBA) as a 16-bit PNG; Pillow cannot."""
+    height, width, channels = pixels.shape
+    rows = np.zeros((height, 1 + width * channels * 2), np.uint8)
+    rows[:, 1:] = pixels.astype('>u2').reshape(height, -1).view(np.uint8)
+
+    def chunk(kind, data):
+        return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
+    header = struct.pack('>IIBBBBB', width, height, 16, {1: 0, 2: 4, 3: 2, 4: 6}[channels], 0, 0, 0)
+    Path(path).write_bytes(b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', header) + chunk(b'IDAT', zlib.compress(rows.tobytes(), 3))
+                           + chunk(b'IEND', b''))
+
+
+def read_pfm16(path):
+    """Reads the float PFM written by djxl (rows bottom-up) and rounds it to 16 bits per sample."""
+    data = Path(path).read_bytes()
+    magic, width, height, scale = data.split(maxsplit=4)[:4]
+    assert magic == b'PF'
+    width, height = int(width), int(height)
+    pixels = np.frombuffer(data, '<f4' if float(scale) < 0 else '>f4', offset=len(data) - width * height * 12)
+    return (np.clip(pixels.reshape(height, width, 3)[::-1], 0, 1) * 65535 + 0.5).astype(np.uint16)
+
+
+def inputs16(screen_png):
+    """16-bit PNGs; returns the encode sources for the 16-bit JXL files."""
+    pngs = {}
+    widened = np.asarray(Image.open(screen_png).convert('RGB'), np.uint16) * 257
+    write_png16(OUT / 'screen-16.png', widened)
+    write_png16(OUT / 'crop16-screen.png', widened[0:300, 240:640])
+    pngs['screen-16'] = OUT / 'screen-16.png'
+    if PHOTO.exists():
+        pfm = OUT / 'photo12-16.pfm'
+        if not (OUT / 'photo12-16.png').exists():
+            subprocess.run([DJXL, str(PHOTO), str(pfm), '--num_threads=1', '--quiet', '--color_space=RGB_D65_SRG_Rel_SRG'], check=True)
+            photo = read_pfm16(pfm)
+            pfm.unlink()
+            h, w = photo.shape[:2]
+            write_png16(OUT / 'photo12-16.png', photo)
+            write_png16(OUT / 'photo1-16.png', photo[(h - 800) // 2:(h + 800) // 2, (w - 1280) // 2:(w + 1280) // 2])
+            write_png16(OUT / 'crop16-photo.png', photo[h // 3:h // 3 + 256, w // 3:w // 3 + 384])
+            crop = photo[h // 2:h // 2 + 192, w // 2:w // 2 + 256]
+            alpha = np.broadcast_to(np.linspace(0, 65535, crop.shape[0]).round().astype(np.uint16)[:, None, None], (*crop.shape[:2], 1))
+            write_png16(OUT / 'crop16-photo-alpha.png', np.concatenate([crop, alpha], axis=2))
+            luma = (crop.astype(np.uint32) * [2126, 7152, 722]).sum(axis=2) // 10000
+            write_png16(OUT / 'crop16-gray.png', luma.astype(np.uint16)[:, :, None])
+        pngs |= {'photo12-16': OUT / 'photo12-16.png', 'photo1-16': OUT / 'photo1-16.png'}
+    return pngs
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     screen().save(OUT / 'screen.png')
@@ -61,11 +115,13 @@ def main():
         rgba.save(OUT / 'crop-photo-alpha.png')
         pngs |= {'photo12': photo, 'photo1': OUT / 'photo1.png'}
     screen().crop((240, 0, 640, 300)).save(OUT / 'crop-screen.png')
+    pngs |= inputs16(OUT / 'screen.png')
     plans = {
         'photo12': [('d1-e7', '-d', '1', '-e', '7'), ('d0-e1', '-d', '0', '-e', '1'), ('d0-e2', '-d', '0', '-e', '2'), ('d0-e7', '-d', '0', '-e', '7')],
         'photo1': [('d1-e7', '-d', '1', '-e', '7'), ('d3-e3', '-d', '3', '-e', '3'), ('d0-e3', '-d', '0', '-e', '3'), ('d0-e7', '-d', '0', '-e', '7')],
         'screen': [('d1-e7', '-d', '1', '-e', '7'), ('d0-e7', '-d', '0', '-e', '7')],
     }
+    plans |= {f'{name}-16': [p for p in plans[name] if p[0] in ('d1-e7', 'd0-e7')] for name in ('photo12', 'photo1', 'screen')}
     for name, source in pngs.items():
         for label, *options in plans[name]:
             target = OUT / f'{name}-{label}.jxl'

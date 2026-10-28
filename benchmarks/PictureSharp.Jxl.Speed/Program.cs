@@ -74,7 +74,11 @@ internal sealed record SpeedCase(string Id, string Input, string Reference, Func
         ("photo1", 1, 1), ("photo1", 1, 3), ("photo1", 1, 5), ("photo1", 1, 7),
         ("screen", 0, 7), ("screen", 1, 7),
         ("photo12", 0, 7), ("photo12", 1, 7),
+        ("photo1-16", 0, 7), ("photo1-16", 1, 7), ("screen-16", 0, 7), ("screen-16", 1, 7),
+        ("photo12-16", 0, 7), ("photo12-16", 1, 7),
     ];
+
+    private static readonly DecoderOptions Preserve = new() { PreserveBitDepth = true };
 
     public static IEnumerable<SpeedCase> All(string root)
     {
@@ -94,13 +98,27 @@ internal sealed record SpeedCase(string Id, string Input, string Reference, Func
                     Decode(new DecoderOptions { ColorConversion = ColorConversionMode.ToSrgb }));
             }
 
+            // 16-bit inputs (name suffix -16) decoded to Rgba64.
+            foreach (string file in Directory.GetFiles(inputs, "*-16-*.jxl").Order(StringComparer.Ordinal))
+            {
+                yield return new($"decode16/{Path.GetFileNameWithoutExtension(file)}", file, "djxl {in} {out}.png --bits_per_sample=16", Decode(Preserve));
+            }
+
+            string lossy12Deep = Path.Combine(inputs, "photo12-16-d1-e7.jxl");
+            if (File.Exists(lossy12Deep))
+            {
+                yield return new("decode16-srgb/photo12-16-d1-e7", lossy12Deep, "djxl {in} {out}.png --color_space=sRGB --bits_per_sample=16",
+                    Decode(Preserve with { ColorConversion = ColorConversionMode.ToSrgb }));
+            }
+
             foreach ((string image, float distance, int effort) in EncodeCases)
             {
                 string file = Path.Combine(inputs, image + ".png");
                 if (File.Exists(file))
                 {
                     var options = new JxlEncoderOptions { Distance = distance, Effort = effort };
-                    yield return new($"encode/{image}-d{distance}-e{effort}", file, $"cjxl {{in}} {{out}}.jxl -d {distance} -e {effort}", Encode(options));
+                    string kind = image.EndsWith("-16", StringComparison.Ordinal) ? "encode16" : "encode";
+                    yield return new($"{kind}/{image}-d{distance}-e{effort}", file, $"cjxl {{in}} {{out}}.jxl -d {distance} -e {effort}", Encode(options));
                 }
             }
         }
@@ -128,7 +146,7 @@ internal sealed record SpeedCase(string Id, string Input, string Reference, Func
 
     private static Func<byte[], Func<byte[]>> Encode(JxlEncoderOptions options) => input =>
     {
-        Image source = Image.Load(input); // Kept for the lifetime of the process.
+        Image source = Image.Load(input, Preserve); // Kept for the lifetime of the process; Rgba64 only for 16-bit PNGs.
         return () => source.ToJxl(options);
     };
 

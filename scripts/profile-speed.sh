@@ -8,6 +8,6 @@ id="$1"; runs="${2:-3}"; top="${3:-25}"
 out="$root/artifacts/traces/${id//\//_}"
 mkdir -p "$root/artifacts/traces"
 dotnet build "$root/benchmarks/PictureSharp.Jxl.Speed" -c Release -v q --artifacts-path "$root/artifacts/speed-build/source" >/dev/null
-DOTNET_PROCESSOR_COUNT=1 dotnet-trace collect --profile dotnet-sampled-thread-time,dotnet-common --format Speedscope -o "$out.nettrace" -- \
+dotnet-trace collect --profile dotnet-sampled-thread-time,dotnet-common --format Speedscope -o "$out.nettrace" -- \
   dotnet "$root/artifacts/speed-build/source/bin/PictureSharp.Jxl.Speed/release/PictureSharp.Jxl.Speed.dll" case "$root" "$id" "$runs" >/dev/null
 python3 "$root/scripts/speedscope-top.py" "$out.speedscope.json" "$top"
