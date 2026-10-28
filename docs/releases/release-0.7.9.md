@@ -11,9 +11,20 @@ Sixth step of the scalar speed work towards 0.8.0, for 8-bit and 16-bit input al
   [CORE-MATH](https://core-math.gitlabpages.inria.fr/) (MIT): 2.5× faster than `MathF.Cbrt` and the same result on
   every platform.
 
-Single-thread warm medians compared with 0.7.8 (1 MP photo, distance 1): effort 1 and 3 are 1.22× faster
-(about 96 → 79 ms), effort 7 is 1.19× faster (1.69 → 1.42 s), 16-bit input 1.20×; VarDCT decoding is 1.04–1.06×
-faster. See the [speed measurements](https://github.com/art-ix/PictureSharp.Jxl/blob/v0.7.9/docs/benchmarks/speed.md),
+Single-thread warm medians, pinned to one core, alternating with the 0.7.8 package:
+
+| Case (1 MP photo unless noted) | 0.7.8 | 0.7.9 | Speed-up |
+| --- | ---: | ---: | ---: |
+| Lossy encode, distance 1, effort 1 | 96 ms | 79 ms | 1.22× |
+| Lossy encode, distance 1, effort 3 | 96 ms | 79 ms | 1.22× |
+| Lossy encode, distance 1, effort 7 | 1692 ms | 1423 ms | 1.19× |
+| Lossy encode, 16-bit input, effort 7 | 1700 ms | 1421 ms | 1.20× |
+| Lossy encode, screenshot, effort 7 | 2413 ms | 2369 ms | 1.02× |
+| Lossless encode, effort 7 | 811 ms | 813 ms | 1.00× |
+| VarDCT decode, distance 1 | 66 ms | 63 ms | 1.04× |
+| VarDCT decode, screenshot | 125 ms | 118 ms | 1.06× |
+
+See the [speed measurements](https://github.com/art-ix/PictureSharp.Jxl/blob/v0.7.9/docs/benchmarks/speed.md),
 including the approaches that were measured and not kept.
 
 Decoded pixels, lossless files and JPEG transcoding are byte-identical to 0.7.8. Lossy files can differ in a few
