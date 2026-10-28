@@ -6,7 +6,7 @@ Requires .NET 10+ and PictureSharp 0.9.0+.
 Install from [NuGet](https://www.nuget.org/packages/PictureSharp.Jxl):
 
 ```bash
-dotnet add package PictureSharp.Jxl --version 0.7.8
+dotnet add package PictureSharp.Jxl
 ```
 
 ## Usage
@@ -62,7 +62,7 @@ when reading the result too. See [what changed in 0.7.8](https://github.com/art-
 Pixels match djxl (libjxl 0.12.0): lossless images exactly, lossy ones within 1 of 255 in a few samples. Files this
 package writes decode with djxl the same way.
 
-**Status:** early development (0.7.8). Not for production use yet; the API may change. CI runs on Linux, including a Native AOT build.
+**Status:** early development (0.7.9). Not for production use yet; the API may change. CI runs on Linux, including a Native AOT build.
 
 Guides: [decoding](docs/decoding.md) · [encoding](docs/encoding.md) · [JPEG transcoding](docs/transcoding.md) · [metadata](docs/metadata.md) ·
 [architecture](docs/architecture.md) · [release notes](docs/releases)

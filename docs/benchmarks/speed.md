@@ -219,7 +219,7 @@ Peak RSS of the 12 MP encodes nearly doubles (5.5 GB): full Rgba64 copy plus 16-
   dominates small nodes. Then `Scan` 26 %, `TokenizeRecorded` 9 %, `ChooseRct` 7.5 %.
 - `encode16` lossy: same as 8-bit (`EstimateEntropy` 56 %, `ChromaFromLumaSearch` 22 %, DCT/IDCT 24 %); `ToXyb` 2 %.
 
-## Lossy encoding (0.7.9, in progress)
+## Lossy encoding (0.7.9)
 
 Chroma from luma computes the slope and offset of each coefficient's residual once per search instead of in each of
 its up to 20 Newton steps, and flips the sign of its derivative terms with a bit operation instead of a branch on a
