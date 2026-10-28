@@ -1,3 +1,4 @@
+using PictureSharp.Formats.Jxl.Codestream.Buffers;
 using PictureSharp.Formats.Jxl.Codestream.Entropy;
 using static PictureSharp.Formats.Jxl.Codestream.Numerics.JxlIntMath;
 
@@ -81,7 +82,8 @@ internal sealed class JxlEntropyEncoder
     {
         ReadOnlySpan<int> ctx = tokens.Contexts;
         ReadOnlySpan<uint> values = tokens.Values;
-        int[] chunks = new int[ctx.Length];
+        using var buffers = new JxlBufferScope();
+        int[] chunks = buffers.Rent<int>(ctx.Length, clear: false);
         // ANS codes backwards; the decoder reads the state, then per symbol a renormalization chunk and the raw bits.
         uint state = JxlEntropyCode.AnsSignature;
         cancellationToken.ThrowIfCancellationRequested();

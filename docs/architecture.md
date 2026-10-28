@@ -7,7 +7,7 @@ only PictureSharp's public SPI; all implementation types are internal.
 
 | Module | Responsibility | May use |
 | --- | --- | --- |
-| Integration | SPI adapters (decoder, encoder, metadata codec), ImageInfo mapping, straight-alpha Rgba32 output, metadata mapping and rewriting | Container and codec modules |
+| Integration | SPI adapters (decoder, encoder, metadata codec), ImageInfo mapping, straight-alpha Rgba32/Rgba64 output, metadata mapping and rewriting | Container and codec modules |
 | Container | Box validation, codestream assembly, metadata index, bounded brob decompression, box writing and brob compression | IO |
 | Codestream.Model | Immutable header/transform descriptions, small validated values | None |
 | Codestream.IO | Segmented input, bit/field and header readers | Model |
@@ -39,20 +39,22 @@ images, contexts, options or pixels. A compiled boundary test checks signatures,
 5. Modular transform descriptions are immutable and separate from their execution.
 6. `JxlFrameRenderer` gets planes, parameters, patches and EPF sigma (not a VarDCT decoder) and keeps libjxl's order
    of filters, patching, upsampling and colour conversion.
-7. Planes move to `JxlDecodedImage`; `JxlPixelWriter` writes the PictureSharp image; `JxlMetadataReader` attaches the
+7. After common transform and shape validation, eligible Modular frames expose integer samples directly; other
+   frames expose rendered planes through `JxlDecodedImage`. `JxlPixelWriter` writes the PictureSharp image; `JxlMetadataReader` attaches the
    ICC profile (only when the output is in it), colour description, EXIF/XMP and orientation. On failure the image is
    disposed. PictureSharp applies orientation on request.
 8. `JxlMetadataCodec` (`Image.ReadMetadata`) parses headers and only the ICC stream, without frames.
 
 ## Encode flow
 
-1. `JxlEncoder` copies the root frame into integer planes (gray if R = G = B, alpha if any pixel isn't opaque);
+1. `JxlEncoder` reads the root frame directly and separates its samples into integer planes (gray if R = G = B, alpha if any pixel isn't opaque);
    `JxlMetadataWriter` maps ICC or colour description to `JxlColorEncoding` and EXIF orientation to the codestream.
 2. `JxlCodestreamWriter` writes signature, SizeHeader, ImageMetadata, transform data and ICC stream;
    `JxlModularEncoder` writes the frame: palette or RCT, 256×256 group layout, samples for `JxlTreeLearner`, tokens,
    one `JxlEntropyEncoder`, then frame header, TOC and sections. It reuses the decoder's descriptions and weighted
    predictor and computes properties exactly as `JxlMaTree`.
-3. `JxlContainerWriter` adds Exif and xml boxes (optionally brob).
+3. `JxlContainerWriter` writes Exif and xml boxes (optionally brob), the unchanged jxlc header and prepared
+   codestream sections directly to the output stream.
 4. `JxlMetadataRewriter` (`EditMetadata`) rewrites ImageMetadata and the ICC stream at bit positions recorded by the
    header reader, copies transform data and frames, and replaces only changed boxes.
 
@@ -63,7 +65,7 @@ Modular frame (`JxlPatchEncoder`). The EPF search reconstructs with the decoder'
 `JxlFrameRenderer`, so both sides share dequantization, transforms and filters.
 
 Encoder and public decoder are stateless (the decoder can be shared); sessions and frame decoders are single-use.
-Everything is single-threaded. Kernels are static; interfaces exist only for the three Modular transforms.
+Everything is single-threaded. Kernels are static; Modular transforms use their shared execution interface.
 
 ## Values and ownership
 
@@ -72,7 +74,14 @@ Everything is single-threaded. Kernels are static; interfaces exist only for the
   (`JxlTransformFields`, `JxlHybridUint`), so they can't drift.
 - Header values are validated record structs (`Validate` rejects `default`); header collections are read-only snapshots.
 - `JxlCodestream` borrows input bytes (must stay stable during the call); slicing doesn't copy.
-- Working samples are zero-initialized, unpooled arrays; only the LZ77 window is pooled (released via `using`).
+- Decode-call scopes hold pooled integer channels and VarDCT output planes through pixel writing. Per-group and
+  per-kernel scopes release coefficients, prediction/error rows, transform crops and DCT scratch on every exit.
+  Initialization follows the previous zero-initialized behavior; algorithms use logical dimensions, not rented capacity.
+- Encoding retains pooled sections until they are written directly to the caller stream; the TOC and box lengths
+  are known before writing. A single-group frame still concatenates section bits before padding. Token buffers
+  grow by replacing/returning rentals and are disposed with their stream/frame owners.
+- Eligible Modular frames return integer samples after common transform/shape validation. Pixel writing normalizes
+  samples with the previous float operations and dithering, avoiding intermediate float planes.
 - Cancellation is checked per row or bounded batch, not per bit.
 - `ReservePixels` limits the output image, not temporary memory; a shared budget needs a later, measured change.
 
@@ -102,3 +111,5 @@ its ICC profile via `JxlIccTarget`) or sRGB for `ToSrgb`.
 Tests compile Container/Codestream sources directly (no InternalsVisibleTo); integration and corpus tests use the
 library. Release verification builds, tests, packs and runs a package consumer under JIT and trimmed Native AOT,
 clearing the local package cache so a same-version rebuild isn't masked by an old binary.
+
+The [0.7.10 memory design](design/0.7.10-memory.md) describes buffer lifetimes, section assembly and integer-output eligibility.

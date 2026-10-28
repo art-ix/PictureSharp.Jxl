@@ -67,7 +67,7 @@ internal sealed class JxlSqueezeTransform(JxlTransform description) : IJxlModula
                     h -= (h + 1) / 2;
                 }
 
-                image.InsertChannel(offset + (c - begin), new JxlChannel(w, h, channel.HShift, channel.VShift));
+                image.InsertChannel(offset + (c - begin), new JxlChannel(w, h, channel.HShift, channel.VShift, channel.Buffers));
             }
         }
     }
@@ -174,7 +174,7 @@ internal sealed class JxlSqueezeTransform(JxlTransform description) : IJxlModula
             return average;
         }
 
-        var output = new JxlChannel(average.Width + residual.Width, average.Height, average.HShift - 1, average.VShift);
+        var output = new JxlChannel(average.Width + residual.Width, average.Height, average.HShift - 1, average.VShift, average.Buffers);
         if (residual.Height == 0)
         {
             return output;
@@ -219,7 +219,7 @@ internal sealed class JxlSqueezeTransform(JxlTransform description) : IJxlModula
             return average;
         }
 
-        var output = new JxlChannel(average.Width, average.Height + residual.Height, average.HShift, average.VShift - 1);
+        var output = new JxlChannel(average.Width, average.Height + residual.Height, average.HShift, average.VShift - 1, average.Buffers);
         if (residual.Width == 0)
         {
             return output;

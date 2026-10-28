@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+using PictureSharp.Formats.Jxl.Codestream.Buffers;
 using PictureSharp.Formats.Jxl.Codestream.Entropy;
 using PictureSharp.Formats.Jxl.Codestream.Model;
 using static PictureSharp.Formats.Jxl.Codestream.Numerics.JxlIntMath;
@@ -19,7 +19,7 @@ internal readonly record struct JxlTreeNode(int Property, int Split, int Left, i
 /// lib/jxl/modular/encoding/enc_ma.cc (FindBestSplit, PreQuantizeProperties; BSD-3-Clause): no static-property
 /// preferences, no sample deduplication, and quantiles of the sampled values as split candidates.
 /// </summary>
-internal sealed class JxlTreeLearner
+internal sealed class JxlTreeLearner : IDisposable
 {
     // The residual tokens the cost estimates use (libjxl's TreeSamples).
     private static readonly JxlHybridUint SampleConfig = new(4, 1, 2);
@@ -30,9 +30,9 @@ internal sealed class JxlTreeLearner
     private readonly int[] properties;
     private readonly JxlPredictor[] predictors;
     private readonly int maxPropertyValues;
-    private readonly List<int>[] values;
-    private readonly List<byte>[] tokens;
-    private readonly List<byte>[] extraBits;
+    private readonly JxlSampleBuffer<int>[] values;
+    private readonly JxlSampleBuffer<byte>[] tokens;
+    private readonly JxlSampleBuffer<byte>[] extraBits;
 
     /// <param name="properties">The property indices the tree may split on.</param>
     /// <param name="predictors">The predictors leaves may use; the first is the root's.</param>
@@ -42,9 +42,16 @@ internal sealed class JxlTreeLearner
         this.properties = properties;
         this.predictors = predictors;
         this.maxPropertyValues = maxPropertyValues;
-        values = [.. properties.Select(_ => new List<int>())];
-        tokens = [.. predictors.Select(_ => new List<byte>())];
-        extraBits = [.. predictors.Select(_ => new List<byte>())];
+        values = [.. properties.Select(_ => new JxlSampleBuffer<int>())];
+        tokens = [.. predictors.Select(_ => new JxlSampleBuffer<byte>())];
+        extraBits = [.. predictors.Select(_ => new JxlSampleBuffer<byte>())];
+    }
+
+    public void Dispose()
+    {
+        foreach (var buffer in values) buffer.Dispose();
+        foreach (var buffer in tokens) buffer.Dispose();
+        foreach (var buffer in extraBits) buffer.Dispose();
     }
 
     public int Count => tokens[0].Count;
@@ -74,11 +81,11 @@ internal sealed class JxlTreeLearner
         for (int p = 0; p < properties.Length; p++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            (thresholds[p], bins[p]) = Quantize(CollectionsMarshal.AsSpan(values[p]));
+            (thresholds[p], bins[p]) = Quantize(values[p].Span);
         }
 
-        byte[][] tok = [.. tokens.Select(list => list.ToArray())];
-        byte[][] extra = [.. extraBits.Select(list => list.ToArray())];
+        byte[][] tok = [.. tokens.Select(list => list.Span.ToArray())];
+        byte[][] extra = [.. extraBits.Select(list => list.Span.ToArray())];
         var learner = new Search(bins, tok, extra, thresholds, threshold);
         var nodes = new Stack<(int Node, int Begin, int End)>();
         nodes.Push((0, 0, count));
@@ -264,14 +271,20 @@ internal sealed class JxlTreeLearner
                 Reuse(ref predictorRight, splits);
                 scoreLeft.AsSpan(0, splits).Fill(float.MaxValue);
                 scoreRight.AsSpan(0, splits).Fill(float.MaxValue);
-                Reuse(ref increase, binCount * symbols);
+                if (increase.Length < binCount * symbols) increase = new int[binCount * symbols];
                 Reuse(ref extraIncrease, binCount);
                 for (int p = 0; p < predictorCount; p++)
                 {
-                    if (p > 0)
+                    // Dense symbols are faster to clear as a contiguous active-bin range; sparse
+                    // predictors initialize just the cells that can be read or incremented.
+                    bool dense = presentCount[p] * 4 >= symbols;
+                    if (dense) increase.AsSpan(first * symbols, (last - first + 1) * symbols).Clear();
+                    for (int b = first; b <= last; b++)
                     {
-                        increase.AsSpan(0, binCount * symbols).Clear();
-                        extraIncrease.AsSpan(0, binCount).Clear();
+                        if (used[b] == 0) continue;
+                        extraIncrease[b] = 0;
+                        if (!dense)
+                            for (int j = 0; j < presentCount[p]; j++) increase[b * symbols + present[p][j]] = 0;
                     }
 
                     byte[] tok = tokens[p];

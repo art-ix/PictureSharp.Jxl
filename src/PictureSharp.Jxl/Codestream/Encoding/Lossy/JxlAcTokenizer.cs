@@ -1,3 +1,4 @@
+using PictureSharp.Formats.Jxl.Codestream.Buffers;
 using PictureSharp.Formats.Jxl.Codestream.VarDct;
 using static PictureSharp.Formats.Jxl.Codestream.Numerics.JxlIntMath;
 
@@ -13,14 +14,15 @@ internal static class JxlAcTokenizer
 {
     private const int GroupBlocks = JxlLossyFrame.GroupBlocks;
 
-    public static JxlTokens Tokenize(JxlLossyFrame frame, int group, int[] orders)
+    public static JxlTokens Tokenize(JxlLossyFrame frame, int group, int[] orders, JxlBufferScope? buffers = null)
     {
         (int x0, int y0, int width, int height) = frame.GroupRect(group);
         int area = width * height * JxlAcStrategy.BlockSize;
         int[] coefficients = frame.Coefficients[group];
         JxlBlockContextMap contexts = frame.BlockContexts;
-        int[][] nonZeros = [new int[GroupBlocks * GroupBlocks], new int[GroupBlocks * GroupBlocks], new int[GroupBlocks * GroupBlocks]];
-        var tokens = new JxlTokens();
+        using var scratchBuffers = new JxlBufferScope();
+        int[][] nonZeros = [scratchBuffers.Rent<int>(GroupBlocks * GroupBlocks), scratchBuffers.Rent<int>(GroupBlocks * GroupBlocks), scratchBuffers.Rent<int>(GroupBlocks * GroupBlocks)];
+        var tokens = new JxlTokens(buffers);
         int offset = 0;
         for (int by = 0; by < height; by++)
         {

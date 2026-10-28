@@ -73,7 +73,8 @@ Distance 1 vs `cjxl` 0.12.0 (`--num_threads=0`), ssimulacra2 after `djxl`:
 | 3024×4032 iPhone photo, Display P3 | 7 | 864 752 B, 88.46 | 873 122 B, 88.49 |
 | 4032×3024 iPhone photo, Display P3 | 7 | 2 093 782 B, 84.39 | 2 104 239 B, 84.37 |
 
-Not optimized yet: the first 12 MP photo takes 37 s and 2.6 GB at effort 7 on one core (`cjxl`: 2.8 s, 0.35 GB).
+These size and quality comparisons were recorded for the initial VarDCT encoder. For current timing, allocations
+and peak RSS, see the [speed measurements](benchmarks/speed.md).
 
 ## Lossless frames
 
@@ -95,12 +96,15 @@ with `djxl` and this decoder within 1 of each other, alpha exact (checked by a r
 
 ## Speed and memory
 
-Lossless, one core, vs `cjxl` 0.12.0:
+Version 0.7.10 reads the image buffer directly and writes prepared sections to the destination stream,
+without assembling a complete intermediate codestream array. Section sizes are determined before the TOC
+is written, so the destination need not support seeking. Working buffers return to their pools before
+output writing where their last consumer has finished; retained section buffers live through the write.
 
-| Image | This encoder | `cjxl -d 0 -e 7` | `cjxl -d 0 -e 3` |
-| --- | --- | --- | --- |
-| 4032×3024 photo (8-bit RGB) | 10.41 MB, 8.3 s | 10.53 MB, 8.7 s | 11.49 MB, 1.5 s |
-| 1500×1000, 8 colours | 3.3 KB, 0.8 s | 7.3 KB, 0.2 s | |
-| 1500×1000 gradient with noise and alpha | 1.81 MB, 1.6 s | 1.95 MB, 1.2 s | |
+In the measured 1 MP cases, warm lossless encode allocations fall from 224.4 to 43.0 MiB for 8-bit input
+and from 250.2 to 54.8 MiB for 16-bit input. Lossy effort-7 allocations fall from about 143.5 to 29.7 MiB
+and from 143.6 to 29.9 MiB respectively. These counts include the encoded output array.
 
-Peak memory is ~100 bytes per pixel (~1.2 GB for 12 MP). Cancellation is checked between stages.
+Pool retention and bucket sizes affect peak RSS separately from allocations. See the
+[speed measurements](benchmarks/speed.md#allocations-and-memory-0710) for the 1 MP, 12 MP and screenshot
+cases, GC counts and controlled timings. Cancellation is checked between stages and bounded batches.

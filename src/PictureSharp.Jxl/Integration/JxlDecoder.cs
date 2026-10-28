@@ -32,10 +32,11 @@ internal sealed class JxlDecoder : IImageFormatDecoder
         // The ICC profile is part of the codestream: with IgnoreMetadata it is decoded (as libjxl does) within libjxl's
         // limit, but neither charged nor reported. ToSrgb renders XYB frames as sRGB in floating point, so they are
         // quantized once and get no colour description for PictureSharp to convert again.
+        using var buffers = new JxlBufferScope();
         var session = options.IgnoreMetadata
-            ? new JxlDecodeSession(codestream, headers, context.CancellationToken)
+            ? new JxlDecodeSession(codestream, headers, context.CancellationToken, buffers: buffers)
             : new JxlDecodeSession(codestream, headers, context.CancellationToken, options.MaxMetadataBytes, context.ReserveMetadata,
-                renderSrgb: options.ColorConversion == ColorConversionMode.ToSrgb);
+                renderSrgb: options.ColorConversion == ColorConversionMode.ToSrgb, buffers: buffers);
         JxlDecodedImage decoded = session.Decode();
         Image image = pixelType == PixelType.Rgba64
             ? JxlPixelWriter.WriteWide(decoded, context.CancellationToken)

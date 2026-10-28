@@ -1,0 +1,174 @@
+{
+  "cpuAffinity": 0,
+  "tieredCompilation": false,
+  "timedOperationsPerProcess": 5,
+  "order": [
+    "before",
+    "after",
+    "after",
+    "before"
+  ],
+  "notes": "Mean of two process medians per build; final dense-clearing encoder. Lossy encodes repeated after an AOT-build-overlap outlier in the exploratory run. Screen controls use one before/after pair of five timed operations as a regression spot check.",
+  "cases": [
+    {
+      "id": "decode/photo1-d0-e7",
+      "beforeProcessMediansMs": [
+        285.6964,
+        282.3263
+      ],
+      "afterProcessMediansMs": [
+        273.6245,
+        272.8921
+      ],
+      "beforeMs": 284.01135,
+      "afterMs": 273.2583,
+      "timeChangePercent": -3.786133899226196
+    },
+    {
+      "id": "decode/photo1-d1-e7",
+      "beforeProcessMediansMs": [
+        66.3886,
+        66.6698
+      ],
+      "afterProcessMediansMs": [
+        61.5944,
+        62.3862
+      ],
+      "beforeMs": 66.5292,
+      "afterMs": 61.990300000000005,
+      "timeChangePercent": -6.822417825556293
+    },
+    {
+      "id": "decode16/photo1-16-d0-e7",
+      "beforeProcessMediansMs": [
+        371.1275,
+        369.705
+      ],
+      "afterProcessMediansMs": [
+        362.7991,
+        361.946
+      ],
+      "beforeMs": 370.41625,
+      "afterMs": 362.37255000000005,
+      "timeChangePercent": -2.1715300017210226
+    },
+    {
+      "id": "decode16/photo1-16-d1-e7",
+      "beforeProcessMediansMs": [
+        69.9272,
+        71.6414
+      ],
+      "afterProcessMediansMs": [
+        63.8561,
+        61.9263
+      ],
+      "beforeMs": 70.7843,
+      "afterMs": 62.8912,
+      "timeChangePercent": -11.150919059735
+    },
+    {
+      "id": "encode/photo1-d0-e7",
+      "beforeProcessMediansMs": [
+        834.4548,
+        825.8335
+      ],
+      "afterProcessMediansMs": [
+        803.1581,
+        803.532
+      ],
+      "beforeMs": 830.14415,
+      "afterMs": 803.34505,
+      "timeChangePercent": -3.228246564165993
+    },
+    {
+      "id": "encode16/photo1-16-d0-e7",
+      "beforeProcessMediansMs": [
+        1099.5767,
+        1097.3884
+      ],
+      "afterProcessMediansMs": [
+        1105.5072,
+        1102.3487
+      ],
+      "beforeMs": 1098.4825500000002,
+      "afterMs": 1103.92795,
+      "timeChangePercent": 0.4957202096655733
+    },
+    {
+      "id": "encode/photo1-d1-e7",
+      "beforeProcessMediansMs": [
+        1389.2155,
+        1390.1096
+      ],
+      "afterProcessMediansMs": [
+        1370.7816,
+        1421.4589
+      ],
+      "beforeMs": 1389.66255,
+      "afterMs": 1396.12025,
+      "timeChangePercent": 0.4646955478508019
+    },
+    {
+      "id": "encode16/photo1-16-d1-e7",
+      "beforeProcessMediansMs": [
+        1425.7003,
+        1421.5369
+      ],
+      "afterProcessMediansMs": [
+        1407.2097,
+        1416.5331
+      ],
+      "beforeMs": 1423.6186,
+      "afterMs": 1411.8714,
+      "timeChangePercent": -0.8251648299621883
+    },
+    {
+      "id": "encode/screen-d0-e7",
+      "beforeProcessMediansMs": [
+        479.2506
+      ],
+      "afterProcessMediansMs": [
+        463.4927
+      ],
+      "beforeMs": 479.2506,
+      "afterMs": 463.4927,
+      "timeChangePercent": -3.288029269029602
+    },
+    {
+      "id": "encode/screen-d1-e7",
+      "beforeProcessMediansMs": [
+        2369.5074
+      ],
+      "afterProcessMediansMs": [
+        2343.5913
+      ],
+      "beforeMs": 2369.5074,
+      "afterMs": 2343.5913,
+      "timeChangePercent": -1.0937336595783553
+    },
+    {
+      "id": "encode16/screen-16-d0-e7",
+      "beforeProcessMediansMs": [
+        755.1036
+      ],
+      "afterProcessMediansMs": [
+        750.6459
+      ],
+      "beforeMs": 755.1036,
+      "afterMs": 750.6459,
+      "timeChangePercent": -0.5903428350758855
+    },
+    {
+      "id": "encode16/screen-16-d1-e7",
+      "beforeProcessMediansMs": [
+        2382.6731
+      ],
+      "afterProcessMediansMs": [
+        2372.7426
+      ],
+      "beforeMs": 2382.6731,
+      "afterMs": 2372.7426,
+      "timeChangePercent": -0.4167797924104599
+    }
+  ]
+}

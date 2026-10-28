@@ -1,3 +1,4 @@
+using PictureSharp.Formats.Jxl.Codestream.Buffers;
 namespace PictureSharp.Formats.Jxl.Codestream.Encoding.Lossy;
 
 /// <summary>
@@ -10,9 +11,10 @@ internal readonly record struct JxlSymmetric5Weights(float C, float R1, float R2
 internal static class JxlConvolution
 {
     /// <summary>Convolves a <paramref name="width"/>×<paramref name="height"/> plane with a symmetric 5×5 kernel.</summary>
-    public static float[] Symmetric5(float[] input, int width, int height, JxlSymmetric5Weights w, CancellationToken cancellationToken)
+    public static float[] Symmetric5(float[] input, int width, int height, JxlSymmetric5Weights w, CancellationToken cancellationToken, JxlBufferScope? buffers = null)
     {
-        float[] output = new float[input.Length];
+        int count = checked(width * height);
+        float[] output = buffers is null ? new float[count] : buffers.Rent<float>(count, clear: false);
         for (int y = 0; y < height; y++)
         {
             cancellationToken.ThrowIfCancellationRequested();

@@ -39,7 +39,7 @@ internal sealed class JxlCoefficientQuantizer
     {
         (int x0, int y0, int width, int height) = frame.GroupRect(group);
         int area = width * height * JxlAcStrategy.BlockSize;
-        int[] coefficients = frame.Coefficients[group] = new int[3 * area];
+        int[] coefficients = frame.Coefficients[group] = frame.Buffers is null ? new int[3 * area] : frame.Buffers.Rent<int>(3 * area);
         int stride = image.Width;
         int xBlocks = frame.XBlocks;
         JxlEncoderQuantizer quantizer = frame.Quantizer;

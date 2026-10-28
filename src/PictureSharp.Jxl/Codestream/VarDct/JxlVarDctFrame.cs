@@ -52,7 +52,7 @@ internal sealed class JxlVarDctFrame
     private float baseCorrelationX;
     private float baseCorrelationB = 1.0f;
 
-    public JxlVarDctFrame(JxlFrameHeader frame, JxlImageMetadata metadata, JxlQuantWeights matrices, IReadOnlyList<float> quantBiases, CancellationToken cancellationToken = default, bool recoverJpeg = false)
+    public JxlVarDctFrame(JxlFrameHeader frame, JxlImageMetadata metadata, JxlQuantWeights matrices, IReadOnlyList<float> quantBiases, CancellationToken cancellationToken = default, bool recoverJpeg = false, JxlBufferScope? buffers = null)
     {
         this.frame = frame;
         this.recoverJpeg = recoverJpeg;
@@ -85,7 +85,7 @@ internal sealed class JxlVarDctFrame
         for (int c = 0; c < 3 && !recoverJpeg; c++)
         {
             Planes[c] = new JxlPlane(DivCeil((int)frame.XSize, 1 << hShift[c]), DivCeil((int)frame.YSize, 1 << vShift[c]),
-                (XBlocks >> hShift[c]) * JxlFrameHeader.BlockDim, (YBlocks >> vShift[c]) * JxlFrameHeader.BlockDim);
+                (XBlocks >> hShift[c]) * JxlFrameHeader.BlockDim, (YBlocks >> vShift[c]) * JxlFrameHeader.BlockDim, buffers);
         }
     }
 
@@ -229,12 +229,13 @@ internal sealed class JxlVarDctFrame
     /// <summary>Decodes and dequantises the DC of an LF group (DecodeVarDCTDC, DequantDC).</summary>
     public void DecodeDc(ref JxlBitReader reader, int group, JxlModularTree? tree)
     {
+        using var groupBuffers = new JxlBufferScope();
         (int x0, int y0, int width, int height) = DcGroupRect(group);
         float mul = 1.0f / (1 << (int)reader.ReadBits(2));
         var channels = new JxlChannel[3];
         for (int c = 0; c < 3; c++)
         {
-            channels[CodedIndex(c)] = new JxlChannel(width >> hShift[c], height >> vShift[c]);
+            channels[CodedIndex(c)] = new JxlChannel(width >> hShift[c], height >> vShift[c], buffers: groupBuffers);
         }
 
         var image = new JxlModularImage(bitDepth, [.. channels]);
@@ -304,6 +305,7 @@ internal sealed class JxlVarDctFrame
     /// <summary>Decodes the chroma-from-luma map, AC strategies, quantisation field and EPF sharpness of an LF group.</summary>
     public void DecodeAcMetadata(ref JxlBitReader reader, int group, JxlModularTree? tree)
     {
+        using var groupBuffers = new JxlBufferScope();
         (int x0, int y0, int width, int height) = DcGroupRect(group);
         int count = (int)reader.ReadBits(CeilLog2(width * height)) + 1;
         int tileX0 = x0 / ColorTileBlocks;
@@ -312,8 +314,8 @@ internal sealed class JxlVarDctFrame
         int tileHeight = DivCeil(height, ColorTileBlocks);
         var image = new JxlModularImage(bitDepth,
         [
-            new JxlChannel(tileWidth, tileHeight, 3, 3), new JxlChannel(tileWidth, tileHeight, 3, 3), new JxlChannel(count, 2),
-            new JxlChannel(width, height),
+            new JxlChannel(tileWidth, tileHeight, 3, 3, groupBuffers), new JxlChannel(tileWidth, tileHeight, 3, 3, groupBuffers), new JxlChannel(count, 2, buffers: groupBuffers),
+            new JxlChannel(width, height, buffers: groupBuffers),
         ]);
         JxlModularStream.Decode(ref reader, image, frame.AcMetadataStream(group), tree, undoTransforms: true, cancellationToken: cancellationToken);
         for (int y = 0; y < tileHeight; y++)
@@ -521,10 +523,11 @@ internal sealed class JxlVarDctFrame
     }
 
     /// <summary>Quantised coefficients of a group, accumulated over its passes in varblock order.</summary>
-    public int[] NewGroupCoefficients(int group)
+    public int[] NewGroupCoefficients(int group, JxlBufferScope? buffers = null)
     {
         (_, _, int width, int height) = BlockGroupRect(group);
-        return new int[3 * width * height * BlockSize];
+        int count = 3 * width * height * BlockSize;
+        return buffers is null ? new int[count] : buffers.Rent<int>(count);
     }
 
     /// <summary>Adds the coefficients one pass of a group codes (DecodeACVarBlock for each varblock).</summary>
@@ -543,7 +546,8 @@ internal sealed class JxlVarDctFrame
         int contextOffset = histogram * contexts.AcContexts;
         int shift = (int)frame.Passes.Shift[pass];
         int[] order = orders[pass];
-        int[][] nonZeros = [new int[GroupBlocks * GroupBlocks], new int[GroupBlocks * GroupBlocks], new int[GroupBlocks * GroupBlocks]];
+        using var buffers = new JxlBufferScope();
+        int[][] nonZeros = [buffers.Rent<int>(GroupBlocks * GroupBlocks), buffers.Rent<int>(GroupBlocks * GroupBlocks), buffers.Rent<int>(GroupBlocks * GroupBlocks)];
         using var symbols = new JxlSymbolReader(codes[pass], ref reader);
         int offset = 0;
         for (int by = 0; by < height; by++)
@@ -643,8 +647,9 @@ internal sealed class JxlVarDctFrame
         int area = width * height * BlockSize;
         int maxSize = UsedStrategies.MaxCoefficients;
 
-        float[] block = new float[3 * maxSize];
-        float[] scratch = new float[JxlDct.ScratchSize(maxSize)];
+        using var buffers = new JxlBufferScope();
+        float[] block = buffers.Rent<float>(3 * maxSize);
+        float[] scratch = buffers.Rent<float>(JxlDct.ScratchSize(maxSize));
         int offset = 0;
         for (int by = 0; by < height; by++)
         {

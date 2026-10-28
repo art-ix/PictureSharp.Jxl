@@ -18,6 +18,8 @@ internal sealed class JxlModularImage
 
     public IReadOnlyList<JxlChannel> Channels { get; }
 
+    public JxlBufferScope? Buffers => channels.FirstOrDefault()?.Buffers;
+
     public int MetaChannels { get; set; }
 
     public int BitDepth { get; }

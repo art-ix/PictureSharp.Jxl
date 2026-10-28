@@ -1,3 +1,4 @@
+using PictureSharp.Formats.Jxl.Codestream.Buffers;
 using PictureSharp.Formats.Jxl.Codestream.Color;
 using PictureSharp.Formats.Jxl.Codestream.Encoding.Lossy;
 
@@ -6,9 +7,9 @@ namespace PictureSharp.Formats.Jxl.Integration;
 internal sealed partial class JxlEncoder
 {
     // The XYB planes of the pixels; gray pixels have equal channels.
-    private static JxlImage3F ToXyb(ReadOnlySpan<Rgba64> pixels, int width, int height, JxlXybInput input, CancellationToken cancellationToken)
+    private static JxlImage3F ToXyb(ReadOnlySpan<Rgba64> pixels, int width, int height, JxlXybInput input, CancellationToken cancellationToken, JxlBufferScope? buffers = null)
     {
-        var xyb = new JxlImage3F(width, height);
+        var xyb = new JxlImage3F(width, height, buffers);
         for (int y = 0; y < height; y++)
         {
             if ((y & 0xF) == 0) cancellationToken.ThrowIfCancellationRequested();

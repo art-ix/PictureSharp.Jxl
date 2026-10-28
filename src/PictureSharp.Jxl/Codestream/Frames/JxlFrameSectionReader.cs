@@ -1,3 +1,4 @@
+using PictureSharp.Formats.Jxl.Codestream.Buffers;
 using PictureSharp.Formats.Jxl.Codestream.IO;
 using PictureSharp.Formats.Jxl.Codestream.Metadata;
 using PictureSharp.Formats.Jxl.Codestream.Model;
@@ -15,7 +16,8 @@ internal static class JxlFrameSectionReader
             decoder.DecodeLfGroup(ref section, 0);
             decoder.FinishLf();
             decoder.DecodeHfGlobal(ref section);
-            int[]? coefficients = decoder.BeginGroup(0);
+            using var buffers = new JxlBufferScope();
+            int[]? coefficients = decoder.BeginGroup(0, buffers);
             decoder.DecodePassGroup(ref section, 0, 0, coefficients);
             decoder.FinishGroup(0, coefficients);
             return;
@@ -35,7 +37,8 @@ internal static class JxlFrameSectionReader
         decoder.DecodeHfGlobal(ref hfGlobal);
         for (int group = 0; group < frame.Groups; group++)
         {
-            int[]? coefficients = decoder.BeginGroup(group);
+            using var buffers = new JxlBufferScope();
+            int[]? coefficients = decoder.BeginGroup(group, buffers);
             for (int pass = 0; pass < frame.Passes.Count; pass++)
             {
                 var section = Section(frame.PassGroupSection(pass, group));

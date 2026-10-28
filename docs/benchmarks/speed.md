@@ -1,4 +1,4 @@
-# Speed measurements — 0.7.3–0.7.7 (scalar)
+# Speed measurements — 0.7.3–0.7.10 (scalar)
 
 Measured on 2026-10-27, Linux x64, Intel Core i5-12500H, .NET 10, one thread (`DOTNET_PROCESSOR_COUNT=1`).
 libjxl 0.12.0 (`4128790`) times are its own `--num_reps=3` geomean with `--num_threads=1`, PNG I/O excluded, AVX2 enabled.
@@ -265,3 +265,81 @@ python3 scripts/compare-speed.py artifacts/speed-measurements/baseline-0.7.2.jso
 scripts/profile-speed.sh decode/photo1-d1-e7              # hotspots of one case
 scripts/golden-hash.sh                                    # output identical to 0.7.8 (8-bit and 16-bit)
 ```
+
+## Allocations and memory (0.7.10)
+
+Measured on 2026-10-28 against the unchanged 0.7.9 build, .NET 10, Linux x64,
+three warm operations per isolated process after warmup. Encoding loads PNG inputs
+outside the measured operation. Output images/arrays remain included. See the
+[raw allocation, GC and RSS data](../measurements/memory-0.7.10-x64.json).
+
+All 20 main photo/screen cases below allocate at least 50% fewer bytes per operation
+(50.3–89.1%). This is a warm allocation result, not a bound on cold calls or peak RSS.
+ArrayPool retention, rounding to buckets and GC scheduling affect RSS independently;
+four cases have a higher process peak RSS, including the 12 MP 16-bit VarDCT decode.
+
+| Case | Allocated before → after (MiB/op) | Reduction | Gen0/op before → after | Gen2/op before → after | Peak RSS before → after (MiB) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `decode/photo1-d0-e7` | 54.0 → 10.6 | 80.3% | 3.00 → 1.00 | 2.00 → 0.33 | 147 → 90 |
+| `decode/photo1-d1-e7` | 32.0 → 5.6 | 82.6% | 1.00 → 0.33 | 0.67 → 0.00 | 145 → 139 |
+| `decode/photo12-d0-e7` | 576.9 → 129.9 | 77.5% | 11.33 → 9.00 | 2.00 → 0.00 | 839 → 460 |
+| `decode/photo12-d1-e7` | 363.2 → 56.0 | 84.6% | 4.67 → 0.33 | 1.67 → 0.00 | 651 → 574 |
+| `decode16/photo1-16-d0-e7` | 64.7 → 28.8 | 55.5% | 4.00 → 2.33 | 2.00 → 0.67 | 109 → 124 |
+| `decode16/photo1-16-d1-e7` | 35.9 → 9.5 | 73.5% | 1.33 → 0.33 | 1.00 → 0.00 | 139 → 177 |
+| `decode16/photo12-16-d0-e7` | 753.2 → 324.7 | 56.9% | 22.67 → 21.67 | 0.67 → 0.00 | 1622 → 864 |
+| `decode16/photo12-16-d1-e7` | 409.7 → 102.5 | 75.0% | 4.67 → 1.00 | 1.67 → 0.67 | 664 → 688 |
+| `encode/photo1-d0-e7` | 224.4 → 43.0 | 80.8% | 4.33 → 1.00 | 2.00 → 0.00 | 487 → 391 |
+| `encode/photo1-d1-e7` | 143.5 → 29.7 | 79.3% | 3.67 → 1.67 | 1.33 → 0.33 | 473 → 173 |
+| `encode/screen-d0-e7` | 170.7 → 42.9 | 74.9% | 3.67 → 1.67 | 1.33 → 0.33 | 413 → 324 |
+| `encode/screen-d1-e7` | 311.8 → 139.5 | 55.3% | 6.00 → 2.67 | 2.00 → 0.67 | 416 → 478 |
+| `encode/photo12-d0-e7` | 1810.4 → 485.1 | 73.2% | 15.33 → 2.67 | 1.33 → 0.00 | 2593 → 2508 |
+| `encode/photo12-d1-e7` | 1542.3 → 167.5 | 89.1% | 17.67 → 3.00 | 1.33 → 0.00 | 3157 → 1279 |
+| `encode16/photo1-16-d0-e7` | 250.2 → 54.8 | 78.1% | 4.00 → 1.33 | 1.33 → 0.00 | 515 → 410 |
+| `encode16/photo1-16-d1-e7` | 143.6 → 29.9 | 79.2% | 3.33 → 1.33 | 0.67 → 0.00 | 409 → 199 |
+| `encode16/screen-16-d0-e7` | 372.4 → 66.4 | 82.2% | 4.33 → 1.33 | 1.67 → 0.33 | 805 → 482 |
+| `encode16/screen-16-d1-e7` | 312.1 → 139.8 | 55.2% | 5.67 → 3.00 | 1.67 → 1.00 | 549 → 355 |
+| `encode16/photo12-16-d0-e7` | 2036.0 → 548.5 | 73.1% | 16.33 → 5.00 | 1.00 → 0.33 | 4941 → 2500 |
+| `encode16/photo12-16-d1-e7` | 2730.6 → 1358.4 | 50.3% | 18.00 → 3.67 | 1.67 → 0.67 | 4856 → 3444 |
+
+The implementation pools channels, group coefficients, predictor and scratch rows,
+encoder tokens, tree samples and encoded sections. Superseded token/sample/writer
+rentals return during growth. Output sections retain their own scope while encoder
+working planes are released before destination I/O. Single-group frames still append
+bits before padding; multi-group TOCs and jxlc bytes retain their previous layout.
+Eligible lossless frames normalize integers directly into pixels with the original
+float operations and dither, without intermediate float planes.
+
+The initial per-cell FindSplit clearing caused a controlled 16-bit lossless slowdown
+and was replaced: dense predictors clear only the active bin interval with Span.Clear;
+sparse predictors reset individual active cells. Cost accumulation and split selection
+remain unchanged. An initial pooled tree-sample Add path also needed its growth path
+separated and the common append operation inlined. Normal-tiering exploratory times
+are therefore omitted from this table.
+
+Validation: 474 tests, complete 1,283-result golden comparison against the released
+0.7.9 package, Release pack and actual-package JIT/full-trimming/linux-x64 Native AOT
+consumer. The golden harness now uses invariant culture for metadata formatting.
+
+Controlled 1 MP timing check: CPU 0, tiered compilation disabled, five timed
+operations per process, alternating before/after then after/before. Values are means
+of two process medians. Lossy cases were repeated after an exploratory AOT-build-overlap
+outlier; all raw medians used here are in the [controlled timing data](../measurements/memory-0.7.10-controlled-x64.json).
+
+| Case | Before → after (ms) | Time change |
+| --- | ---: | ---: |
+| `decode/photo1-d0-e7` | 284.0 → 273.3 | -3.79% |
+| `decode/photo1-d1-e7` | 66.5 → 62.0 | -6.82% |
+| `decode16/photo1-16-d0-e7` | 370.4 → 362.4 | -2.17% |
+| `decode16/photo1-16-d1-e7` | 70.8 → 62.9 | -11.15% |
+| `encode/photo1-d0-e7` | 830.1 → 803.3 | -3.23% |
+| `encode16/photo1-16-d0-e7` | 1098.5 → 1103.9 | +0.50% |
+| `encode/photo1-d1-e7` | 1389.7 → 1396.1 | +0.46% |
+| `encode16/photo1-16-d1-e7` | 1423.6 → 1411.9 | -0.83% |
+
+The small encoding differences remain within about 1%, except the roughly 3% faster
+8-bit lossless case. Decoder reductions are roughly 2–11%. These observations do not
+establish a timing guarantee for every image, effort or machine.
+
+Additional single-pair, five-operation screen controls: lossless 8-bit 479.3→463.5 ms,
+lossless 16-bit 755.1→750.6 ms, lossy 8-bit 2369.5→2343.6 ms and lossy 16-bit
+2382.7→2372.7 ms. These are regression spot checks, not evidence for sub-2% speed claims.

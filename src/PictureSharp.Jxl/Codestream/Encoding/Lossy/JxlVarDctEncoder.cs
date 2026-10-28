@@ -37,6 +37,7 @@ internal static class JxlVarDctEncoder
         int frameHeight = (int)header.YSize;
         if (alpha is not null) SimplifyInvisible(xyb, width, height, alpha);
         JxlImage3F image = xyb.PaddedToBlocks(width, height);
+        xyb.Release();
         (uint xQmScale, uint bQmScale) = ChromacityAdjustments(image, settings);
         if (settings.Resampling == 2) image = JxlDownsampling.Sharper(image, cancellationToken).PaddedToBlocks(frameWidth, frameHeight);
         JxlImage3F? original = settings.EpfSharpnessSearch ? image.Clone() : null;
@@ -50,7 +51,7 @@ internal static class JxlVarDctEncoder
         var frame = new JxlLossyFrame(header with
         {
             XQmScale = xQmScale, BQmScale = bQmScale, Flags = patches is null ? JxlFrameFlags.None : JxlFrameFlags.Patches,
-        }, settings);
+        }, settings, xyb.Buffers);
 
         JxlAqMaps maps = ChooseParameters(frame, image, cancellationToken);
         var quantizer = new JxlCoefficientQuantizer(frame, image);
@@ -60,7 +61,7 @@ internal static class JxlVarDctEncoder
             quantizer.ComputeGroup(group);
         }
 
-        var streams = new JxlModularStreamSet();
+        using var streams = new JxlModularStreamSet();
         float[][] dequantizedDc = [new float[frame.Dc[0].Length], new float[frame.Dc[0].Length], new float[frame.Dc[0].Length]];
         for (int group = 0; group < header.DcGroups; group++)
         {
@@ -75,6 +76,7 @@ internal static class JxlVarDctEncoder
             int extraChannels = metadata.ExtraChannels.Count;
             JxlEpfSharpnessSearch.Choose(frame, original, maps.Mask1X1, dequantizedDc, patches?.Patches(extraChannels) ?? [],
                 patches?.References(extraChannels) ?? new JxlReferenceFrames(), cancellationToken);
+            original.Release();
         }
         for (int group = 0; group < header.DcGroups; group++)
         {
@@ -94,11 +96,12 @@ internal static class JxlVarDctEncoder
     {
         JxlFrameHeader header = frame.Header;
         (int[] orders, uint codedOrders) = JxlCoefficientOrders.Compute(frame);
+        using var tokenBuffers = new JxlBufferScope();
         var acTokens = new List<JxlTokens>();
         for (int group = 0; group < header.Groups; group++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            acTokens.Add(JxlAcTokenizer.Tokenize(frame, group, orders));
+            acTokens.Add(JxlAcTokenizer.Tokenize(frame, group, orders, tokenBuffers));
         }
 
         JxlEntropyEncoder acCode = JxlEntropyEncoder.Build(frame.BlockContexts.AcContexts, acTokens, cancellationToken);
@@ -327,7 +330,7 @@ internal static class JxlVarDctEncoder
             int[] pixels = channel.Pixels;
             int[] luma = channels[0].Pixels;
             float[] dc = frame.Dc[c];
-            var weighted = nonlinear ? new JxlWeightedPredictor(JxlWeightedHeader.Default, width) : null;
+            using var weighted = nonlinear ? new JxlWeightedPredictor(JxlWeightedHeader.Default, width) : null;
             for (int y = 0; y < height; y++)
             {
                 int row = (y0 + y) * frame.XBlocks + x0;
@@ -458,7 +461,7 @@ internal static class JxlVarDctEncoder
         JxlPatchEncoder? patches, int[] orders, uint codedOrders, JxlEntropyEncoder acCode, List<JxlTokens> acTokens, CancellationToken cancellationToken)
     {
         JxlFrameHeader header = frame.Header;
-        var global = new JxlBitWriter();
+        var global = new JxlBitWriter(writer.Buffers);
         patches?.WriteDictionary(global, metadata.ExtraChannels.Count);
         global.Write(!frame.Jpeg);                                // DC quantization weights
         if (frame.Jpeg)
@@ -481,7 +484,7 @@ internal static class JxlVarDctEncoder
         var sections = new List<JxlBitWriter> { global };
         for (int group = 0; group < header.DcGroups; group++)
         {
-            var section = new JxlBitWriter();
+            var section = new JxlBitWriter(writer.Buffers);
             section.Write(2, !frame.Jpeg && frame.Settings.NonlinearDc ? 1u : 0u);  // extra DC precision
             streams.WriteStream(section, JxlFrameHeader.VarDctDcStream(group));
             streams.WriteStream(section, header.ModularDcStream(group));
@@ -499,7 +502,7 @@ internal static class JxlVarDctEncoder
             sections.Add(section);
         }
 
-        var hfGlobal = new JxlBitWriter();
+        var hfGlobal = new JxlBitWriter(writer.Buffers);
         hfGlobal.Write(!frame.Jpeg);                               // AC quantization tables
         if (frame.Jpeg)
         {
@@ -517,7 +520,7 @@ internal static class JxlVarDctEncoder
         sections.Add(hfGlobal);
         for (int group = 0; group < header.Groups; group++)
         {
-            var section = new JxlBitWriter();
+            var section = new JxlBitWriter(writer.Buffers);
             cancellationToken.ThrowIfCancellationRequested();
             acCode.WriteStream(section, acTokens[group], cancellationToken);
             streams.WriteStream(section, header.ModularAcStream(0, group));
@@ -527,17 +530,15 @@ internal static class JxlVarDctEncoder
         JxlHeaderWriter.Frame(writer, header, metadata);
         if (header.TocEntries == 1)
         {
-            var single = new JxlBitWriter();
+            var single = new JxlBitWriter(writer.Buffers);
             foreach (JxlBitWriter section in sections) single.Append(section);
-            byte[] bytes = single.ToArray();
-            JxlHeaderWriter.Toc(writer, [bytes.Length]);
-            writer.WriteBytes(bytes);
+            JxlHeaderWriter.Toc(writer, [checked((int)((single.BitLength + 7) / 8))]);
+            writer.WriteSection(single);
             return;
         }
 
-        byte[][] data = [.. sections.Select(section => section.ToArray())];
-        JxlHeaderWriter.Toc(writer, [.. data.Select(section => section.Length)]);
-        foreach (byte[] section in data) writer.WriteBytes(section);
+        JxlHeaderWriter.Toc(writer, [.. sections.Select(section => checked((int)((section.BitLength + 7) / 8)))]);
+        foreach (JxlBitWriter section in sections) writer.WriteSection(section);
     }
 
     private static void BlockContextMap(JxlBitWriter writer, JxlBlockContextMap map)

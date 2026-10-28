@@ -63,7 +63,7 @@ internal static class JxlJpegEncoder
                     }
             }
         }
-        var streams = new JxlModularStreamSet();
+        using var streams = new JxlModularStreamSet();
         for (int group = 0; group < header.DcGroups; group++)
         {
             (int x0, int y0, int width, int height) = frame.DcGroupRect(group);

@@ -8,7 +8,7 @@ internal sealed class JxlPlane
 {
     public const int Margin = 4;
 
-    public JxlPlane(int width, int height, int capacityWidth = 0, int capacityHeight = 0)
+    public JxlPlane(int width, int height, int capacityWidth = 0, int capacityHeight = 0, JxlBufferScope? buffers = null)
     {
         if (width <= 0 || height <= 0 || capacityWidth < 0 || capacityHeight < 0)
             throw JxlDescriptor.Corrupt("Invalid plane dimensions.");
@@ -19,7 +19,7 @@ internal sealed class JxlPlane
         Width = width;
         Height = height;
         Stride = (int)stride;
-        Data = new float[stride * rows];
+        Data = buffers is null ? new float[stride * rows] : buffers.Rent<float>((int)(stride * rows));
     }
 
     public int Width { get; }

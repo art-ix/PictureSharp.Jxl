@@ -5,9 +5,9 @@ Inputs: scripts/make-speed-inputs.py (artifacts/speed-inputs) and the ignored sa
 Each case runs in its own process: one cold call (includes JIT), ~2 s of warm-up for tiered JIT, then N timed calls
 (default 5); the codec is single-threaded. No DOTNET_PROCESSOR_COUNT=1: with it the runtime often never promotes
 methods to Tier1 (only OSR), and VarDCT decoding ran 2.5-4x slower in most processes.
-reports the warm median, allocations, GC counts and peak RSS of the process (/usr/bin/time, includes the runtime).
+Reports cold time/allocated bytes, warm medians, allocations, GC counts and process peak RSS (/usr/bin/time, includes the runtime).
 The reference is libjxl's own timing (MP/s over --num_reps=3, PNG I/O excluded, its SIMD enabled).
-Usage: measure-speed.py [substring filter...] [--runs N] [--no-reference] [--package x.y.z] [--all]. --package measures a
+Usage: measure-speed.py [substring filter...] [--runs N] [--no-reference] [--package x.y.z] [--all] [--exact]. --exact matches complete case IDs; --package measures a
 released package (artifacts/ or nuget.org) instead of the sources, e.g. the baseline of an optimisation series.
 The default set takes under 5 minutes; the 12 MP encodes (LONG, several minutes on their own) run only with --all or
 when a filter names them. Writes artifacts/speed-measurements/<label>.json
@@ -44,10 +44,10 @@ def reference(command, source, temp):
     return int(m[1]) * int(m[2]) / float(m[3]) / 1000 if m else None
 
 
-def selected(case_id, filters, everything):
-    """Filters match substrings of the case id; without filters, every case except LONG ones (unless --all)."""
+def selected(case_id, filters, everything, exact=False):
+    """Filters match substrings (whole IDs with exact); otherwise all cases except LONG unless requested."""
     if filters:
-        return any(f in case_id for f in filters)
+        return case_id in filters if exact else any(f in case_id for f in filters)
     return everything or not case_id.startswith(LONG)
 
 
@@ -65,7 +65,7 @@ def main():
                     *([f'-p:JxlPackageVersion={package}'] if package else [])], check=True, env=env, stdout=subprocess.DEVNULL)
     dll = build / 'bin/PictureSharp.Jxl.Speed/release/PictureSharp.Jxl.Speed.dll'
     listing = subprocess.run(['dotnet', str(dll), 'list', str(ROOT)], capture_output=True, text=True, check=True, env=env).stdout
-    cases = [line.split('\t') for line in listing.splitlines() if line and selected(line.split('\t')[0], filters, everything)]
+    cases = [line.split('\t') for line in listing.splitlines() if line and selected(line.split('\t')[0], filters, everything, '--exact' in args)]
     results = []
     OUT.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory() as temp:

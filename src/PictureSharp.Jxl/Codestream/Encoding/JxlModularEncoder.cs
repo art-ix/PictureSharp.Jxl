@@ -38,15 +38,15 @@ internal static class JxlModularEncoder
         };
         if (frame.TocEntries > JxlToc.MaxEntries) throw JxlDescriptor.Unsupported("the image has too many groups to encode.");
         (List<JxlChannel> image, List<JxlTransform> transforms, int meta) = ApplyTransforms(channels, colorChannels, cancellationToken);
-        List<(int Id, List<JxlChannel> Channels)> streams = SplitIntoStreams(frame, image, meta);
-
+        using var tokenBuffers = new JxlBufferScope();
+        List<(int Id, List<JxlChannel> Channels)> streams = SplitIntoStreams(frame, image, meta, tokenBuffers);
         var errors = new Dictionary<JxlChannel, int[]>(ReferenceEqualityComparer.Instance);
-        List<JxlTreeNode> tree = JxlModularTreeEncoder.Learn(streams, cancellationToken, errors);
-        (JxlTokens treeTokens, int[] leafOf) = JxlModularTreeEncoder.Tokenize(tree);
-        List<JxlTokens> tokens = JxlModularTreeEncoder.TokenizeStreams(streams, tree, leafOf, cancellationToken, errors);
+        List<JxlTreeNode> tree = JxlModularTreeEncoder.Learn(streams, cancellationToken, errors, tokenBuffers);
+        (JxlTokens treeTokens, int[] leafOf) = JxlModularTreeEncoder.Tokenize(tree, tokenBuffers);
+        List<JxlTokens> tokens = JxlModularTreeEncoder.TokenizeStreams(streams, tree, leafOf, cancellationToken, errors, tokenBuffers);
         JxlEntropyEncoder code = JxlEntropyEncoder.Build(leafOf.Count(leaf => leaf >= 0), tokens);
 
-        var global = new JxlBitWriter();
+        var global = new JxlBitWriter(writer.Buffers);
         global.Write(dcQuant is null);       // default DC quantization
         if (dcQuant is not null)
         {
@@ -66,7 +66,7 @@ internal static class JxlModularEncoder
         for (int g = 0; g < groupSections.Length; g++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            groupSections[g] = new JxlBitWriter();
+            groupSections[g] = new JxlBitWriter(writer.Buffers);
             if (streams[g + 1].Channels.Count == 0) continue;
             GroupHeader(groupSections[g], []);
             code.WriteStream(groupSections[g], tokens[g + 1]);
@@ -101,7 +101,7 @@ internal static class JxlModularEncoder
     }
 
     // The global stream holds the meta channels and the leading channels that fit a group; groups hold the rest.
-    private static List<(int Id, List<JxlChannel> Channels)> SplitIntoStreams(JxlFrameHeader frame, List<JxlChannel> image, int meta)
+    private static List<(int Id, List<JxlChannel> Channels)> SplitIntoStreams(JxlFrameHeader frame, List<JxlChannel> image, int meta, JxlBufferScope buffers)
     {
         int groupDim = frame.GroupDimension;
         int decodable = meta;
@@ -113,7 +113,7 @@ internal static class JxlModularEncoder
             var rects = new List<JxlChannel>();
             for (int c = decodable; c < image.Count; c++)
             {
-                rects.Add(Crop(image[c], x0, y0, Math.Min(groupDim, image[c].Width - x0), Math.Min(groupDim, image[c].Height - y0)));
+                rects.Add(Crop(image[c], x0, y0, Math.Min(groupDim, image[c].Width - x0), Math.Min(groupDim, image[c].Height - y0), buffers));
             }
 
             streams.Add((frame.ModularAcStream(0, g), rects));
@@ -128,17 +128,17 @@ internal static class JxlModularEncoder
         if (groupSections.Length == 1)
         {
             global.Append(groupSections[0]);
-            byte[] section = global.ToArray();
-            JxlHeaderWriter.Toc(writer, [section.Length]);
-            writer.WriteBytes(section);
+            JxlHeaderWriter.Toc(writer, [checked((int)((global.BitLength + 7) / 8))]);
+            writer.WriteSection(global);
             return;
         }
 
-        var sections = new List<byte[]> { global.ToArray() };
-        for (long i = 0; i < frame.DcGroups + 1; i++) sections.Add([]);
-        sections.AddRange(groupSections.Select(section => section.ToArray()));
-        JxlHeaderWriter.Toc(writer, [.. sections.Select(section => section.Length)]);
-        foreach (byte[] section in sections) writer.WriteBytes(section);
+        int[] sizes = new int[checked((int)frame.TocEntries)];
+        sizes[0] = checked((int)((global.BitLength + 7) / 8));
+        for (int g = 0; g < groupSections.Length; g++) sizes[sizes.Length - groupSections.Length + g] = checked((int)((groupSections[g].BitLength + 7) / 8));
+        JxlHeaderWriter.Toc(writer, sizes);
+        writer.WriteSection(global);
+        foreach (JxlBitWriter section in groupSections) writer.WriteSection(section);
     }
 
     private static void GroupHeader(JxlBitWriter writer, IReadOnlyList<JxlTransform> transforms)
@@ -163,9 +163,9 @@ internal static class JxlModularEncoder
         }
     }
 
-    private static JxlChannel Crop(JxlChannel source, int x0, int y0, int width, int height)
+    private static JxlChannel Crop(JxlChannel source, int x0, int y0, int width, int height, JxlBufferScope buffers)
     {
-        var crop = new JxlChannel(width, height, source.HShift, source.VShift);
+        var crop = new JxlChannel(width, height, source.HShift, source.VShift, buffers);
         for (int y = 0; y < height; y++) source.Row(y0 + y).Slice(x0, width).CopyTo(crop.Row(y));
         return crop;
     }

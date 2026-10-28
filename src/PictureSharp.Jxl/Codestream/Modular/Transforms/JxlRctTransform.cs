@@ -30,7 +30,7 @@ internal sealed class JxlRctTransform(JxlTransform description) : IJxlModularTra
             int[] c0 = inputs[0].Pixels;
             int[] c1 = inputs[1].Pixels;
             int[] c2 = inputs[2].Pixels;
-            for (int i = 0; i < c0.Length; i++)
+            for (int i = 0; i < inputs[0].Width * inputs[0].Height; i++)
             {
                 if ((i & 0xFFF) == 0) cancellationToken.ThrowIfCancellationRequested();
                 unchecked

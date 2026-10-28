@@ -27,8 +27,11 @@ internal enum JxlTreeKind
 /// lib/jxl/enc_modular.cc (ComputeTree, ComputeTokens) and modular/encoding/enc_encoding.cc (PredefinedTree,
 /// MakeFixedTree; BSD-3-Clause).
 /// </summary>
-internal sealed class JxlModularStreamSet
+internal sealed class JxlModularStreamSet : IDisposable
 {
+    private readonly JxlBufferScope buffers = new();
+    public void Dispose() => buffers.Dispose();
+
     private static readonly int[] DcCutoffs =
     [
         -500, -392, -255, -191, -127, -95, -63, -47, -31, -23, -15, -11, -7, -4, -3, -1, 0, 1, 3, 5, 7, 11, 15, 23, 31, 47, 63, 95, 127,
@@ -72,7 +75,7 @@ internal sealed class JxlModularStreamSet
                 JxlTreeKind.WeightedFixedDc => FixedTree(JxlMaProperty.WeightedMaxError, DcCutoffs, JxlPredictor.Weighted, pixels),
                 JxlTreeKind.AcMetadata => AcMetadataTree(pixels),
                 JxlTreeKind.LeftPredictor => [JxlTreeNode.Leaf(JxlPredictor.Left)],
-                _ => JxlModularTreeEncoder.Learn(range, cancellationToken, errors),
+                _ => JxlModularTreeEncoder.Learn(range, cancellationToken, errors, buffers),
             });
         }
 
@@ -80,9 +83,9 @@ internal sealed class JxlModularStreamSet
         useful.Add(splits[^1]);
         var tree = new List<JxlTreeNode>();
         Merge(trees, useful, 0, trees.Count, tree);
-        (treeTokens, int[] leafOf) = JxlModularTreeEncoder.Tokenize(tree);
+        (treeTokens, int[] leafOf) = JxlModularTreeEncoder.Tokenize(tree, buffers);
         List<(int Id, List<JxlChannel> Channels)> all = [.. streams.Select(pair => (pair.Key, pair.Value.Channels))];
-        List<JxlTokens> streamTokens = JxlModularTreeEncoder.TokenizeStreams(all, tree, leafOf, cancellationToken, errors);
+        List<JxlTokens> streamTokens = JxlModularTreeEncoder.TokenizeStreams(all, tree, leafOf, cancellationToken, errors, buffers);
         for (int i = 0; i < all.Count; i++) tokens[all[i].Id] = streamTokens[i];
         code = JxlEntropyEncoder.Build(leafOf.Count(leaf => leaf >= 0), streamTokens, cancellationToken);
     }

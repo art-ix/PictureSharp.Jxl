@@ -1,3 +1,4 @@
+using PictureSharp.Formats.Jxl.Codestream.Buffers;
 using PictureSharp.Formats.Jxl.Codestream.Model;
 using PictureSharp.Formats.Jxl.Codestream.VarDct;
 using static PictureSharp.Formats.Jxl.Codestream.Numerics.JxlIntMath;
@@ -14,8 +15,9 @@ internal sealed class JxlLossyFrame
     public const int GroupBlocks = 32;
     public const int TileBlocks = 8;
 
-    public JxlLossyFrame(JxlFrameHeader header, JxlLossySettings settings)
+    public JxlLossyFrame(JxlFrameHeader header, JxlLossySettings settings, JxlBufferScope? buffers = null)
     {
+        Buffers = buffers;
         Header = header;
         Settings = settings;
         XBlocks = (int)header.XSizeBlocks;
@@ -32,6 +34,8 @@ internal sealed class JxlLossyFrame
         Dc = [new float[blocks], new float[blocks], new float[blocks]];
         Coefficients = new int[header.Groups][];
     }
+
+    public JxlBufferScope? Buffers { get; }
 
     public bool Jpeg { get; init; }
 

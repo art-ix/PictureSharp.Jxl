@@ -19,6 +19,7 @@ internal sealed class JxlFrameDecoder
     private const int LfMinShift = 3;
     private const int NoMaxShift = 1000;
 
+    private readonly JxlBufferScope? buffers;
     private readonly JxlFrameHeader frame;
     private readonly JxlFrameProgress progress;
     private readonly JxlImageMetadata metadata;
@@ -37,9 +38,10 @@ internal sealed class JxlFrameDecoder
     private readonly JxlJpegData? jpeg;
 
     public JxlFrameDecoder(JxlFrameHeader frame, JxlHeaders headers, JxlReferenceFrames references,
-        CancellationToken cancellationToken, JxlColorTarget? colorTarget = null, JxlJpegData? jpeg = null)
+        CancellationToken cancellationToken, JxlColorTarget? colorTarget = null, JxlJpegData? jpeg = null, JxlBufferScope? buffers = null)
     {
         this.frame = frame;
+        this.buffers = buffers;
         this.jpeg = jpeg;
         this.colorTarget = colorTarget;
         progress = new(frame.DcGroups, frame.Groups, frame.Passes.Count);
@@ -51,7 +53,7 @@ internal sealed class JxlFrameDecoder
         codedChannels = gray ? 1 : 3;
         if (frame.Encoding == JxlFrameEncoding.VarDct)
         {
-            varDct = new JxlVarDctFrame(frame, metadata, matrices, headers.TransformData.EffectiveQuantBiases, cancellationToken, jpeg is not null);
+            varDct = new JxlVarDctFrame(frame, metadata, matrices, headers.TransformData.EffectiveQuantBiases, cancellationToken, jpeg is not null, buffers);
         }
         else
         {
@@ -92,14 +94,14 @@ internal sealed class JxlFrameDecoder
         {
             int hShift = frame.ColorTransform == JxlColorTransform.YCbCr ? frame.HShift(c) : 0;
             int vShift = frame.ColorTransform == JxlColorTransform.YCbCr ? frame.VShift(c) : 0;
-            channels.Add(new JxlChannel(DivCeil(Width, 1 << hShift), DivCeil(Height, 1 << vShift), hShift, vShift));
+            channels.Add(new JxlChannel(DivCeil(Width, 1 << hShift), DivCeil(Height, 1 << vShift), hShift, vShift, buffers));
         }
 
         for (int i = 0; i < extra; i++)
         {
             uint factor = frame.ExtraChannelUpsampling[i];
             int shift = CeilLog2(factor) - CeilLog2(frame.Upsampling);
-            channels.Add(new JxlChannel((int)((frame.Width + factor - 1) / factor), (int)((frame.Height + factor - 1) / factor), shift, shift));
+            channels.Add(new JxlChannel((int)((frame.Width + factor - 1) / factor), (int)((frame.Height + factor - 1) / factor), shift, shift, buffers));
         }
 
         image = new JxlModularImage((int)metadata.BitDepth.BitsPerSample, channels);
@@ -168,10 +170,10 @@ internal sealed class JxlFrameDecoder
         return [.. table.Channels.Select(channel => channel.Pixels)];
     }
 
-    public int[]? BeginGroup(int group)
+    public int[]? BeginGroup(int group, JxlBufferScope? buffers = null)
     {
         progress.BeginGroup(group);
-        return varDct?.NewGroupCoefficients(group);
+        return varDct?.NewGroupCoefficients(group, buffers);
     }
 
     public void DecodePassGroup(ref JxlBitReader reader, int pass, int group, int[]? coefficients)
@@ -199,6 +201,7 @@ internal sealed class JxlFrameDecoder
     /// <summary>Decodes the part of the full image's large channels inside a group rectangle (DecodeGroup).</summary>
     private void DecodeGroup(ref JxlBitReader reader, int x0, int y0, int size, int minShift, int maxShift, int stream)
     {
+        using var groupBuffers = new JxlBufferScope();
         var channels = new List<JxlChannel>();
         var targets = new List<(JxlChannel Channel, int X, int Y)>();
         for (int c = JxlModularStream.DecodableChannels(image, frame.GroupDimension); c < image.Channels.Count; c++)
@@ -221,7 +224,7 @@ internal sealed class JxlFrameDecoder
                 continue;
             }
 
-            channels.Add(new JxlChannel(width, height, full.HShift, full.VShift));
+            channels.Add(new JxlChannel(width, height, full.HShift, full.VShift, groupBuffers));
             targets.Add((full, x, y));
         }
 
@@ -246,7 +249,21 @@ internal sealed class JxlFrameDecoder
 
     public JxlDecodedImage Finish(int alpha)
     {
-        (JxlPlane[] color, JxlPlane[] extra) = Render(colorTransform: true);
+        FinalizeSamples();
+        if (varDct is null && !metadata.XybEncoded && frame.ColorTransform == JxlColorTransform.None
+            && !frame.LoopFilter.Gaborish && frame.LoopFilter.EpfIterations == 0 && patches.Length == 0
+            && frame.Upsampling == 1 && frame.ExtraChannelUpsampling.All(f => f == 1)
+            && metadata.BitDepth.BitsPerSample <= 16 && metadata.ExtraChannels.All(c => c.BitDepth.BitsPerSample <= 16))
+        {
+            return new JxlDecodedImage((int)frame.Width, (int)frame.Height, [], null,
+                metadata.Color.ColorSpace == JxlColorSpace.Gray, metadata.Color)
+            {
+                IntegerSamples = new JxlIntegerImage([.. image.Channels.Take(colorChannels)],
+                    alpha < 0 ? null : image.Channels[colorChannels + alpha], (int)metadata.BitDepth.BitsPerSample,
+                    alpha < 0 ? 8 : (int)metadata.ExtraChannels[alpha].BitDepth.BitsPerSample),
+            };
+        }
+        (JxlPlane[] color, JxlPlane[] extra) = Render(colorTransform: true, finalized: true);
         return new JxlDecodedImage((int)frame.Width, (int)frame.Height, color, alpha < 0 ? null : extra[alpha], metadata.Color.ColorSpace == JxlColorSpace.Gray,
             JxlColorOutput.DescribeOutput(metadata, frame.ColorTransform, colorTarget));
     }
@@ -258,7 +275,7 @@ internal sealed class JxlFrameDecoder
         return new JxlReferenceFrame(color, extra);
     }
 
-    private (JxlPlane[] Color, JxlPlane[] Extra) Render(bool colorTransform)
+    private void FinalizeSamples()
     {
         cancellationToken.ThrowIfCancellationRequested();
         progress.Consume();
@@ -282,6 +299,13 @@ internal sealed class JxlFrameDecoder
             }
         }
 
+    }
+
+    private (JxlPlane[] Color, JxlPlane[] Extra) Render(bool colorTransform, bool finalized = false)
+    {
+        if (!finalized) FinalizeSamples();
+        IReadOnlyList<JxlChannel> channels = image.Channels;
+        int extra = metadata.ExtraChannels.Count;
         JxlPlane[] color = varDct?.Planes ?? ModularColor(channels);
         JxlPlane[] extraPlanes = new JxlPlane[extra];
         for (int i = 0; i < extra; i++)

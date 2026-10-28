@@ -118,3 +118,13 @@ Git-ignored `reference/libjxl-0.12.0/` (no native code is built). Fetch with Pyt
 ```sh
 python3 scripts/fetch-reference.py
 ```
+
+## Memory in 0.7.10
+
+Eligible lossless Modular frames write integer channels directly to the output pixels. They retain the
+same float normalization and dithering or 16-bit rounding, while avoiding intermediate float planes.
+Frames requiring colour transforms, filtering, patches or upsampling continue through the float pipeline.
+
+Working channels, output planes, group coefficients and predictor scratch use explicitly scoped pools.
+Reservations are checked before the output allocation; pooling does not add a limit on all temporary memory.
+See the [allocation and peak RSS measurements](benchmarks/speed.md#allocations-and-memory-0710).

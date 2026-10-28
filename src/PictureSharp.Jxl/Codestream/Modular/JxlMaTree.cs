@@ -342,8 +342,9 @@ internal sealed class JxlMaTree
         // At most 256 properties: the coded property index is below 256.
         Span<int> properties = stackalloc int[tree.PropertyCount];
         int referenceCount = tree.ReferenceProperties;
-        int[] references = new int[referenceCount * width];
-        JxlWeightedPredictor? weighted = tree.UsesWeighted ? new JxlWeightedPredictor(weightedHeader, width) : null;
+        using var buffers = new JxlBufferScope();
+        int[] references = buffers.Rent<int>(referenceCount * width);
+        using JxlWeightedPredictor? weighted = tree.UsesWeighted ? new JxlWeightedPredictor(weightedHeader, width) : null;
         for (int y = 0; y < channel.Height; y++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -441,7 +442,7 @@ internal sealed class JxlMaTree
         (int property, int min, int[] table) = lookup;
         int last = table.Length - 1;
         Span<int> properties = stackalloc int[JxlMaProperty.Local];
-        JxlWeightedPredictor? weighted = tree.UsesWeighted ? new JxlWeightedPredictor(weightedHeader, width) : null;
+        using JxlWeightedPredictor? weighted = tree.UsesWeighted ? new JxlWeightedPredictor(weightedHeader, width) : null;
         // libjxl's gradient tree: every leaf predicts the clamped gradient and the tree splits on the unclamped one.
         bool gradientTree = property == JxlMaProperty.Gradient && weighted is null &&
             Array.TrueForAll(leaves, leaf => leaf.Predictor == JxlPredictor.Gradient);

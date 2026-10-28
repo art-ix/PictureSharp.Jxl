@@ -1,4 +1,5 @@
 using PictureSharp.Formats.Jxl.Codestream.Entropy;
+using PictureSharp.Formats.Jxl.Codestream.Buffers;
 using PictureSharp.Formats.Jxl.Codestream.Model;
 using static PictureSharp.Formats.Jxl.Codestream.Numerics.JxlIntMath;
 
@@ -9,7 +10,7 @@ namespace PictureSharp.Formats.Jxl.Codestream.Modular;
 /// carry three extra fractional bits. Ported from libjxl v0.12.0 lib/jxl/modular/encoding/context_predict.h
 /// (weighted::State), BSD-3-Clause; the integer widths and wrap-arounds follow libjxl.
 /// </summary>
-internal sealed class JxlWeightedPredictor(JxlWeightedHeader header, int width)
+internal sealed class JxlWeightedPredictor : IDisposable
 {
     private const int ExtraBits = 3;
     private const long Round = ((1 << ExtraBits) >> 1) - 1;
@@ -17,24 +18,47 @@ internal sealed class JxlWeightedPredictor(JxlWeightedHeader header, int width)
     // (1 << 24) / (i + 1): division by 1–64 as a multiplication.
     private static readonly uint[] DivLookup = [.. Enumerable.Range(0, 64).Select(i => (uint)((1 << 24) / (i + 1)))];
 
-    private readonly int width = width;
+    private readonly JxlWeightedHeader header;
+    private readonly JxlBufferScope buffers = new();
+    private readonly int width;
     // The header's maximum weights, copied out of its read-only list for the per-pixel loop.
-    private readonly uint maxWeight0 = header.Weights[0];
-    private readonly uint maxWeight1 = header.Weights[1];
-    private readonly uint maxWeight2 = header.Weights[2];
-    private readonly uint maxWeight3 = header.Weights[3];
+    private readonly uint maxWeight0;
+    private readonly uint maxWeight1;
+    private readonly uint maxWeight2;
+    private readonly uint maxWeight3;
     // Two rows of errors, each padded by one position on both sides.
-    private readonly int rowStride = width + 2;
-    private readonly uint[] predictionErrors0 = ErrorRows(width);
-    private readonly uint[] predictionErrors1 = ErrorRows(width);
-    private readonly uint[] predictionErrors2 = ErrorRows(width);
-    private readonly uint[] predictionErrors3 = ErrorRows(width);
-    private readonly int[] errors = new int[(width + 2) * 2];
+    private readonly int rowStride;
+    private readonly uint[] predictionErrors0;
+    private readonly uint[] predictionErrors1;
+    private readonly uint[] predictionErrors2;
+    private readonly uint[] predictionErrors3;
+    private readonly int[] errors;
     private long prediction0;
     private long prediction1;
     private long prediction2;
     private long prediction3;
     private long prediction;
+
+    public JxlWeightedPredictor(JxlWeightedHeader header, int width)
+    {
+        this.header = header;
+        this.width = width;
+        rowStride = checked(width + 2);
+        maxWeight0 = header.Weights[0];
+        maxWeight1 = header.Weights[1];
+        maxWeight2 = header.Weights[2];
+        maxWeight3 = header.Weights[3];
+        try
+        {
+            predictionErrors0 = buffers.Rent<uint>(checked(rowStride * 2));
+            predictionErrors1 = buffers.Rent<uint>(checked(rowStride * 2));
+            predictionErrors2 = buffers.Rent<uint>(checked(rowStride * 2));
+            predictionErrors3 = buffers.Rent<uint>(checked(rowStride * 2));
+            errors = buffers.Rent<int>(checked(rowStride * 2));
+        }
+        catch { buffers.Dispose(); throw; }
+    }
+    public void Dispose() => buffers.Dispose();
 
     /// <summary>Predicts the pixel at (x, y) from its neighbours; <paramref name="maxError"/> is the WP property.</summary>
     public long Predict(int x, int y, in JxlNeighbours neighbours, out int maxError)
@@ -140,8 +164,6 @@ internal sealed class JxlWeightedPredictor(JxlWeightedHeader header, int width)
         // Adding the error to the NE position makes it count for the E and EE pixels of the next row.
         errorsOf[positionNe] = unchecked(errorsOf[positionNe] + error);
     }
-
-    private static uint[] ErrorRows(int width) => new uint[(width + 2) * 2];
 
     private static long AddBits(long value) => unchecked(value << ExtraBits);
 

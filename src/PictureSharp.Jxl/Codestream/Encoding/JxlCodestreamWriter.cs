@@ -22,6 +22,13 @@ internal static class JxlCodestreamWriter
 {
     public static byte[] Write(JxlEncodeImage image, CancellationToken cancellationToken = default)
     {
+        var writer = new JxlBitWriter();
+        WriteTo(image, writer, cancellationToken);
+        return writer.ToArray();
+    }
+
+    public static void WriteTo(JxlEncodeImage image, JxlBitWriter writer, CancellationToken cancellationToken = default)
+    {
         if (image.Color.Length is not (1 or 3)) throw new ArgumentException("Expected one or three colour channels.", nameof(image));
         bool gray = image.Color.Length == 1;
         JxlColorEncoding color = image.Icc is not null
@@ -43,7 +50,6 @@ internal static class JxlCodestreamWriter
             Color = color,
         };
 
-        var writer = new JxlBitWriter();
         JxlHeaderWriter.Signature(writer);
         JxlHeaderWriter.Size(writer, new JxlSizeHeader((uint)image.Width, (uint)image.Height));
         JxlHeaderWriter.ImageMetadata(writer, metadata);
@@ -54,17 +60,23 @@ internal static class JxlCodestreamWriter
         var channels = new List<JxlChannel>();
         foreach (int[] plane in image.Alpha is null ? image.Color : [.. image.Color, image.Alpha])
         {
-            var channel = new JxlChannel(image.Width, image.Height);
-            plane.AsSpan().CopyTo(channel.Pixels);
+            // Encoder transforms replace channels; they do not mutate these input samples.
+            var channel = new JxlChannel(image.Width, image.Height, plane);
             channels.Add(channel);
         }
 
         JxlModularEncoder.WriteFrame(writer, channels, image.Color.Length, cancellationToken);
-        return writer.ToArray();
     }
 
     /// <summary>Writes the headers and one VarDCT frame of XYB-encoded <paramref name="image"/>.</summary>
     public static byte[] WriteLossy(JxlLossyEncodeImage image, CancellationToken cancellationToken = default)
+    {
+        var writer = new JxlBitWriter();
+        WriteLossyTo(image, writer, cancellationToken);
+        return writer.ToArray();
+    }
+
+    public static void WriteLossyTo(JxlLossyEncodeImage image, JxlBitWriter writer, CancellationToken cancellationToken = default)
     {
         JxlColorEncoding color = image.Icc is not null
             ? new JxlColorEncoding { WantIcc = true, ColorSpace = image.Gray ? JxlColorSpace.Gray : JxlColorSpace.Rgb }
@@ -85,7 +97,6 @@ internal static class JxlCodestreamWriter
             Color = color,
         };
 
-        var writer = new JxlBitWriter();
         JxlHeaderWriter.Signature(writer);
         JxlHeaderWriter.Size(writer, new JxlSizeHeader((uint)image.Width, (uint)image.Height));
         JxlHeaderWriter.ImageMetadata(writer, metadata);
@@ -93,7 +104,6 @@ internal static class JxlCodestreamWriter
         if (image.Icc is not null) Icc(writer, image.Icc);
         writer.ZeroPadToByte();
         JxlVarDctEncoder.WriteFrame(writer, image.Xyb, image.Width, image.Height, image.Alpha, metadata, image.Settings, cancellationToken);
-        return writer.ToArray();
     }
 
     /// <summary>

@@ -1,3 +1,4 @@
+using PictureSharp.Formats.Jxl.Codestream.Buffers;
 namespace PictureSharp.Formats.Jxl.Codestream.Encoding.Lossy;
 
 /// <summary>
@@ -16,7 +17,9 @@ internal static class JxlGaborish
         var weights = new JxlSymmetric5Weights(normalize, normalize * k[0], normalize * k[2], normalize * k[1], normalize * k[4], normalize * k[3]);
         for (int c = 0; c < 3; c++)
         {
-            JxlConvolution.Symmetric5(image.Planes[c], image.Width, image.Height, weights, cancellationToken).CopyTo(image.Planes[c], 0);
+            using var buffers = new JxlBufferScope();
+            JxlConvolution.Symmetric5(image.Planes[c], image.Width, image.Height, weights, cancellationToken, buffers)
+                .AsSpan(0, image.Width * image.Height).CopyTo(image.Planes[c]);
         }
     }
 }

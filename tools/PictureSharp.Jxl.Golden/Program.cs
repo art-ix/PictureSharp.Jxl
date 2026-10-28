@@ -15,6 +15,8 @@ if (args.Length is not (1 or 2))
     return 2;
 }
 
+System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.InvariantCulture;
+System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.CultureInfo.InvariantCulture;
 string root = Path.GetFullPath(args[0]);
 var filter = args.Length == 2 ? new System.Text.RegularExpressions.Regex(args[1]) : null;
 ImageConfiguration.Default = ImageConfiguration.Default.ToBuilder().AddFormat(new JxlFormat()).Build();

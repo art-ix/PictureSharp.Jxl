@@ -37,7 +37,8 @@ internal static class JxlEpfSharpnessSearch
         {
             cancellationToken.ThrowIfCancellationRequested();
             Array.Fill(frame.Sharpness, value);
-            JxlPlane[] decoded = Reconstruct(frame, dequantizedDc, patches, references, cancellationToken);
+            using var buffers = new JxlBufferScope();
+            JxlPlane[] decoded = Reconstruct(frame, dequantizedDc, patches, references, cancellationToken, buffers);
             errors[value] = BlockErrors(frame, original, decoded, mask1X1);
         }
 
@@ -123,7 +124,7 @@ internal static class JxlEpfSharpnessSearch
 
     // ReconstructImage: the frame as the decoder renders it before the colour transform, at the coded resolution.
     private static JxlPlane[] Reconstruct(JxlLossyFrame frame, float[][] dequantizedDc, JxlPatch[] patches, JxlReferenceFrames references,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, JxlBufferScope buffers)
     {
         JxlFrameHeader header = frame.Header with
         {
@@ -134,7 +135,7 @@ internal static class JxlEpfSharpnessSearch
             Flags = JxlFrameFlags.None,
         };
         var metadata = new JxlImageMetadata { BitDepth = new JxlBitDepth(false, 8, 0), XybEncoded = true };
-        var varDct = new JxlVarDctFrame(header, metadata, frame.Matrices, JxlCustomTransformData.Default.EffectiveQuantBiases, cancellationToken);
+        var varDct = new JxlVarDctFrame(header, metadata, frame.Matrices, JxlCustomTransformData.Default.EffectiveQuantBiases, cancellationToken, buffers: buffers);
         varDct.SetQuantizer((uint)frame.Quantizer.GlobalScale, (uint)frame.Quantizer.QuantDc);
         frame.Strategies.CopyTo(varDct.Varblocks, 0);
         frame.QuantField.CopyTo(varDct.QuantField, 0);

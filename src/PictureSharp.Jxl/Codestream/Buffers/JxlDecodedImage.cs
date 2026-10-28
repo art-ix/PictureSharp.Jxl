@@ -7,6 +7,7 @@ namespace PictureSharp.Formats.Jxl.Codestream.Buffers;
 internal sealed class JxlDecodedImage(int width, int height, JxlPlane[] color, JxlPlane? alpha,
     bool isGrayscale, JxlColorEncoding colorEncoding)
 {
+    public JxlIntegerImage? IntegerSamples { get; init; }
     public int Width { get; } = width;
     public int Height { get; } = height;
     public ReadOnlySpan<JxlPlane> Color => color;
@@ -14,3 +15,5 @@ internal sealed class JxlDecodedImage(int width, int height, JxlPlane[] color, J
     public bool IsGrayscale { get; } = isGrayscale;
     public JxlColorEncoding ColorEncoding { get; } = colorEncoding;
 }
+
+internal sealed record JxlIntegerImage(JxlChannel[] Color, JxlChannel? Alpha, int ColorBits, int AlphaBits);

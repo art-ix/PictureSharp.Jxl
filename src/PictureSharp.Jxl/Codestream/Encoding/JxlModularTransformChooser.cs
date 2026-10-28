@@ -39,7 +39,7 @@ internal static class JxlModularTransformChooser
         int limit = (int)Math.Min(MaxPaletteColors, pixels / PixelsPerColor);
         var colors = new Dictionary<long, int>();
         int[][] planes = [.. image.Take(count).Select(channel => channel.Pixels)];
-        for (int i = 0; i < planes[0].Length; i++)
+        for (int i = 0; i < width * height; i++)
         {
             if ((i & CancellationCheckMask) == 0) cancellationToken.ThrowIfCancellationRequested();
             if (!Fits16Bits(planes, i)) return null;
@@ -56,7 +56,7 @@ internal static class JxlModularTransformChooser
         }
 
         var indices = new JxlChannel(width, height);
-        for (int i = 0; i < indices.Pixels.Length; i++) indices.Pixels[i] = colors[Key(planes, i)];
+        for (int i = 0; i < width * height; i++) indices.Pixels[i] = colors[Key(planes, i)];
         var transform = new JxlTransform
         {
             Id = JxlTransformId.Palette, BeginC = 0, NumC = (uint)count, Colors = (uint)sorted.Length, Deltas = 0, Predictor = JxlPredictor.Zero,
@@ -155,7 +155,7 @@ internal static class JxlModularTransformChooser
         int[] first = outputs[0].Pixels;
         int[] second = outputs[1].Pixels;
         int[] third = outputs[2].Pixels;
-        for (int i = 0; i < first.Length; i++)
+        for (int i = 0; i < image[0].Width * image[0].Height; i++)
         {
             if ((i & CancellationCheckMask) == 0) cancellationToken.ThrowIfCancellationRequested();
             (first[i], second[i], third[i]) = forward.Apply(planes, i);

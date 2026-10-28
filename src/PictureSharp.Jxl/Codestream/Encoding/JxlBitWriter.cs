@@ -1,3 +1,5 @@
+using PictureSharp.Formats.Jxl.Codestream.Buffers;
+using PictureSharp.Formats.Jxl.Codestream.IO;
 using System.Buffers.Binary;
 
 namespace PictureSharp.Formats.Jxl.Codestream.Encoding;
@@ -8,13 +10,48 @@ namespace PictureSharp.Formats.Jxl.Codestream.Encoding;
 /// </summary>
 internal sealed class JxlBitWriter
 {
-    private byte[] bytes = new byte[256];
+    private byte[] bytes;
+    private JxlPooledBuffer<byte>? rental;
+    private readonly bool segmented;
+    private readonly List<ReadOnlyMemory<byte>> segments = [];
+    private long precedingBytes;
+    internal JxlBufferScope? Buffers { get; }
+    public JxlBitWriter(JxlBufferScope? buffers = null, bool segmented = false)
+    {
+        Buffers = buffers;
+        this.segmented = segmented;
+        bytes = buffers is null ? new byte[256] : (rental = buffers.Lease<byte>(256, clear: false)).Array;
+    }
+    private void CommitBytes()
+    {
+        if (length == 0) return;
+        segments.Add(bytes.AsMemory(0, length));
+        precedingBytes += length;
+        length = 0;
+        // Committed storage remains owned by the scope until output completes.
+        rental = null;
+        bytes = Buffers is null ? new byte[256] : (rental = Buffers.Lease<byte>(256, clear: false)).Array;
+    }
+    public void WriteSection(JxlBitWriter section)
+    {
+        section.ZeroPadToByte();
+        if (!segmented) { WriteBytes(section.bytes.AsSpan(0, section.length)); return; }
+        if (bufferedBits != 0) throw new InvalidOperationException("Section boundary is not byte aligned.");
+        CommitBytes();
+        segments.Add(section.bytes.AsMemory(0, section.length));
+        precedingBytes += section.length;
+    }
+    public JxlCodestream AsCodestream()
+    {
+        ZeroPadToByte();
+        return new JxlCodestream([.. segments, bytes.AsMemory(0, length)]);
+    }
     private ulong buffer;
     private int bufferedBits;
     private int length;
 
     /// <summary>The number of bits written.</summary>
-    public long BitLength => length * 8L + bufferedBits;
+    public long BitLength => (precedingBytes + length) * 8L + bufferedBits;
 
     /// <summary>Writes the low <paramref name="count"/> (0–56) bits of <paramref name="value"/>.</summary>
     public void Write(int count, ulong value)
@@ -61,9 +98,11 @@ internal sealed class JxlBitWriter
     /// <summary>The bytes written, padded with zeros to a byte boundary.</summary>
     public byte[] ToArray()
     {
-        byte[] result = new byte[length + (bufferedBits > 0 ? 1 : 0)];
-        bytes.AsSpan(0, length).CopyTo(result);
-        if (bufferedBits > 0) result[length] = (byte)buffer;
+        byte[] result = new byte[checked((int)(precedingBytes + length + (bufferedBits > 0 ? 1 : 0)))];
+        int offset = 0;
+        foreach (ReadOnlyMemory<byte> segment in segments) { segment.Span.CopyTo(result.AsSpan(offset)); offset += segment.Length; }
+        bytes.AsSpan(0, length).CopyTo(result.AsSpan(offset));
+        if (bufferedBits > 0) result[offset + length] = (byte)buffer;
         return result;
     }
 
@@ -90,6 +129,14 @@ internal sealed class JxlBitWriter
                 : throw JxlDescriptor.Unsupported("the encoded image exceeds the largest array.");
         }
 
-        Array.Resize(ref bytes, (int)size);
+        if (Buffers is null) Array.Resize(ref bytes, (int)size);
+        else
+        {
+            var next = Buffers.Lease<byte>((int)size, clear: false);
+            bytes.AsSpan(0, length).CopyTo(next.Span);
+            rental?.Dispose();
+            rental = next;
+            bytes = next.Array;
+        }
     }
 }

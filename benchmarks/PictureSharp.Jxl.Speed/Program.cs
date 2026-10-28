@@ -153,9 +153,11 @@ internal sealed record SpeedCase(string Id, string Input, string Reference, Func
     public object Measure(int runs)
     {
         Func<byte[]> operation = Prepare(File.ReadAllBytes(Input));
+        long coldAllocated = GC.GetTotalAllocatedBytes(precise: true);
         long coldStart = Stopwatch.GetTimestamp();
         byte[] result = operation();
         double coldMs = Stopwatch.GetElapsedTime(coldStart).TotalMilliseconds;
+        long coldAllocatedBytes = GC.GetTotalAllocatedBytes(precise: true) - coldAllocated;
         // Tiered JIT: hot loops start in OSR code and reach tier 1 (with PGO) only after enough calls, so warm up for
         // about two seconds (at least one more call) before timing.
         int warmups = 1;
@@ -183,6 +185,7 @@ internal sealed record SpeedCase(string Id, string Input, string Reference, Func
             id = Id,
             bytes = result.Length,
             coldMs,
+            coldAllocatedBytes,
             warmups,
             medianMs = times[runs / 2],
             minMs = times[0],

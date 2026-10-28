@@ -5,13 +5,21 @@ internal sealed class JxlChannel
 {
     private int[]? pixels;
 
-    public JxlChannel(int width, int height, int hShift = 0, int vShift = 0)
+    public JxlChannel(int width, int height, int hShift = 0, int vShift = 0, JxlBufferScope? buffers = null)
     {
         if (width < 0 || height < 0) throw JxlDescriptor.Corrupt("Invalid channel dimensions.");
+        Buffers = buffers;
         Width = width;
         Height = height;
         HShift = hShift;
         VShift = vShift;
+    }
+
+    internal JxlBufferScope? Buffers { get; }
+    public JxlChannel(int width, int height, int[] samples) : this(width, height)
+    {
+        if ((long)width * height > samples.Length) throw new ArgumentException("Insufficient channel samples.", nameof(samples));
+        pixels = samples;
     }
 
     public int Width { get; private set; }
@@ -26,7 +34,7 @@ internal sealed class JxlChannel
     public bool IsEmpty => Width == 0 || Height == 0;
 
     public int[] Pixels => pixels ??= (long)Width * Height <= Array.MaxLength
-        ? new int[Width * Height]
+        ? Buffers is null ? new int[Width * Height] : Buffers.Rent<int>(Width * Height)
         : throw JxlDescriptor.Unsupported($"a {Width}x{Height} channel is too large.");
 
     public Span<int> Row(int y) => Pixels.AsSpan(y * Width, Width);

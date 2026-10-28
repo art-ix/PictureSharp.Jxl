@@ -1,3 +1,5 @@
+using PictureSharp.Formats.Jxl.Codestream.Buffers;
+using PictureSharp.Formats.Jxl.Codestream.IO;
 using PictureSharp.Formats.Jxl.Codestream.Color;
 using PictureSharp.Formats.Jxl.Codestream.Encoding;
 using PictureSharp.Formats.Jxl.Codestream.Encoding.Lossy;
@@ -30,11 +32,21 @@ internal sealed partial class JxlEncoder : IImageFormatEncoder<JxlEncoderOptions
         ArgumentNullException.ThrowIfNull(options);
         if (!output.CanWrite) throw new ArgumentException("The stream must be writable.", nameof(output));
         cancellationToken.ThrowIfCancellationRequested();
-        output.Write(Encode(image, options, cancellationToken));
+        EncodeTo(image, output, options, cancellationToken);
     }
 
     public static byte[] Encode(Image image, JxlEncoderOptions options, CancellationToken cancellationToken)
     {
+        using var output = new MemoryStream();
+        EncodeTo(image, output, options, cancellationToken);
+        return output.ToArray();
+    }
+
+    private static void EncodeTo(Image image, Stream output, JxlEncoderOptions options, CancellationToken cancellationToken)
+    {
+        using var buffers = new JxlBufferScope();
+        using var workingBuffers = new JxlBufferScope();
+        var writer = new JxlBitWriter(buffers, segmented: true);
         int width = image.Width;
         int height = image.Height;
         bool wide = image.PixelType == PixelType.Rgba64;
@@ -67,36 +79,43 @@ internal sealed partial class JxlEncoder : IImageFormatEncoder<JxlEncoderOptions
         JxlXybInput? xybInput = distance == 0 ? null
             : JxlXybInput.TryCreate(icc is null ? encoding : new JxlColorEncoding { WantIcc = true, ColorSpace = gray ? JxlColorSpace.Gray : JxlColorSpace.Rgb },
                 icc is null ? null : JxlIccTarget.TryCreate(icc, gray), JxlToneMapping.Default.IntensityTarget, bitDepth);
-        byte[] codestream;
+
         if (xybInput is not null)
         {
             // Profiles and transfer functions XYB cannot be converted from (lookup tables, HLG) stay lossless.
-            JxlImage3F xyb = wide ? ToXyb(pixels64, width, height, xybInput, cancellationToken) : ToXyb(pixels, width, height, xybInput, cancellationToken);
+            JxlImage3F xyb = wide ? ToXyb(pixels64, width, height, xybInput, cancellationToken, workingBuffers) : ToXyb(pixels, width, height, xybInput, cancellationToken, workingBuffers);
             int[]? alphaPlane = alpha ? (wide ? AlphaPlane(pixels64, cancellationToken) : AlphaPlane(pixels, cancellationToken)) : null;
             // Alpha stays lossless at full size, so frames with alpha are not downsampled at high distances.
             var settings = JxlLossySettings.Create(Math.Max(distance, JxlLossySettings.MinDistance), options.Effort, resample: !alpha);
-            codestream = JxlCodestreamWriter.WriteLossy(new JxlLossyEncodeImage(width, height, xyb, alphaPlane, gray, encoding, icc, orientation, settings, bitDepth),
+            JxlCodestreamWriter.WriteLossyTo(new JxlLossyEncodeImage(width, height, xyb, alphaPlane, gray, encoding, icc, orientation, settings, bitDepth), writer,
                 cancellationToken);
         }
         else
         {
             (int[][] color, int[]? alphaPlane) = wide ? SplitPlanes(pixels64, gray, alpha, cancellationToken) : SplitPlanes(pixels, gray, alpha, cancellationToken);
             var input = new JxlEncodeImage(width, height, color, alphaPlane, encoding, icc, orientation, bitDepth);
-            codestream = JxlCodestreamWriter.Write(input, cancellationToken);
+            JxlCodestreamWriter.WriteTo(input, writer, cancellationToken);
         }
 
+        workingBuffers.Dispose();
         JxlBox[] boxes = JxlMetadataWriter.DescriptiveBoxes(
             options.Metadata.HasFlag(MetadataKinds.Exif) ? metadata.Exif : null,
             options.Metadata.HasFlag(MetadataKinds.Xmp) ? metadata.Xmp : null,
             options.CompressMetadata);
         int level = ConformanceLevel(width, height);
-        return boxes.Length == 0 && level == JxlContainer.DefaultLevel ? codestream : JxlContainerWriter.Write(codestream, boxes, level);
+        JxlCodestream codestream = writer.AsCodestream();
+        if (boxes.Length > 0 || level != JxlContainer.DefaultLevel) JxlContainerWriter.Write(output, codestream, boxes, level, cancellationToken);
+        else foreach (ReadOnlyMemory<byte> segment in codestream.Segments)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            output.Write(segment.Span);
+        }
     }
 
     // The XYB planes of the pixels; gray pixels have equal channels.
-    private static JxlImage3F ToXyb(ReadOnlySpan<Rgba32> pixels, int width, int height, JxlXybInput input, CancellationToken cancellationToken)
+    private static JxlImage3F ToXyb(ReadOnlySpan<Rgba32> pixels, int width, int height, JxlXybInput input, CancellationToken cancellationToken, JxlBufferScope? buffers = null)
     {
-        var xyb = new JxlImage3F(width, height);
+        var xyb = new JxlImage3F(width, height, buffers);
         for (int y = 0; y < height; y++)
         {
             if ((y & 0xF) == 0) cancellationToken.ThrowIfCancellationRequested();

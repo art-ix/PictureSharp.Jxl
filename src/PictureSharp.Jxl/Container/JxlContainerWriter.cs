@@ -1,3 +1,4 @@
+using PictureSharp.Formats.Jxl.Codestream.IO;
 using System.IO.Compression;
 
 namespace PictureSharp.Formats.Jxl.Container;
@@ -31,6 +32,20 @@ internal static class JxlContainerWriter
         JxlBoxHeader.Write(output, JxlBoxType.Codestream, codestream.Length);
         output.Write(codestream);
         return output.ToArray();
+    }
+
+    public static void Write(Stream output, JxlCodestream codestream, IEnumerable<JxlBox> metadata, int level = JxlContainer.DefaultLevel, CancellationToken cancellationToken = default)
+    {
+        output.Write(JxlDescriptor.ContainerSignature);
+        WriteBox(output, new JxlBox(JxlBoxType.FileType, FileTypeContent));
+        if (level != JxlContainer.DefaultLevel) WriteBox(output, new JxlBox(JxlBoxType.Level, new[] { (byte)level }));
+        foreach (JxlBox box in metadata) WriteBox(output, box);
+        JxlBoxHeader.Write(output, JxlBoxType.Codestream, codestream.Length);
+        foreach (ReadOnlyMemory<byte> segment in codestream.Segments)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            output.Write(segment.Span);
+        }
     }
 
     /// <summary>Writes one box; a compressed box becomes "brob" with the type in front of the Brotli stream.</summary>

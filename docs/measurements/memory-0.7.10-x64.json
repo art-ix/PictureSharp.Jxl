@@ -1,0 +1,331 @@
+{
+  "date": "2026-10-28",
+  "baselineVersion": "0.7.9",
+  "candidateVersion": "0.7.10",
+  "dotnetSdk": "10.0.401",
+  "platform": "Linux-7.1.5-76070105-generic-x86_64-with-glibc2.39",
+  "warmRuns": 3,
+  "notes": "Normal-tiering per-process allocation/RSS measurements. Final hot-loop inlining and dense FindSplit clearing do not change rented sizes. Controlled timings are recorded separately; allocation and RSS reductions are distinct.",
+  "cases": [
+    {
+      "id": "decode/photo1-d0-e7",
+      "before": {
+        "allocatedBytes": 56633024,
+        "gen0PerRun": 3,
+        "gen2PerRun": 2,
+        "peakRssMiB": 147.3828125
+      },
+      "after": {
+        "allocatedBytes": 11153992,
+        "gen0PerRun": 1,
+        "gen2PerRun": 0.3333333333333333,
+        "peakRssMiB": 90.14453125
+      },
+      "allocatedReductionPercent": 80.3047917766143
+    },
+    {
+      "id": "decode/photo1-d1-e7",
+      "before": {
+        "allocatedBytes": 33545824,
+        "gen0PerRun": 1,
+        "gen2PerRun": 0.6666666666666666,
+        "peakRssMiB": 145.48828125
+      },
+      "after": {
+        "allocatedBytes": 5852640,
+        "gen0PerRun": 0.3333333333333333,
+        "gen2PerRun": 0,
+        "peakRssMiB": 138.7578125
+      },
+      "allocatedReductionPercent": 82.55329784118584
+    },
+    {
+      "id": "decode/photo12-d0-e7",
+      "before": {
+        "allocatedBytes": 604961176,
+        "gen0PerRun": 11.333333333333334,
+        "gen2PerRun": 2,
+        "peakRssMiB": 839.30078125
+      },
+      "after": {
+        "allocatedBytes": 136191776,
+        "gen0PerRun": 9,
+        "gen2PerRun": 0,
+        "peakRssMiB": 460.12890625
+      },
+      "allocatedReductionPercent": 77.48751797586428
+    },
+    {
+      "id": "decode/photo12-d1-e7",
+      "before": {
+        "allocatedBytes": 380806136,
+        "gen0PerRun": 4.666666666666667,
+        "gen2PerRun": 1.6666666666666667,
+        "peakRssMiB": 650.83203125
+      },
+      "after": {
+        "allocatedBytes": 58724184,
+        "gen0PerRun": 0.3333333333333333,
+        "gen2PerRun": 0,
+        "peakRssMiB": 574.421875
+      },
+      "allocatedReductionPercent": 84.5789816790137
+    },
+    {
+      "id": "decode16/photo1-16-d0-e7",
+      "before": {
+        "allocatedBytes": 67844368,
+        "gen0PerRun": 4,
+        "gen2PerRun": 2,
+        "peakRssMiB": 109.39453125
+      },
+      "after": {
+        "allocatedBytes": 30184776,
+        "gen0PerRun": 2.3333333333333335,
+        "gen2PerRun": 0.6666666666666666,
+        "peakRssMiB": 124.171875
+      },
+      "allocatedReductionPercent": 55.50879624967544
+    },
+    {
+      "id": "decode16/photo1-16-d1-e7",
+      "before": {
+        "allocatedBytes": 37660688,
+        "gen0PerRun": 1.3333333333333333,
+        "gen2PerRun": 1,
+        "peakRssMiB": 138.8984375
+      },
+      "after": {
+        "allocatedBytes": 9964272,
+        "gen0PerRun": 0.3333333333333333,
+        "gen2PerRun": 0,
+        "peakRssMiB": 177.3984375
+      },
+      "allocatedReductionPercent": 73.54198096434139
+    },
+    {
+      "id": "decode16/photo12-16-d0-e7",
+      "before": {
+        "allocatedBytes": 789818384,
+        "gen0PerRun": 22.666666666666668,
+        "gen2PerRun": 0.6666666666666666,
+        "peakRssMiB": 1622.47265625
+      },
+      "after": {
+        "allocatedBytes": 340473992,
+        "gen0PerRun": 21.666666666666668,
+        "gen2PerRun": 0,
+        "peakRssMiB": 864.26171875
+      },
+      "allocatedReductionPercent": 56.892116099439896
+    },
+    {
+      "id": "decode16/photo12-16-d1-e7",
+      "before": {
+        "allocatedBytes": 429549848,
+        "gen0PerRun": 4.666666666666667,
+        "gen2PerRun": 1.6666666666666667,
+        "peakRssMiB": 663.50390625
+      },
+      "after": {
+        "allocatedBytes": 107473072,
+        "gen0PerRun": 1,
+        "gen2PerRun": 0.6666666666666666,
+        "peakRssMiB": 688.34765625
+      },
+      "allocatedReductionPercent": 74.98006983347832
+    },
+    {
+      "id": "encode/photo1-d0-e7",
+      "before": {
+        "allocatedBytes": 235316432,
+        "gen0PerRun": 4.333333333333333,
+        "gen2PerRun": 2,
+        "peakRssMiB": 486.5625
+      },
+      "after": {
+        "allocatedBytes": 45094960,
+        "gen0PerRun": 1,
+        "gen2PerRun": 0,
+        "peakRssMiB": 391.23046875
+      },
+      "allocatedReductionPercent": 80.83645939353696
+    },
+    {
+      "id": "encode/photo1-d1-e7",
+      "before": {
+        "allocatedBytes": 150487816,
+        "gen0PerRun": 3.6666666666666665,
+        "gen2PerRun": 1.3333333333333333,
+        "peakRssMiB": 473.1328125
+      },
+      "after": {
+        "allocatedBytes": 31187976,
+        "gen0PerRun": 1.6666666666666667,
+        "gen2PerRun": 0.3333333333333333,
+        "peakRssMiB": 172.6171875
+      },
+      "allocatedReductionPercent": 79.2754145624653
+    },
+    {
+      "id": "encode/screen-d0-e7",
+      "before": {
+        "allocatedBytes": 179039712,
+        "gen0PerRun": 3.6666666666666665,
+        "gen2PerRun": 1.3333333333333333,
+        "peakRssMiB": 413.1015625
+      },
+      "after": {
+        "allocatedBytes": 45014800,
+        "gen0PerRun": 1.6666666666666667,
+        "gen2PerRun": 0.3333333333333333,
+        "peakRssMiB": 324.31640625
+      },
+      "allocatedReductionPercent": 74.8576449899562
+    },
+    {
+      "id": "encode/screen-d1-e7",
+      "before": {
+        "allocatedBytes": 326989048,
+        "gen0PerRun": 6,
+        "gen2PerRun": 2,
+        "peakRssMiB": 415.71484375
+      },
+      "after": {
+        "allocatedBytes": 146312376,
+        "gen0PerRun": 2.6666666666666665,
+        "gen2PerRun": 0.6666666666666666,
+        "peakRssMiB": 477.82421875
+      },
+      "allocatedReductionPercent": 55.25465550148946
+    },
+    {
+      "id": "encode/photo12-d0-e7",
+      "before": {
+        "allocatedBytes": 1898392656,
+        "gen0PerRun": 15.333333333333334,
+        "gen2PerRun": 1.3333333333333333,
+        "peakRssMiB": 2592.96484375
+      },
+      "after": {
+        "allocatedBytes": 508708536,
+        "gen0PerRun": 2.6666666666666665,
+        "gen2PerRun": 0,
+        "peakRssMiB": 2507.6015625
+      },
+      "allocatedReductionPercent": 73.20319722096522
+    },
+    {
+      "id": "encode/photo12-d1-e7",
+      "before": {
+        "allocatedBytes": 1617178768,
+        "gen0PerRun": 17.666666666666668,
+        "gen2PerRun": 1.3333333333333333,
+        "peakRssMiB": 3156.83984375
+      },
+      "after": {
+        "allocatedBytes": 175620456,
+        "gen0PerRun": 3,
+        "gen2PerRun": 0,
+        "peakRssMiB": 1278.55078125
+      },
+      "allocatedReductionPercent": 89.14031896317847
+    },
+    {
+      "id": "encode16/photo1-16-d0-e7",
+      "before": {
+        "allocatedBytes": 262378208,
+        "gen0PerRun": 4,
+        "gen2PerRun": 1.3333333333333333,
+        "peakRssMiB": 515.17578125
+      },
+      "after": {
+        "allocatedBytes": 57448656,
+        "gen0PerRun": 1.3333333333333333,
+        "gen2PerRun": 0,
+        "peakRssMiB": 410.19921875
+      },
+      "allocatedReductionPercent": 78.1046389340383
+    },
+    {
+      "id": "encode16/photo1-16-d1-e7",
+      "before": {
+        "allocatedBytes": 150587464,
+        "gen0PerRun": 3.3333333333333335,
+        "gen2PerRun": 0.6666666666666666,
+        "peakRssMiB": 409.36328125
+      },
+      "after": {
+        "allocatedBytes": 31364976,
+        "gen0PerRun": 1.3333333333333333,
+        "gen2PerRun": 0,
+        "peakRssMiB": 198.93359375
+      },
+      "allocatedReductionPercent": 79.17158894448212
+    },
+    {
+      "id": "encode16/screen-16-d0-e7",
+      "before": {
+        "allocatedBytes": 390525072,
+        "gen0PerRun": 4.333333333333333,
+        "gen2PerRun": 1.6666666666666667,
+        "peakRssMiB": 804.81640625
+      },
+      "after": {
+        "allocatedBytes": 69600688,
+        "gen0PerRun": 1.3333333333333333,
+        "gen2PerRun": 0.3333333333333333,
+        "peakRssMiB": 481.58984375
+      },
+      "allocatedReductionPercent": 82.17766463916047
+    },
+    {
+      "id": "encode16/screen-16-d1-e7",
+      "before": {
+        "allocatedBytes": 327260744,
+        "gen0PerRun": 5.666666666666667,
+        "gen2PerRun": 1.6666666666666667,
+        "peakRssMiB": 548.5703125
+      },
+      "after": {
+        "allocatedBytes": 146577256,
+        "gen0PerRun": 3,
+        "gen2PerRun": 1,
+        "peakRssMiB": 354.51953125
+      },
+      "allocatedReductionPercent": 55.21086513205506
+    },
+    {
+      "id": "encode16/photo12-16-d0-e7",
+      "before": {
+        "allocatedBytes": 2134890040,
+        "gen0PerRun": 16.333333333333332,
+        "gen2PerRun": 1,
+        "peakRssMiB": 4941.375
+      },
+      "after": {
+        "allocatedBytes": 575183128,
+        "gen0PerRun": 5,
+        "gen2PerRun": 0.3333333333333333,
+        "peakRssMiB": 2500.1796875
+      },
+      "allocatedReductionPercent": 73.05795065679355
+    },
+    {
+      "id": "encode16/photo12-16-d1-e7",
+      "before": {
+        "allocatedBytes": 2863217288,
+        "gen0PerRun": 18,
+        "gen2PerRun": 1.6666666666666667,
+        "peakRssMiB": 4856.29296875
+      },
+      "after": {
+        "allocatedBytes": 1424334888,
+        "gen0PerRun": 3.6666666666666665,
+        "gen2PerRun": 0.6666666666666666,
+        "peakRssMiB": 3443.9375
+      },
+      "allocatedReductionPercent": 50.2540413551736
+    }
+  ]
+}

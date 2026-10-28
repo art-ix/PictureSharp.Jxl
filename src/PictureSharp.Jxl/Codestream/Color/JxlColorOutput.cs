@@ -134,6 +134,16 @@ internal sealed class JxlColorOutput
                     YCbCrToRgb(ref r0[x], ref r1[x], ref r2[x]);
                 }
             }
+            else if (curves is null && transfer == JxlTransferFunction.Srgb)
+            {
+                for (int x = 0; x < r0.Length; x++)
+                {
+                    XybToLinear(ref r0[x], ref r1[x], ref r2[x]);
+                    r0[x] = SrgbFromLinear(r0[x]);
+                    r1[x] = SrgbFromLinear(r1[x]);
+                    r2[x] = SrgbFromLinear(r2[x]);
+                }
+            }
             else
             {
                 for (int x = 0; x < r0.Length; x++)
@@ -154,7 +164,8 @@ internal sealed class JxlColorOutput
         (cb, luma, cr) = (red, green, blue);
     }
 
-    private void XybToRgb(ref float x, ref float y, ref float b)
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    private void XybToLinear(ref float x, ref float y, ref float b)
     {
         float gammaR = (y + x) - biasesCbrt[0];
         float gammaG = (y - x) - biasesCbrt[1];
@@ -172,6 +183,13 @@ internal sealed class JxlColorOutput
         red = JxlFastMath.Fma(m[2], mixedB, red);
         green = JxlFastMath.Fma(m[5], mixedB, green);
         blue = JxlFastMath.Fma(m[8], mixedB, blue);
+        (x, y, b) = (red, green, blue);
+    }
+
+    private void XybToRgb(ref float x, ref float y, ref float b)
+    {
+        XybToLinear(ref x, ref y, ref b);
+        float red = x, green = y, blue = b;
         if (curves is not null)
         {
             (x, y, b) = (curves[0].Encode(red), curves[curves.Length == 3 ? 1 : 0].Encode(green), curves[^1].Encode(blue));

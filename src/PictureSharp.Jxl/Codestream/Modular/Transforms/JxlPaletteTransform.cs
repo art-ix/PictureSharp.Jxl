@@ -28,7 +28,7 @@ internal sealed class JxlPaletteTransform(JxlTransform description) : IJxlModula
 
         image.RemoveChannels((int)description.BeginC + 1, count - 1);
         long width = (long)description.Colors + description.Deltas;
-        image.InsertChannel(0, new JxlChannel((int)width, count, -1, -1));
+        image.InsertChannel(0, new JxlChannel((int)width, count, -1, -1, image.Buffers));
     }
 
     public void Inverse(JxlModularImage image, JxlWeightedHeader weighted, CancellationToken cancellationToken)
@@ -51,10 +51,10 @@ internal sealed class JxlPaletteTransform(JxlTransform description) : IJxlModula
         int height = indexChannel.Height;
         int[] indices = indexChannel.Pixels;
         var outputs = new JxlChannel[count];
-        outputs[0] = new JxlChannel(width, height, indexChannel.HShift, indexChannel.VShift);
+        outputs[0] = new JxlChannel(width, height, indexChannel.HShift, indexChannel.VShift, indexChannel.Buffers);
         for (int i = 1; i < count; i++)
         {
-            outputs[i] = new JxlChannel(width, height, indexChannel.HShift, indexChannel.VShift);
+            outputs[i] = new JxlChannel(width, height, indexChannel.HShift, indexChannel.VShift, indexChannel.Buffers);
         }
 
         int[] entries = palette.Pixels;
@@ -67,7 +67,7 @@ internal sealed class JxlPaletteTransform(JxlTransform description) : IJxlModula
                 for (int c = 0; c < count; c++)
                 {
                     int[] output = outputs[c].Pixels;
-                    for (int i = 0; i < indices.Length; i++)
+                    for (int i = 0; i < width * height; i++)
                     {
                         if ((i & 0xFFF) == 0) cancellationToken.ThrowIfCancellationRequested();
                         // A single channel is clamped to the palette; several channels may use implicit entries.
@@ -81,7 +81,7 @@ internal sealed class JxlPaletteTransform(JxlTransform description) : IJxlModula
                 for (int c = 0; c < count; c++)
                 {
                     int[] output = outputs[c].Pixels;
-                    JxlWeightedPredictor? predictor = description.Predictor == JxlPredictor.Weighted ? new JxlWeightedPredictor(weighted, width) : null;
+                    using JxlWeightedPredictor? predictor = description.Predictor == JxlPredictor.Weighted ? new JxlWeightedPredictor(weighted, width) : null;
                     for (int y = 0; y < height; y++)
                     {
                         cancellationToken.ThrowIfCancellationRequested();
