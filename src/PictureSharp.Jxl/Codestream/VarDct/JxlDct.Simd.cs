@@ -188,13 +188,16 @@ internal static partial class JxlDct
                 Vector256<float> a = LoadAvx2(from, c), b = LoadAvx2(from, fromStride + c);
                 if (n == 2)
                 {
-                    (a + b).CopyTo(to.Slice(c, 8));
-                    (a - b).CopyTo(to.Slice(toStride + c, 8));
+                    (Vector256<float> sum, Vector256<float> difference) = (a + b, a - b);
+                    if (scale != 1.0f) (sum, difference) = (scale * sum, scale * difference);
+                    sum.CopyTo(to.Slice(c, 8));
+                    difference.CopyTo(to.Slice(toStride + c, 8));
                     continue;
                 }
                 Vector256<float> d = LoadAvx2(from, 2 * fromStride + c), e = LoadAvx2(from, 3 * fromStride + c);
                 if (inverse) Idct4Avx2(a, b, d, e, out a, out b, out d, out e);
                 else Dct4Avx2(a, b, d, e, out a, out b, out d, out e);
+                if (scale != 1.0f) (a, b, d, e) = (scale * a, scale * b, scale * d, scale * e);
                 a.CopyTo(to.Slice(c, 8)); b.CopyTo(to.Slice(toStride + c, 8));
                 d.CopyTo(to.Slice(2 * toStride + c, 8)); e.CopyTo(to.Slice(3 * toStride + c, 8));
             }
@@ -211,8 +214,10 @@ internal static partial class JxlDct
         Vector128<float> a = Load128(from, c), b = Load128(from, fromStride + c);
         if (n == 2)
         {
-            (a + b).CopyTo(to.Slice(c, 4));
-            (a - b).CopyTo(to.Slice(toStride + c, 4));
+            (Vector128<float> sum, Vector128<float> difference) = (a + b, a - b);
+            if (scale != 1.0f) (sum, difference) = (scale * sum, scale * difference);
+            sum.CopyTo(to.Slice(c, 4));
+            difference.CopyTo(to.Slice(toStride + c, 4));
             return true;
         }
 
@@ -221,6 +226,7 @@ internal static partial class JxlDct
         {
             if (inverse) Idct4x128(a, b, d, e, out a, out b, out d, out e);
             else Dct4x128(a, b, d, e, out a, out b, out d, out e);
+            if (scale != 1.0f) (a, b, d, e) = (scale * a, scale * b, scale * d, scale * e);
             a.CopyTo(to.Slice(c, 4)); b.CopyTo(to.Slice(toStride + c, 4));
             d.CopyTo(to.Slice(2 * toStride + c, 4)); e.CopyTo(to.Slice(3 * toStride + c, 4));
             return true;
@@ -574,7 +580,7 @@ internal static partial class JxlDct
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void Transpose8x8Avx(ref Vector256<float> r0, ref Vector256<float> r1, ref Vector256<float> r2, ref Vector256<float> r3,
+    internal static void Transpose8x8Avx(ref Vector256<float> r0, ref Vector256<float> r1, ref Vector256<float> r2, ref Vector256<float> r3,
         ref Vector256<float> r4, ref Vector256<float> r5, ref Vector256<float> r6, ref Vector256<float> r7)
     {
         Vector256<float> t0 = Avx.UnpackLow(r0, r1), t1 = Avx.UnpackHigh(r0, r1), t2 = Avx.UnpackLow(r2, r3), t3 = Avx.UnpackHigh(r2, r3);
@@ -598,16 +604,6 @@ internal static partial class JxlDct
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int AddRowAvx2(Span<float> row, ReadOnlySpan<float> other)
-    {
-        if (!Avx2.IsSupported) return 0;
-        int end = row.Length & ~7;
-        for (int c = 0; c < end; c += 8)
-            (LoadAvx2(row, c) + LoadAvx2(other, c)).CopyTo(row.Slice(c, 8));
-        return end;
-    }
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static int ScaleRowAvx2(Span<float> row, float scale)
     {
         if (!Avx2.IsSupported) return 0;
@@ -617,14 +613,66 @@ internal static partial class JxlDct
         return end;
     }
 
+    // to = from * scale (IdctColumnsTo's first odd row, DctColumnsFrom's scaled stores); non-fused, so SSE4.1 too.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static int CombineFirstAvx2(Span<float> row, ReadOnlySpan<float> second)
+    private static int ScaleRowToSimd(ReadOnlySpan<float> from, Span<float> to, float scale)
     {
-        if (!CanTransformAvx2) return 0;
-        int end = row.Length & ~7;
-        for (int c = 0; c < end; c += 8)
-            Fma.MultiplyAdd(LoadAvx2(row, c), Vector256.Create(Sqrt2), LoadAvx2(second, c)).CopyTo(row.Slice(c, 8));
-        return end;
+        int c = 0;
+        if (Avx2.IsSupported)
+        {
+            for (; c + 8 <= to.Length; c += 8)
+                (LoadAvx2(from, c) * scale).CopyTo(to.Slice(c, 8));
+        }
+        else if (Sse41.IsSupported)
+        {
+            for (; c + 4 <= to.Length; c += 4)
+                (Load128(from, c) * scale).CopyTo(to.Slice(c, 4));
+        }
+        return c;
+    }
+
+    // to = row + other (IdctColumnsTo's odd rows); non-fused.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int AddRowsToSimd(ReadOnlySpan<float> row, ReadOnlySpan<float> other, Span<float> to)
+    {
+        int c = 0;
+        if (Avx2.IsSupported)
+        {
+            for (; c + 8 <= to.Length; c += 8)
+                (LoadAvx2(row, c) + LoadAvx2(other, c)).CopyTo(to.Slice(c, 8));
+        }
+        else if (Sse41.IsSupported)
+        {
+            for (; c + 4 <= to.Length; c += 4)
+                (Load128(row, c) + Load128(other, c)).CopyTo(to.Slice(c, 4));
+        }
+        return c;
+    }
+
+    // DctColumnsFrom's odd rows: fma(row, sqrt2, next) for the first (AVX2 + FMA only), else row + next; times scale
+    // when scaled.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static int OddRowToSimd(bool first, ReadOnlySpan<float> row, ReadOnlySpan<float> next, Span<float> to, bool scaled, float scale)
+    {
+        int c = 0;
+        if (first ? CanTransformAvx2 : Avx2.IsSupported)
+        {
+            for (; c + 8 <= to.Length; c += 8)
+            {
+                Vector256<float> value = first ? Fma.MultiplyAdd(LoadAvx2(row, c), Vector256.Create(Sqrt2), LoadAvx2(next, c))
+                    : LoadAvx2(row, c) + LoadAvx2(next, c);
+                (scaled ? scale * value : value).CopyTo(to.Slice(c, 8));
+            }
+        }
+        else if (!first && Sse41.IsSupported)
+        {
+            for (; c + 4 <= to.Length; c += 4)
+            {
+                Vector128<float> value = Load128(row, c) + Load128(next, c);
+                (scaled ? scale * value : value).CopyTo(to.Slice(c, 4));
+            }
+        }
+        return c;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -11,7 +11,7 @@ namespace PictureSharp.Formats.Jxl.Codestream.Encoding.Lossy;
 /// uses the decoder's own dequantization, transforms and filters. Ported from libjxl v0.12.0 lib/jxl/enc_heuristics.cc
 /// (BSD-3-Clause).
 /// </summary>
-internal static class JxlEpfSharpnessSearch
+internal static partial class JxlEpfSharpnessSearch
 {
     private const int Values = 8;
 
@@ -39,7 +39,7 @@ internal static class JxlEpfSharpnessSearch
             Array.Fill(frame.Sharpness, value);
             using var buffers = new JxlBufferScope();
             JxlPlane[] decoded = Reconstruct(frame, dequantizedDc, patches, references, cancellationToken, buffers);
-            errors[value] = BlockErrors(frame, original, decoded, mask1X1);
+            errors[value] = BlockErrors(xBlocks, yBlocks, original, decoded, mask1X1);
         }
 
         byte[] output = frame.Sharpness;
@@ -161,15 +161,16 @@ internal static class JxlEpfSharpnessSearch
     }
 
     // ComputeBlockL2Distance: the squared, masked error of each block, weighted per channel.
-    private static float[] BlockErrors(JxlLossyFrame frame, JxlImage3F original, JxlPlane[] decoded, float[] mask1X1)
+    internal static float[] BlockErrors(int xBlocks, int yBlocks, JxlImage3F original, JxlPlane[] decoded, float[] mask1X1)
     {
         int width = decoded[0].Width;
         int height = decoded[0].Height;
-        float[] errors = new float[frame.XBlocks * frame.YBlocks];
+        float[] errors = new float[xBlocks * yBlocks];
         Span<float> error = stackalloc float[3];
-        for (int by = 0; by < frame.YBlocks; by++)
+        for (int by = 0; by < yBlocks; by++)
         {
-            for (int bx = 0; bx < frame.XBlocks; bx++)
+            int done = BlockErrorsAvx2(original, decoded, mask1X1, by, width, height, errors.AsSpan(by * xBlocks, xBlocks));
+            for (int bx = done; bx < xBlocks; bx++)
             {
                 error.Clear();
                 for (int y = by * 8; y < Math.Min(by * 8 + 8, height); y++)
@@ -186,7 +187,7 @@ internal static class JxlEpfSharpnessSearch
                     }
                 }
 
-                errors[by * frame.XBlocks + bx] = (float)(12.339445295782363 * error[0] + 1.0 * error[1] + 0.2 * error[2]);
+                errors[by * xBlocks + bx] = (float)(12.339445295782363 * error[0] + 1.0 * error[1] + 0.2 * error[2]);
             }
         }
 

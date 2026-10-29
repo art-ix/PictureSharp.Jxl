@@ -95,15 +95,18 @@ internal sealed partial class JxlCoefficientQuantizer
                 QuantizeBlockAC(1, 1.0f, xs, ys, thresholdsY, inverse.AsSpan(size, size), block.AsSpan(size, size), quant,
                     quantized.AsSpan(size, size));
                 float inverseQuant = quantizer.InverseQuantAc(quant);
-                for (int k = 0; k < size; k++)
+                int tile = frame.Tile(bx, by);
+                float xFactor = JxlLossyFrame.YToXRatio(frame.YToX[tile]);
+                float bFactor = JxlLossyFrame.YToBRatio(frame.YToB[tile]);
+                // Both loops below at once (the second reads only the first's results).
+                int done = DequantizeYAndSubtractAvx2(quantized.AsSpan(size, size), dequant.AsSpan(size, size), block.AsSpan(0, 3 * size),
+                    size, inverseQuant, xFactor, bFactor, biases[1], biases[3]);
+                for (int k = done; k < size; k++)
                 {
                     block[size + k] = AdjustQuantBias(quantized[size + k]) * dequant[size + k] * inverseQuant;
                 }
 
-                int tile = frame.Tile(bx, by);
-                float xFactor = JxlLossyFrame.YToXRatio(frame.YToX[tile]);
-                float bFactor = JxlLossyFrame.YToBRatio(frame.YToB[tile]);
-                for (int k = 0; k < size; k++)
+                for (int k = done; k < size; k++)
                 {
                     float y = block[size + k];
                     block[k] = MathF.FusedMultiplyAdd(-xFactor, y, block[k]);

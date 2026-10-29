@@ -108,7 +108,7 @@ its ICC profile via `JxlIccTarget`) or sRGB for `ToSrgb`.
 - **SIMD (0.8.0):** vector kernels live in sibling `*.Simd.cs` files of the same partial type. The scalar caller
   invokes a dispatch helper per row/block that returns the processed count or declines (unsupported ISA, short
   input, layout); scalar tails stay. Kernels whose scalar code uses `MathF.FusedMultiplyAdd` require AVX2 + FMA;
-  non-fused kernels (pixel output, quantization) also have SSE4.1 paths. Reduction order, rounding and clamping are
+  non-fused kernels (pixel output, quantization, the encoder's 5×5 convolution, DCT row helpers) also have SSE4.1 paths. Reduction order, rounding and clamping are
   those of 0.7.10; test-only frozen scalar copies under `tests/.../ScalarBaseline` and `scripts/verify-simd.sh`
   (native, SSE4.1-only, scalar) check bit identity. See the [SIMD design](design/0.8.0-simd.md).
   Native AOT compiles `IsSupported` against its instruction-set baseline (x86-64-v2 by default: SSE4.1 kernels

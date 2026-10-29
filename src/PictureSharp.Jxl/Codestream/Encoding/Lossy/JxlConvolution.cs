@@ -8,7 +8,7 @@ namespace PictureSharp.Formats.Jxl.Codestream.Encoding.Lossy;
 internal readonly record struct JxlSymmetric5Weights(float C, float R1, float R2, float D1, float D2, float L);
 
 /// <summary>Convolutions with mirrored borders. Ported from libjxl v0.12.0 lib/jxl/convolve_symmetric5.cc (BSD-3-Clause).</summary>
-internal static class JxlConvolution
+internal static partial class JxlConvolution
 {
     /// <summary>Convolves a <paramref name="width"/>×<paramref name="height"/> plane with a symmetric 5×5 kernel.</summary>
     public static float[] Symmetric5(float[] input, int width, int height, JxlSymmetric5Weights w, CancellationToken cancellationToken, JxlBufferScope? buffers = null)
@@ -25,6 +25,7 @@ internal static class JxlConvolution
             int rp1 = Mirror(y + 1, height) * width;
             for (int x = 0; x < width; x++)
             {
+                if (x == 2) x += Symmetric5RowSimd(input, output, y * width, r0, rm2, rp2, rm1, rp1, width, w);
                 (int xm2, int xm1, int xp1, int xp2) = x >= 2 && x < width - 2
                     ? (x - 2, x - 1, x + 1, x + 2)
                     : (Mirror(x - 2, width), Mirror(x - 1, width), Mirror(x + 1, width), Mirror(x + 2, width));

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Build isolated SIMD acceptance variants under ignored artifacts/ (never changes library sources).
 
-Usage: build-simd-variants.py [all|no-dct|no-color|no-filters|no-output|no-dequant|no-quant|no-cfl|no-recursion ...]
+Usage: build-simd-variants.py [all|no-dct|no-color|no-filters|no-output|no-dequant|no-quant|no-cfl|no-recursion|no-<name> ...]
 Disabled dispatch helpers return zero/false at compile time, leaving their original scalar callers intact.
 Use the same CPU/runtime settings for both variants; these are private measurement builds, not packages.
 """
@@ -13,8 +13,8 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 OUT = ROOT / 'artifacts/simd-0.8.0/variants'
 DISABLE = {
-    'dct': ('Codestream/VarDct/JxlDct.Simd.cs', ['TransformColumnsSimd', 'ScaledIdct8x8Avx2', 'ScaledDct8x8Avx2', 'TransposeSimd', 'IdctColumns16Avx2', 'DctColumns16Avx2', 'TransformColumns128', 'AddRowAvx2', 'ScaleRowAvx2', 'CombineFirstAvx2', 'MergeRowsAvx2', 'SplitRowsAvx2']),
-    'recursion': ('Codestream/VarDct/JxlDct.Simd.cs', ['AddRowAvx2', 'ScaleRowAvx2', 'CombineFirstAvx2', 'MergeRowsAvx2', 'SplitRowsAvx2']),
+    'dct': ('Codestream/VarDct/JxlDct.Simd.cs', ['TransformColumnsSimd', 'ScaledIdct8x8Avx2', 'ScaledDct8x8Avx2', 'TransposeSimd', 'IdctColumns16Avx2', 'DctColumns16Avx2', 'TransformColumns128', 'ScaleRowAvx2', 'ScaleRowToSimd', 'AddRowsToSimd', 'OddRowToSimd', 'MergeRowsAvx2', 'SplitRowsAvx2']),
+    'recursion': ('Codestream/VarDct/JxlDct.Simd.cs', ['ScaleRowAvx2', 'ScaleRowToSimd', 'AddRowsToSimd', 'OddRowToSimd', 'MergeRowsAvx2', 'SplitRowsAvx2']),
     'color': ('Codestream/Color/JxlColorOutput.Simd.cs', ['ApplyXybAvx2', 'YCbCrToRgbAvx2']),
     'filters': ('Codestream/Rendering/JxlRenderPipeline.Simd.cs', ['GaborishAvx2', 'EpfAvx2']),
     'output': ('Integration/JxlPixelWriter.Simd.cs', ['WriteWideRowSimd', 'WriteNarrowRowSimd']),
@@ -27,7 +27,11 @@ DISABLE = {
     'afv': ('Codestream/VarDct/JxlDct.Simd.cs', ['AfvBasisAvx2']),
     'gather': ('Codestream/VarDct/JxlDct.Simd.cs', ['GatherAvx2']),
     'haar': ('Codestream/VarDct/JxlDct.Simd.cs', ['Dct2X2Sse41', 'ForwardDct2X2Sse41']),
+    'rowcopy': ('Codestream/VarDct/JxlDct.Simd.cs', ['ScaleRowToSimd', 'AddRowsToSimd', 'OddRowToSimd']),
+    'convolution': ('Codestream/Encoding/Lossy/JxlConvolution.Simd.cs', ['Symmetric5RowSimd']),
+    'sharpness': ('Codestream/Encoding/Lossy/JxlEpfSharpnessSearch.Simd.cs', ['BlockErrorsAvx2']),
     'quant': ('Codestream/Encoding/Lossy/JxlCoefficientQuantizer.Simd.cs', ['QuantizeRowSimd']),
+    'dequant-y': ('Codestream/Encoding/Lossy/JxlCoefficientQuantizer.Simd.cs', ['DequantizeYAndSubtractAvx2']),
     'cfl': ('Codestream/Encoding/Lossy/JxlChromaFromLumaSearch.Simd.cs', ['PrepareSlopesAvx2', 'DerivativesAvx2']),
 }
 

@@ -410,5 +410,74 @@ compile-time false, so an AOT application runs only the SSE4.1 kernels (pixel ou
 DCT/colour/filter/encoder code; the numbers above are JIT numbers. Publishing with
 `-p:IlcInstructionSet=x86-64-v3` (or `native`) enables the AVX2/FMA kernels, and the binary then requires such a CPU.
 The package consumer passes under JIT, default AOT (AVX2=False, SSE4.1=True, FMA=False) and x86-64-v3 AOT (all True).
-Not measured: AOT speed, SSE4.1-only and scalar-only speed (the masked runs are correctness evidence only), CPUs without
-AVX2, ARM64. Rejected in the last pass: merging EPF copies of consecutive unfiltered blocks (no gain ≥ 2%).
+Not measured for the release: AOT speed and SSE4.1-only speed (measured afterwards, see the next section), scalar-only
+speed, CPUs without AVX2, ARM64. Rejected in the last pass: merging EPF copies of consecutive unfiltered blocks (no gain ≥ 2%).
+
+## SIMD after 0.8.0 (unreleased)
+
+Measured on 2026-10-29 with the same machine, runtime and method as above (paired alternating processes, CPU 0,
+2 rounds × 5 warm calls, borderline results rechecked with 4 rounds). [Raw data](../measurements/simd-after-0.8.0.json).
+Output is still identical to 0.7.10: the 1433-result all-efforts golden set has SHA-256 92d936fd…e06, as before.
+
+### Native AOT and SSE4.1 (0.7.10 vs released 0.8.0)
+
+AOT harnesses were published with `PublishAot` from the original 0.7.10 package and from the 0.8.0 source; the
+SSE4.1 rows are JIT runs with `DOTNET_EnableAVX=0` for both builds (AVX2/FMA off, SSE4.1 on, verified per process).
+
+| Case | AOT default (x86-64-v2), 0.7.10 → 0.8.0 (ms) | AOT x86-64-v3, 0.7.10 → 0.8.0 (ms) | JIT SSE4.1 only, 0.7.10 → 0.8.0 (ms) |
+| --- | ---: | ---: | ---: |
+| `decode/photo1-d1-e7` | 134.3 → 125.2 (−6.8%) | 60.7 → 20.0 (−67.1%) | 143.5 → 136.6 (−4.8%) |
+| `decode/screen-d1-e7` | 294.7 → 280.8 (−4.7%) | 111.7 → 35.8 (−68.0%) | 321.4 → 311.7 (−3.0%) |
+| `decode16/photo1-16-d1-e7` | 177.8 → 166.7 (−6.2%) | 62.8 → 21.4 (−65.9%) | 187.6 → 185.8 (−0.9%) |
+| `encode/photo1-d1-e3` | 84.0 → 77.0 (−8.3%) | 73.7 → 52.1 (−29.3%) | 81.9 → 78.3 (−4.3%) |
+| `encode/photo1-d1-e7` | 2103 → 2025 (−3.7%) | 1289 → 514 (−60.2%) | 2268 → 2143 (−5.5%) |
+| `decode/photo1-d0-e7` (control) | 270.2 → 273.2 (+1.1%) | 269.7 → 263.3 (−2.4%) | 275.7 → 275.3 (−0.2%) |
+
+Without hardware FMA (the default AOT instruction set, or a CPU without AVX2/FMA) the scalar code's exact
+`MathF.FusedMultiplyAdd` is computed in software: 0.7.10 itself is about 2× slower there than under JIT
+(photo decode 134 ms vs 62 ms), and the FMA kernels cannot run. Applications that publish with Native AOT should use
+`-p:IlcInstructionSet=x86-64-v3` (or `native`) where the target CPUs allow it; that build matches or beats JIT.
+
+### Kernels added after 0.8.0
+
+Each change measured against the build without it (the variant with its dispatch disabled, or the previous snapshot
+for scalar restructuring); all kept changes have bit-identical output in the scalar/SSE4.1/AVX2 differential tests.
+
+| Change | Result |
+| --- | --- |
+| DCT n ≥ 16: the recursive IDCT stores straight into the destination, odd rows copied already summed; the DCT reads the source rows and stores scaled, summed rows (no copy/scale passes; SSE4.1 helpers too) | decode −4.1% photo, −4.9% screen; encode e7 ±0.4% |
+| 5×5 symmetric convolution (encoder inverse Gaborish, mask blur), AVX2 and SSE4.1, unfused as the scalar code | encode e7 −3.9% photo, −3.7% screen; e3 −0.2% |
+| DCT n = 2/4 (4×4, 4×8, AFV, DC-to-LLF) read the source and store scaled results directly, no row copies | encode e7 −10.0% photo, −9.2% screen; decode screen −6.9%, photo +0.6% |
+| EPF sharpness search block errors: eight blocks per vector after an 8×8 transpose, each block's ordered float sum kept | encode e7 −3.9% photo, −2.8% screen (4-round recheck) |
+| Encoder Y dequantization with the decoder's vector bias, fused with the CfL subtraction | encode e3 −10.2%, e1 −4.1%, e7 −2.4% |
+| Rejected: SIMD zero counts for coefficient orders | e3 −2.0%, recheck −0.1% |
+
+### Current vs released 0.8.0
+
+| Case | 0.8.0 (ms) | current (ms) | Change |
+| --- | ---: | ---: | ---: |
+| `decode/photo1-d1-e7` | 19.7 | 18.6 | −5.6% |
+| `decode/photo1-d3-e3` | 17.1 | 17.0 | −0.5% |
+| `decode/screen-d1-e7` (recheck) | 34.7 | 33.5 | −3.6% |
+| `decode16/photo1-16-d1-e7` | 20.9 | 20.3 | −2.7% |
+| `decode16/screen-16-d1-e7` (recheck) | 35.2 | 34.4 | −2.1% |
+| `decode/photo12-d1-e7` | 245.9 | 246.4 | +0.2% |
+| `encode/photo1-d1-e1` | 50.9 | 45.3 | −11.0% |
+| `encode/photo1-d1-e3` | 51.8 | 46.5 | −10.4% |
+| `encode/photo1-d1-e5` | 292.3 | 256.2 | −12.3% |
+| `encode/photo1-d1-e7` | 540.8 | 443.6 | −18.0% |
+| `encode/screen-d1-e7` | 941.6 | 800.2 | −15.0% |
+| `encode16/photo1-16-d1-e7` | 556.2 | 457.1 | −17.8% |
+| Controls (Modular decode/encode, JPEG reconstruction, small images), rechecked where above 1% | | | −1.0..+0.8% |
+| AOT default: decode photo / screen, encode e3 / e7 | | | −5.0 / −2.9 / −0.6 / −3.5% |
+| AOT x86-64-v3: decode photo / screen, encode e3 / e7 | | | −7.3 / −4.6 / −10.7 / −17.4% |
+| JIT SSE4.1 only: decode photo / screen, encode e3 / e7 | | | −2.1 / +0.2 / −0.7 / −8.2% |
+
+Warm allocations are unchanged in every case; the new kernels use no heap scratch (BlockErrors: 24 stack floats).
+`decode/small-64x64` first showed +1.7% and +3.3% with 5 calls per process; with 200 calls it is −1.1% and −0.3%.
+`decode/tiny-1x1` (0.010 ms) varies by ±4%. Open: the lossless decode control `decode/photo1-d0-e7` is reproducibly
++1.4% / +1.5% under default AOT (4-round recheck), +0.9% under x86-64-v3 AOT and +0.8% under JIT. No changed code runs
+on that path (Modular decoding and integer output); whole-program code layout is the likely cause, not verified.
+Remaining profile leaders:
+encode e7 ordered entropy sums (~16%), CfL derivatives (~6%); e3 exact XYB cube root (~17%) and tokenization;
+decode entropy reading (~13%) and EPF (~11%), which are sequential or already vectorized.

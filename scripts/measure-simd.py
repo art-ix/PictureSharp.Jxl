@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Paired before/after measurements of frozen builds, never building or tracing while timing.
 
-Usage: measure-simd.py <before.dll> <after.dll> --label name --case decode/photo1-d1-e7 [--case ...]
+Usage: measure-simd.py <before.dll|exe> <after.dll|exe> --label name --case decode/photo1-d1-e7 [--case ...]
 Both builds run with identical ISA masks. SSE4.1 results on a masked modern CPU are not old-CPU measurements.
 """
 import argparse
@@ -19,6 +19,16 @@ OUT = ROOT / 'artifacts/simd-0.8.0'
 
 def sha(path):
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
+
+
+def command(path):
+    # A framework-dependent harness DLL runs under dotnet; a Native AOT harness is its own executable.
+    return ['dotnet', str(path)] if path.suffix == '.dll' else [str(path)]
+
+
+def library_sha(path):
+    library = path.with_name('PictureSharp.Jxl.dll')
+    return sha(library if library.exists() else path)
 
 
 def main():
@@ -43,10 +53,10 @@ def main():
     record = {
         'date': '2026-10-29', 'cpu': 'Intel Core i5-12500H', 'affinity': args.cpu, 'runtime': '10.0.12',
         'tieredCompilation': False, 'mode': args.mode, 'rounds': args.rounds, 'runs': args.runs,
-        'builds': {key: {'dll': str(path.relative_to(ROOT)), 'jxlSha256': sha(path.with_name('PictureSharp.Jxl.dll'))} for key, path in files.items()},
+        'builds': {key: {'dll': str(path.relative_to(ROOT)), 'jxlSha256': library_sha(path)} for key, path in files.items()},
         'measurements': [], 'summary': [],
     }
-    listing = subprocess.run(['dotnet', str(files['after']), 'list', str(ROOT)], env=env, text=True, capture_output=True, check=True).stdout
+    listing = subprocess.run(command(files['after']) + ['list', str(ROOT)], env=env, text=True, capture_output=True, check=True).stdout
     inputs = {parts[0]: Path(parts[1]) for line in listing.splitlines() if len(parts := line.split('\t')) >= 2}
     record['inputs'] = {case: sha(inputs[case]) for case in args.cases}
     OUT.mkdir(parents=True, exist_ok=True)
@@ -56,7 +66,7 @@ def main():
             for key in (['before', 'after'] if round_index % 2 == 0 else ['after', 'before']):
                 with tempfile.NamedTemporaryFile() as rss:
                     p = subprocess.run(['/usr/bin/time', '-f', '%M', '-o', rss.name, 'taskset', '-c', args.cpu,
-                                        'dotnet', str(files[key]), 'case', str(ROOT), case, str(args.runs)],
+                                        *command(files[key]), 'case', str(ROOT), case, str(args.runs)],
                                        env=env, capture_output=True, text=True, check=True)
                     result = json.loads(p.stdout)
                     result.update(variant=key, round=round_index, peakRssMiB=int(Path(rss.name).read_text()) / 1024)

@@ -485,7 +485,35 @@ internal static partial class JxlDct
             return;
         }
 
+        if (n is 2 or 4)
+        {
+            // The leaves read the coefficients and store the destination rows directly.
+            int columns = TransformColumnsSimd(n, count, from, fromStride, to, toStride, true, 1.0f);
+            for (int c = columns; c < count; c++)
+            {
+                if (n == 2)
+                {
+                    (float a, float b) = (from[c], from[count + c]);
+                    to[c] = a + b;
+                    to[toStride + c] = a - b;
+                    continue;
+                }
+
+                Idct4(from[c], from[count + c], from[2 * count + c], from[3 * count + c],
+                    out to[c], out to[toStride + c], out to[2 * toStride + c], out to[3 * toStride + c]);
+            }
+
+            return;
+        }
+
         if (n == 16 && IdctColumns16Avx2(count, data, to, toStride, scratch)) return;
+        if (n >= 16)
+        {
+            // The recursive butterflies store their final rows straight into the destination.
+            IdctColumnsTo(n, count, data, scratch, to, toStride);
+            return;
+        }
+
         IdctColumns(n, count, data, scratch);
         for (int i = 0; i < n; i++)
         {
@@ -514,7 +542,36 @@ internal static partial class JxlDct
             return;
         }
 
+        if (n is 2 or 4)
+        {
+            // As for n = 8: the leaves read the source rows and store scaled results.
+            int columns = TransformColumnsSimd(n, count, from, fromStride, data, toStride, false, scale);
+            for (int c = columns; c < count; c++)
+            {
+                if (n == 2)
+                {
+                    (float a, float b) = (from[c], from[fromStride + c]);
+                    data[c] = scale * (a + b);
+                    data[count + c] = scale * (a - b);
+                    continue;
+                }
+
+                Dct4(from[c], from[fromStride + c], from[2 * fromStride + c], from[3 * fromStride + c],
+                    out float t0, out float t1, out float t2, out float t3);
+                (data[c], data[count + c], data[2 * count + c], data[3 * count + c]) = (scale * t0, scale * t1, scale * t2, scale * t3);
+            }
+
+            return;
+        }
+
         if (n == 16 && DctColumns16Avx2(count, from, fromStride, data, true, scale, scratch)) return;
+        if (n >= 16)
+        {
+            // The recursive split reads the source rows and the final interleave stores scaled rows.
+            DctColumnsFrom(n, count, from, fromStride, data, true, scale, scratch);
+            return;
+        }
+
         for (int i = 0; i < n; i++)
         {
             from.Slice(i * fromStride, count).CopyTo(data[(i * count)..]);
@@ -566,6 +623,14 @@ internal static partial class JxlDct
         }
 
         if (n == 16 && IdctColumns16Avx2(count, data, data, count, scratch)) return;
+        IdctColumnsTo(n, count, data, scratch, data, count);
+    }
+
+    // The recursive step of IdctColumns for n >= 16, storing the merged rows in to (step toStride), which may be data.
+    // The odd rows are copied already summed with their predecessors (the same additions as summing in place from the
+    // last row down) and the first scaled by sqrt(2).
+    private static void IdctColumnsTo(int n, int count, Span<float> data, Span<float> scratch, Span<float> to, int toStride)
+    {
         int half = n / 2;
         int halfSize = half * count;
         Span<float> even = scratch[..halfSize];
@@ -574,26 +639,27 @@ internal static partial class JxlDct
         for (int i = 0; i < half; i++)
         {
             data.Slice(2 * i * count, count).CopyTo(even[(i * count)..]);
-            data.Slice((2 * i + 1) * count, count).CopyTo(odd[(i * count)..]);
         }
 
-        IdctColumns(half, count, even, rest);
-        for (int i = half - 1; i > 0; i--)
+        ReadOnlySpan<float> source = data.Slice(count, count);
+        Span<float> first = odd[..count];
+        for (int c = ScaleRowToSimd(source, first, Sqrt2); c < count; c++)
         {
-            Span<float> row = odd.Slice(i * count, count);
-            ReadOnlySpan<float> previous = odd.Slice((i - 1) * count, count);
-            for (int c = AddRowAvx2(row, previous); c < count; c++)
+            first[c] = source[c] * Sqrt2;
+        }
+
+        for (int i = 1; i < half; i++)
+        {
+            ReadOnlySpan<float> row = data.Slice((2 * i + 1) * count, count);
+            ReadOnlySpan<float> previous = data.Slice((2 * i - 1) * count, count);
+            Span<float> sum = odd.Slice(i * count, count);
+            for (int c = AddRowsToSimd(row, previous, sum); c < count; c++)
             {
-                row[c] += previous[c];
+                sum[c] = row[c] + previous[c];
             }
         }
 
-        Span<float> first = odd[..count];
-        for (int c = ScaleRowAvx2(first, Sqrt2); c < count; c++)
-        {
-            first[c] *= Sqrt2;
-        }
-
+        IdctColumns(half, count, even, rest);
         IdctColumns(half, count, odd, rest);
         ReadOnlySpan<float> multipliers = Multipliers(n);
         for (int i = 0; i < half; i++)
@@ -601,8 +667,8 @@ internal static partial class JxlDct
             float multiplier = multipliers[i];
             ReadOnlySpan<float> evenRow = even.Slice(i * count, count);
             ReadOnlySpan<float> oddRow = odd.Slice(i * count, count);
-            Span<float> top = data.Slice(i * count, count);
-            Span<float> bottom = data.Slice((n - i - 1) * count, count);
+            Span<float> top = to.Slice(i * toStride, count);
+            Span<float> bottom = to.Slice((n - i - 1) * toStride, count);
             for (int c = MergeRowsAvx2(evenRow, oddRow, top, bottom, multiplier); c < count; c++)
             {
                 top[c] = JxlFastMath.Fma(multiplier, oddRow[c], evenRow[c]);
@@ -685,6 +751,15 @@ internal static partial class JxlDct
         }
 
         if (n == 16 && DctColumns16Avx2(count, data, count, data, false, 1.0f, scratch)) return;
+        DctColumnsFrom(n, count, data, count, data, false, 1.0f, scratch);
+    }
+
+    // The recursive step of DctColumns for n >= 16: reads the rows of from (step fromStride, which may be the contiguous
+    // to) and stores the interleaved rows in to, each times scale when scaled (Dct1D's scaling pass). The odd rows' final
+    // sums are computed while storing them, with the same operands as the in-place passes.
+    private static void DctColumnsFrom(int n, int count, ReadOnlySpan<float> from, int fromStride, Span<float> to, bool scaled, float scale,
+        Span<float> scratch)
+    {
         int half = n / 2;
         int halfSize = half * count;
         Span<float> even = scratch[..halfSize];
@@ -694,8 +769,8 @@ internal static partial class JxlDct
         for (int i = 0; i < half; i++)
         {
             float multiplier = multipliers[i];
-            ReadOnlySpan<float> top = data.Slice(i * count, count);
-            ReadOnlySpan<float> bottom = data.Slice((n - 1 - i) * count, count);
+            ReadOnlySpan<float> top = from.Slice(i * fromStride, count);
+            ReadOnlySpan<float> bottom = from.Slice((n - 1 - i) * fromStride, count);
             Span<float> evenRow = even.Slice(i * count, count);
             Span<float> oddRow = odd.Slice(i * count, count);
             for (int c = SplitRowsAvx2(top, bottom, evenRow, oddRow, multiplier); c < count; c++)
@@ -707,27 +782,27 @@ internal static partial class JxlDct
 
         DctColumns(half, count, even, rest);
         DctColumns(half, count, odd, rest);
-        Span<float> first = odd[..count];
-        ReadOnlySpan<float> second = odd.Slice(count, count);
-        for (int c = CombineFirstAvx2(first, second); c < count; c++)
-        {
-            first[c] = JxlFastMath.Fma(first[c], Sqrt2, second[c]);
-        }
-
-        for (int i = 1; i + 1 < half; i++)
-        {
-            Span<float> row = odd.Slice(i * count, count);
-            ReadOnlySpan<float> next = odd.Slice((i + 1) * count, count);
-            for (int c = AddRowAvx2(row, next); c < count; c++)
-            {
-                row[c] += next[c];
-            }
-        }
-
         for (int i = 0; i < half; i++)
         {
-            even.Slice(i * count, count).CopyTo(data[(2 * i * count)..]);
-            odd.Slice(i * count, count).CopyTo(data[((2 * i + 1) * count)..]);
+            ReadOnlySpan<float> evenRow = even.Slice(i * count, count);
+            Span<float> evenTo = to.Slice(2 * i * count, count);
+            if (!scaled) evenRow.CopyTo(evenTo);
+            else for (int c = ScaleRowToSimd(evenRow, evenTo, scale); c < count; c++) evenTo[c] = scale * evenRow[c];
+            ReadOnlySpan<float> row = odd.Slice(i * count, count);
+            Span<float> oddTo = to.Slice((2 * i + 1) * count, count);
+            if (i + 1 == half)
+            {
+                if (!scaled) row.CopyTo(oddTo);
+                else for (int c = ScaleRowToSimd(row, oddTo, scale); c < count; c++) oddTo[c] = scale * row[c];
+                continue;
+            }
+
+            ReadOnlySpan<float> next = odd.Slice((i + 1) * count, count);
+            for (int c = OddRowToSimd(i == 0, row, next, oddTo, scaled, scale); c < count; c++)
+            {
+                float value = i == 0 ? JxlFastMath.Fma(row[c], Sqrt2, next[c]) : row[c] + next[c];
+                oddTo[c] = scaled ? scale * value : value;
+            }
         }
     }
 

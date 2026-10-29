@@ -55,6 +55,63 @@ public sealed class JxlSimdTests
     }
 
     [Test]
+    public void Dct1D_ExactWithStridesTailsAndSentinels()
+    {
+        foreach (int n in new[] { 2, 4, 8, 16, 32, 64, 128, 256 })
+        foreach (int width in Widths)
+        foreach (bool inverse in new[] { false, true })
+        {
+            int stride = width + 5;
+            float[] source = Samples(n * stride + 6), scratch = new float[JxlDct.ScratchSize(n * width)];
+            float[] expected = new float[n * stride + 6], actual = new float[n * stride + 6];
+            if (inverse)
+            {
+                float[] from = source[..(n * width)], copy = (float[])from.Clone();
+                Array.Fill(expected, 7.0f); Array.Fill(actual, 7.0f);
+                JxlDctScalar.Idct1D(n, width, from, width, expected.AsSpan(3), stride, scratch);
+                JxlDct.Idct1D(n, width, copy, width, actual.AsSpan(3), stride, scratch);
+            }
+            else
+            {
+                expected = new float[n * width + 6]; actual = new float[n * width + 6];
+                Array.Fill(expected, 7.0f); Array.Fill(actual, 7.0f);
+                JxlDctScalar.Dct1D(n, width, source.AsSpan(3), stride, expected.AsSpan(3), width, scratch);
+                JxlDct.Dct1D(n, width, source.AsSpan(3), stride, actual.AsSpan(3), width, scratch);
+            }
+            Exact(expected, actual, $"1D n={n} width={width} inverse={inverse}");
+        }
+    }
+
+    [Test]
+    public void Symmetric5_ExactAcrossWidthsAndBorders()
+    {
+        var weights = new JxlSymmetric5Weights(0.31f, -0.07f, 0.013f, -0.029f, 0.0021f, 0.0047f);
+        foreach (int width in Widths.Concat([5, 6, 10, 11, 12, 13, 18, 19, 20, 21, 64]))
+        foreach (int height in new[] { 1, 2, 3, 5, 9 })
+        {
+            float[] input = Samples(width * height);
+            Exact(JxlConvolutionScalar.Symmetric5(input, width, height, weights, default),
+                JxlConvolution.Symmetric5(input, width, height, weights, default), $"symmetric5 {width}x{height}");
+        }
+    }
+
+    [Test]
+    public void EpfSharpnessBlockErrors_ExactAcrossBlockGroupsAndEdges()
+    {
+        foreach (int width in new[] { 8, 57, 64, 65, 127, 128, 200 })
+        foreach (int height in new[] { 1, 8, 13 })
+        {
+            int xBlocks = (width + 7) / 8, yBlocks = (height + 7) / 8;
+            var original = new JxlImage3F(xBlocks * 8, yBlocks * 8);
+            for (int c = 0; c < 3; c++) Samples(original.Planes[c].Length + c).AsSpan(c, original.Planes[c].Length).CopyTo(original.Planes[c]);
+            float[] mask = [.. Samples(xBlocks * 8 * yBlocks * 8 + 5).Skip(5).Select(v => v * 3)];
+            JxlPlane[] decoded = Planes(width, height);
+            Exact(JxlBlockErrorsScalar.BlockErrors(xBlocks, yBlocks, original, decoded, mask),
+                JxlEpfSharpnessSearch.BlockErrors(xBlocks, yBlocks, original, decoded, mask), $"block errors {width}x{height}");
+        }
+    }
+
+    [Test]
     public void Dct_AllStrategiesExactWithOddStride()
     {
         foreach (JxlAcStrategyType strategy in Enum.GetValues<JxlAcStrategyType>())
@@ -195,6 +252,41 @@ public sealed class JxlSimdTests
             float[] actual = new float[8];
             JxlVarDctFrame.AdjustQuantBiasAvx2(Vector256.Create(values), bias, 0.145f).CopyTo(actual);
             Exact(expected, actual, "quant bias");
+        }
+    }
+
+    [Test]
+    public async Task EncoderDequantizeY_ExactBiasesAndChromaFromLuma()
+    {
+        float[] biases = [.. JxlCustomTransformData.Default.EffectiveQuantBiases];
+        // Frozen 0.7.10 AdjustQuantBias (JxlCoefficientQuantizer, 6cd7f9b).
+        float Bias(int q)
+        {
+            float value = q;
+            float magnitude = Math.Abs(value);
+            if (magnitude < 1.125f) return magnitude > 0 ? MathF.CopySign(biases[1], value) : 0;
+            return MathF.FusedMultiplyAdd(-biases[3], 1.0f / value, value);
+        }
+
+        foreach (int size in new[] { 64, 128, 256, 1024 })
+        {
+            var random = new Random(size);
+            int[] quantized = [.. Enumerable.Range(0, size).Select(i => i % 5 == 0 ? 0 : i % 7 == 0 ? random.Next(-2, 3) : random.Next(-3000, 3000))];
+            quantized[1] = int.MaxValue / 2;
+            quantized[2] = -int.MaxValue / 2;
+            float[] dequant = Samples(size + 1)[1..], block = Samples(3 * size + 2)[2..], expected = (float[])block.Clone();
+            const float inverseQuant = 0.0371f, xFactor = 0.083f, bFactor = -0.91f;
+            for (int k = 0; k < size; k++) expected[size + k] = Bias(quantized[k]) * dequant[k] * inverseQuant;
+            for (int k = 0; k < size; k++)
+            {
+                float y = expected[size + k];
+                expected[k] = MathF.FusedMultiplyAdd(-xFactor, y, expected[k]);
+                expected[2 * size + k] = MathF.FusedMultiplyAdd(-bFactor, y, expected[2 * size + k]);
+            }
+
+            int done = JxlCoefficientQuantizer.DequantizeYAndSubtractAvx2(quantized, dequant, block, size, inverseQuant, xFactor, bFactor, biases[1], biases[3]);
+            await Assert.That(done).IsEqualTo(Avx2.IsSupported && Fma.IsSupported ? size : 0);
+            if (done == size) Exact(expected, block, $"dequantize Y size={size}");
         }
     }
 
