@@ -35,25 +35,39 @@ internal sealed class JxlTokens : IDisposable
     public void Add(int context, uint value)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
-        if (Count == Math.Min(contexts.Length, values.Length))
-        {
-            int size = Count <= Array.MaxLength / 2 ? Count * 2 : Count < Array.MaxLength ? Array.MaxLength
-                : throw JxlDescriptor.Unsupported("the image has too many samples to encode.");
-            if (!pooled) { Array.Resize(ref contexts, size); Array.Resize(ref values, size); }
-            else
-            {
-                int[] nextContexts = ArrayPool<int>.Shared.Rent(size);
-                uint[] nextValues;
-                try { nextValues = ArrayPool<uint>.Shared.Rent(size); }
-                catch { ArrayPool<int>.Shared.Return(nextContexts); throw; }
-                contexts.AsSpan(0, Count).CopyTo(nextContexts);
-                values.AsSpan(0, Count).CopyTo(nextValues);
-                ArrayPool<int>.Shared.Return(contexts); ArrayPool<uint>.Shared.Return(values);
-                contexts = nextContexts; values = nextValues;
-            }
-        }
-
+        if (Count == Math.Min(contexts.Length, values.Length)) Grow(1);
         contexts[Count] = context;
         values[Count++] = value;
+    }
+
+    /// <summary>Appends <paramref name="count"/> tokens the caller fills in through <paramref name="newContexts"/> and <paramref name="newValues"/>.</summary>
+    public void Append(int count, out Span<int> newContexts, out Span<uint> newValues)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        ArgumentOutOfRangeException.ThrowIfNegative(count);
+        if (count > Math.Min(contexts.Length, values.Length) - Count) Grow(count);
+        int start = Count;
+        Count += count;
+        newContexts = contexts.AsSpan(start, count);
+        newValues = values.AsSpan(start, count);
+    }
+
+    // Makes room for at least `needed` more tokens, at least doubling the capacity.
+    private void Grow(int needed)
+    {
+        if (needed > Array.MaxLength - Count) throw JxlDescriptor.Unsupported("the image has too many samples to encode.");
+        int size = Count <= Array.MaxLength / 2 ? Math.Max(Count * 2, Count + needed) : Array.MaxLength;
+        if (!pooled) { Array.Resize(ref contexts, size); Array.Resize(ref values, size); }
+        else
+        {
+            int[] nextContexts = ArrayPool<int>.Shared.Rent(size);
+            uint[] nextValues;
+            try { nextValues = ArrayPool<uint>.Shared.Rent(size); }
+            catch { ArrayPool<int>.Shared.Return(nextContexts); throw; }
+            contexts.AsSpan(0, Count).CopyTo(nextContexts);
+            values.AsSpan(0, Count).CopyTo(nextValues);
+            ArrayPool<int>.Shared.Return(contexts); ArrayPool<uint>.Shared.Return(values);
+            contexts = nextContexts; values = nextValues;
+        }
     }
 }

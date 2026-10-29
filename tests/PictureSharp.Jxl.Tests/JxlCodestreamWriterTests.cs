@@ -49,7 +49,7 @@ public sealed class JxlCodestreamWriterTests
         return rgba;
     }
 
-    internal static byte[] Encode(byte[] rgba, int width, int height, bool gray, bool alpha, byte[]? icc = null)
+    internal static byte[] Encode(byte[] rgba, int width, int height, bool gray, bool alpha, byte[]? icc = null, int effort = JxlEncoderOptions.DefaultEffort)
     {
         int count = width * height;
         int[][] color = gray ? [new int[count]] : [new int[count], new int[count], new int[count]];
@@ -61,7 +61,7 @@ public sealed class JxlCodestreamWriterTests
         }
 
         var encoding = gray ? new JxlColorEncoding { ColorSpace = JxlColorSpace.Gray } : JxlColorEncoding.Srgb;
-        return JxlCodestreamWriter.Write(new JxlEncodeImage(width, height, color, alphaPlane, encoding, icc, 1));
+        return JxlCodestreamWriter.Write(new JxlEncodeImage(width, height, color, alphaPlane, encoding, icc, 1, Effort: effort));
     }
 
     internal static string Compare(byte[] encoded, byte[] rgba, int width, int height, bool gray)

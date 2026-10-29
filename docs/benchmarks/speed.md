@@ -1,4 +1,4 @@
-# Speed measurements — 0.7.3–0.8.2
+# Speed measurements — 0.7.3–0.8.3
 
 Measured on 2026-10-27, Linux x64, Intel Core i5-12500H, .NET 10, one thread (`DOTNET_PROCESSOR_COUNT=1`).
 libjxl 0.12.0 (`4128790`) times are its own `--num_reps=3` geomean with `--num_threads=1`, PNG I/O excluded, AVX2 enabled.
@@ -581,3 +581,87 @@ Rejected after measurement (not included):
 Parallel palette discovery was also measured in isolation on a photo that exceeds the palette limit: −0.2% (1 thread)
 and +0.3% (16 threads). It is kept: its gain applies to palette content, and the output is identical.
 A 1 MP VarDCT frame has one LF group whose DC entropy stream is sequential; scheduling cannot split it.
+
+## Encoder work (0.8.3)
+
+Lossless effort tiers like libjxl, 16-bit palette and channel compaction, lane-ordered lossy entropy sums and faster
+lossless stream writing (see the [encoder design](../design/0.8.3-encoder.md)). Decoding is unchanged. Encoded bytes
+change for lossless efforts 1–6, for lossless input of more than 8 bits, and for a few lossy files (6 of 247 test
+encodes: same size, identical decoded pixels); 8-bit lossless efforts 7–9 are byte-identical to 0.8.2. New golden
+baseline: 1433 results, identical at 1 and 16 threads (SHA-256 88eccd4b…e2cc).
+
+Measured 2026-10-29 with `scripts/measure-paired.py` (new `--allow-size-change` for intended output changes) on the
+machine and runtime of the earlier sections: v0.8.2 and 0.8.3 sources in separate processes, A/B then B/A, 2 rounds ×
+5 warm calls (12 MP: 3), tiered compilation off, 1 thread on CPU 0 and -1 on CPUs 0–15. Controls above +1% were
+rechecked with 6 rounds; memory rows come from a confirmation run of the final source (the full matrix ran before
+two allocation fixes, below). libjxl 0.12.0: `cjxl --num_threads=1 --num_reps=5` on CPU 0, its own timing (lossless)
+or the 0.8.1 section (lossy). [Raw data](../measurements/encoder-0.8.3.json).
+
+Lossy encoding (sizes unchanged):
+
+| Case | 1 thread 0.8.2 → 0.8.3 (ms) | 16 threads 0.8.2 → 0.8.3 (ms) | libjxl 1 / 16 threads (ms) |
+| --- | ---: | ---: | ---: |
+| encode/photo1-d1-e1 | 47.2 → 45.2 (−4.2%) | | 26 (0.7.3) |
+| encode/photo1-d1-e3 | 48.4 → 46.9 (−3.1%) | 26.7 → 26.2 (−1.7%) | 24.3 / 12.2 |
+| encode/photo1-d1-e5 | 261 → 238 (−8.8%) | | 136 (0.7.3) |
+| encode/photo1-d1-e7 | 449 → 409 (−8.9%) | 122.7 → 117.4 (−4.3%) | 213 / 53.1 |
+| encode/screen-d1-e7 | 806 → 734 (−9.0%) | 274 → 264 (−3.6%) | 376 / 98.8 |
+| encode/photo12-d1-e7 | 5438 → 4984 (−8.3%) | 1316 → 1249 (−5.1%) | 2404 / 561 |
+| encode16/photo1-16-d1-e7 | 462 → 423 (−8.4%) | | |
+| encode16/screen-16-d1-e7 | 807 → 734 (−9.0%) | | |
+| encode16/photo1w-16-d1-e7 | 458 → 418 (−8.7%) | | |
+
+Lossless encoding by effort, 1 thread (v0.8.2 coded every effort as 7):
+
+| Case | 0.8.2 (ms) | 0.8.3 (ms) | 0.8.3 bytes | libjxl (ms) | libjxl bytes |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| encode/photo1-d0-e1 | 797 | 56.0 | 908 156 | 3.8 | 1 015 203 |
+| encode/photo1-d0-e2 | 813 | 78.9 | 895 470 | 47 | 880 332 |
+| encode/photo1-d0-e3 | 810 | 267 | 853 183 | 96 | 854 203 |
+| encode/photo1-d0-e4 | 800 | 377 | 842 444 | 241 | 840 469 |
+| encode/photo1-d0-e5 | 806 | 559 | 817 412 | 316 | 830 459 |
+| encode/photo1-d0-e6 | 829 | 683 | 793 336 | 408 | 814 919 |
+| encode/photo1-d0-e7 | 813 | 787 (−1.8% on confirmation) | 785 105 | 653 | 785 474 |
+| encode/screen-d0-e1 | 494 | 37.5 | 207 130 | 2.5 | 245 462 |
+| encode/screen-d0-e2 | 495 | 48.6 | 178 723 | 66 | 218 166 |
+| encode/screen-d0-e3 | 498 | 107 | 198 170 | 135 | 237 860 |
+| encode/screen-d0-e4 | 495 | 153 | 140 252 | 310 | 200 927 |
+| encode/screen-d0-e5 | 494 | 193 | 126 351 | 203 | 127 520 |
+| encode/screen-d0-e7 | 488 | 391 | 108 866 | 260 | 109 392 |
+| encode/photo12-d0-e7 | 4718 | 4611 (−0.9% on confirmation) | 11 203 882 | 8503 (0.8.1 section) | |
+
+At 16 threads: photo1 e1 220 → 23.8 ms, e3 234 → 59.8 ms, e7 −0.1% (6-round recheck) and −4.8% (confirmation);
+screen e1 173 → 18.1 ms, e7 169 → 139 ms (palette table); photo12 e7 1081 → 971 ms. libjxl's effort 1 is its separate
+fast-lossless encoder; here effort 1 keeps the ANS bitstream, smaller files and about 15–20× libjxl's time.
+
+16-bit input (decision 6: ≤ 1.1× the 8-bit time of the same image). `photo1w-16` is `photo1` widened × 257,
+`screen-16` the widened screen; the palette and channel compaction now apply to them:
+
+| Case | 0.8.2 (ms) | 0.8.3 (ms) | 16-bit / 8-bit time | Bytes 0.8.2 → 0.8.3 | libjxl (ms, bytes) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| encode16/screen-16-d0-e1 | 762 | 37.2 | 0.99× | 339 246 → 211 968 | 3.9, 551 407 |
+| encode16/screen-16-d0-e3 | 761 | 108 | 1.01× | 339 246 → 195 350 | 145, 719 643 |
+| encode16/screen-16-d0-e7 | 758 | 418 (16 threads: 252 → 163) | 1.07× | 339 246 → 111 411 | 257, 116 006 |
+| encode16/photo1w-16-d0-e1 | 864 | 66.7 | 1.19× | 2 375 720 → 910 788 | 8.1 |
+| encode16/photo1w-16-d0-e3 | 871 | 247 | 0.92× | 2 375 720 → 860 930 | 114 |
+| encode16/photo1w-16-d0-e7 | 862 | 790 (16 threads: −0.7%) | 1.00× | 2 375 720 → 785 764 | 672, 792 199 |
+| encode16/photo1w-16-d1-e7 | 458 | 418 | 1.02× | unchanged | |
+| encode16/photo1-16-d0-e7 (full range) | 1085 | 1033 | — | unchanged | |
+| encode16/photo12-16-d0-e7 (full range) | 5324 | 5001 | — | unchanged | |
+
+Lossless effort 1 misses the target on the photo (1.19×): reading and compacting 16-bit samples is a larger share
+of a 60 ms encode. Lossless efforts 3–7 and lossy encoding meet it.
+
+Controls: decode/photo1-d1-e7 +0.9% (1 thread), +0.0% (16 threads); decode/photo1-d0-e7 +1.5%, recheck −0.9%;
+tojpeg +2.7%, recheck +0.1% (no decoder or transcoder file differs).
+
+Memory: the first matrix showed two allocation regressions, both fixed before the confirmation run. `WritePacked`
+reserved 7 bytes per symbol, so the 192 retained group sections of a 12 MP lossless encode grew to several times
+their content (allocated 934 → 1219 MiB, peak RSS 2439 → 3028 MiB); it now reserves the exact length (934 MiB,
+2438 MiB). A flat contexts × 128 count table in `TokenHistograms` added about 7 MiB to every lossy encode; rows are
+now allocated for the contexts that occur (photo1 e1 17.7 → 18.3 MiB). Lossless effort 1–3 encodes allocate about half
+of v0.8.2's effort-7 amount. At 16 threads the 1 MP lossless effort-7 peak RSS is higher (530 → 737 MiB) with equal
+allocations, while the 12 MP one is lower (2172 → 1838 MiB); peak RSS at 16 threads follows GC timing and is not a
+controlled quantity.
+
+Rejected: both predictors' tree-learner histograms in one pass (lossless photo e7 −0.3%, 16-bit +0.0%).

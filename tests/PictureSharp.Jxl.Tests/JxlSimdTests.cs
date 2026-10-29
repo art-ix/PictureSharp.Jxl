@@ -320,7 +320,7 @@ public sealed class JxlSimdTests
     }
 
     [Test]
-    public void CflDerivatives_PreserveOrderedAccumulationAndSkipThreshold()
+    public void CflDerivatives_MatchLaneAccumulationAndSkipThreshold()
     {
         if (!JxlDct.CanTransformAvx2) { Console.WriteLine("CfL AVX2/FMA unavailable: direct backend not executed."); return; }
         var scalar = new JxlChromaFromLumaSearchScalar(new JxlImage3F(8, 8), new JxlQuantWeights());
@@ -334,24 +334,24 @@ public sealed class JxlSimdTests
             offsets[5] = MathF.BitDecrement(100); slopes[2] = 0;
             scalar.SetCoefficients(slopes, offsets.AsSpan(3, n));
             float e = scalar.Derivatives(n, x, 100, out float ep, out float em);
-            float sum = 0, plus = 0, minus = 0;
-            int done = JxlChromaFromLumaSearch.DerivativesAvx2(slopes, offsets.AsSpan(3, n), x, x + 100, x - 100, ref sum, ref plus, ref minus);
+            float[] lanes = new float[24];
+            int done = JxlChromaFromLumaSearch.DerivativesAvx2(slopes, offsets.AsSpan(3, n), x, x + 100, x - 100, lanes);
             if (done != n) throw new InvalidOperationException("CfL backend did not execute.");
+            float sum = Reduce8(lanes, 0), plus = Reduce8(lanes, 8), minus = Reduce8(lanes, 16);
             Exact(new[] { e, ep, em }, new[] { 2 * 1e-9f * n * x + sum, 2 * 1e-9f * n * (x + 100) + plus,
                 2 * 1e-9f * n * (x - 100) + minus }, "CfL ordered derivatives");
         }
     }
 
     [Test]
-    public void CflDerivatives_ExactForEverySkipMaskAndNonzeroInitialSums()
+    public void CflDerivatives_ExactLanesForEverySkipMask()
     {
         if (!JxlDct.CanTransformAvx2) return;
         for (int mask = 0; mask < 256; mask++)
         {
             float[] slopes = Samples(8), offsets = new float[8];
             for (int i = 0; i < 8; i++) offsets[i] = (mask & (1 << i)) != 0 ? 200 : (i - 4) * 0.125f;
-            float sum = 0.125f, plus = -0.75f, minus = 123.5f;
-            float e = sum, ep = plus, em = minus;
+            float[] expected = new float[24];
             for (int i = 0; i < 8; i++)
             {
                 float v = MathF.FusedMultiplyAdd(slopes[i], 1, offsets[i]);
@@ -360,14 +360,19 @@ public sealed class JxlSimdTests
                 float vm = MathF.FusedMultiplyAdd(slopes[i], 0, offsets[i]);
                 float scale = (2.0f / 3) * slopes[i];
                 float d = scale * (Math.Abs(v) + 1), dp = scale * (Math.Abs(vp) + 1), dm = scale * (Math.Abs(vm) + 1);
-                e += v < 0 ? -d : d;
-                ep += vp < 0 ? -dp : dp;
-                em += vm < 0 ? -dm : dm;
+                expected[i] = v < 0 ? -d : d;
+                expected[8 + i] = vp < 0 ? -dp : dp;
+                expected[16 + i] = vm < 0 ? -dm : dm;
             }
-            JxlChromaFromLumaSearch.DerivativesAvx2(slopes, offsets, 1, 2, 0, ref sum, ref plus, ref minus);
-            Exact(new[] { e, ep, em }, new[] { sum, plus, minus }, $"CfL skip mask {mask}");
+
+            float[] lanes = new float[24];
+            lanes.AsSpan().Fill(float.NaN);
+            JxlChromaFromLumaSearch.DerivativesAvx2(slopes, offsets, 1, 2, 0, lanes);
+            Exact(expected, lanes, $"CfL skip mask {mask}");
         }
     }
+
+    private static float Reduce8(float[] l, int o) => ((l[o] + l[o + 4]) + (l[o + 2] + l[o + 6])) + ((l[o + 1] + l[o + 5]) + (l[o + 3] + l[o + 7]));
 
     [Test]
     public async Task Cbrt_VectorLanesMatchScalarOrDeferToIt()

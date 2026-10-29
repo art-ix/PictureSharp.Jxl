@@ -425,7 +425,8 @@ internal sealed partial class JxlAcStrategySearch
     }
 
     // The estimated bits of the quantized coefficients plus the masked error they leave (EstimateEntropy).
-    private float EstimateEntropy(JxlAcStrategyType type, float entropyMul, int x, int y, ReadOnlySpan<float> cmap)
+    // vector: false takes the scalar sums (tests compare both).
+    internal float EstimateEntropy(JxlAcStrategyType type, float entropyMul, int x, int y, ReadOnlySpan<float> cmap, bool vector = true)
     {
         int size = JxlAcStrategy.BlockSize << type.Log2Blocks;
         int stride = image.Width;
@@ -475,32 +476,34 @@ internal sealed partial class JxlAcStrategySearch
         Span<float> entropySums = stackalloc float[3];
         Span<double> channelLosses = stackalloc double[3];
         Span<int> nonZeros = stackalloc int[3];
-        if (!SumChannelsAvx2(type, size, x, y, quantNorm16, cmap, dequant, quant, entropySums, channelLosses, nonZeros))
+        if (!vector || !SumChannelsAvx2(type, size, x, y, quantNorm16, cmap, dequant, quant, entropySums, channelLosses, nonZeros))
         {
             ReadOnlySpan<float> yBlock = block.AsSpan(size, size);
             Span<float> errors = error.AsSpan(0, size);
+            Span<float> rootLanes = stackalloc float[SumLanes];
+            Span<double> lossLanes = stackalloc double[SumLanes];
             for (int c = 0; c < 3; c++)
             {
-                float entropySum = 0;
                 int nonZero = 0;
                 int offset = c * size;
                 float cmapFactor = cmap[c];
                 ReadOnlySpan<float> coefficients = block.AsSpan(offset, size);
                 ReadOnlySpan<float> quantRow = quant.AsSpan(offset, size);
                 ReadOnlySpan<float> dequantRow = dequant.AsSpan(offset, size);
+                rootLanes.Clear();
                 for (int i = 0; i < errors.Length; i++)
                 {
                     float value = (coefficients[i] - yBlock[i] * cmapFactor) * (quantRow[i] * quantNorm16);
                     float rounded = MathF.Round(value);
                     errors[i] = dequantRow[i] * (value - rounded);
                     float q = Math.Abs(rounded);
-                    entropySum += MathF.Sqrt(q);
+                    rootLanes[i % SumLanes] += MathF.Sqrt(q);
                     nonZero += q != 0 ? 1 : 0;
                 }
 
                 JxlDct.TransformToPixels(type, errors, pixels, pixelWidth, scratch);
-                double channelLoss = 0;
                 float maskOffset = MaskOffsets[c];
+                lossLanes.Clear();
                 for (int py = 0; py < blocksY * 8; py++)
                 {
                     ReadOnlySpan<float> maskRow = mask1X1.AsSpan((y + py) * stride + x, pixelWidth);
@@ -511,10 +514,12 @@ internal sealed partial class JxlAcStrategySearch
                         v *= v;
                         v *= v;
                         v *= v;
-                        channelLoss += v;
+                        lossLanes[px % SumLanes] += v;
                     }
                 }
 
+                float entropySum = ReduceLanes(rootLanes);
+                double channelLoss = ReduceLanes(lossLanes);
                 (entropySums[c], channelLosses[c], nonZeros[c]) = (entropySum, channelLoss, nonZero);
             }
         }
@@ -538,4 +543,14 @@ internal sealed partial class JxlAcStrategySearch
     }
 
     private float Quant(int bx, int by) => quantField[by * xBlocks + bx];
+
+    // EstimateEntropy's sums run in eight lanes (element i in lane i % 8; blocks and pixel rows are multiples of 8), as
+    // libjxl's vector code accumulates them: lane k is added to lane k + 4, then the even pair and the odd pair.
+    private const int SumLanes = 8;
+
+    private static float ReduceLanes(ReadOnlySpan<float> lanes) =>
+        ((lanes[0] + lanes[4]) + (lanes[2] + lanes[6])) + ((lanes[1] + lanes[5]) + (lanes[3] + lanes[7]));
+
+    private static double ReduceLanes(ReadOnlySpan<double> lanes) =>
+        ((lanes[0] + lanes[4]) + (lanes[2] + lanes[6])) + ((lanes[1] + lanes[5]) + (lanes[3] + lanes[7]));
 }

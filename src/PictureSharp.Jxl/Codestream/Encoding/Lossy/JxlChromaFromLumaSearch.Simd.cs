@@ -19,43 +19,33 @@ internal sealed partial class JxlChromaFromLumaSearch
         return end;
     }
 
+    /// <summary>
+    /// The first multiple of eight of the derivative sums into <paramref name="lanes"/> (sum, plus, minus: eight lanes each,
+    /// coefficient i in lane i % 8), adding zero for coefficients left out, as the scalar loop does. Returns the count done.
+    /// </summary>
     internal static int DerivativesAvx2(ReadOnlySpan<float> slopes, ReadOnlySpan<float> offsets,
-        float x, float xPlus, float xMinus, ref float sum, ref float sumPlus, ref float sumMinus)
+        float x, float xPlus, float xMinus, Span<float> lanes)
     {
         if (!Avx2.IsSupported || !Fma.IsSupported) return 0;
         int end = slopes.Length & ~7;
-        Vector128<float> sums = Vector128.Create(sum, sumPlus, sumMinus, 0.0f);
+        Vector256<float> sum = Vector256<float>.Zero, sumPlus = Vector256<float>.Zero, sumMinus = Vector256<float>.Zero;
         for (int i = 0; i < end; i += 8)
         {
             Vector256<float> a = Vector256.Create(slopes.Slice(i, 8)), b = Vector256.Create(offsets.Slice(i, 8));
             Vector256<float> v = Fma.MultiplyAdd(a, Vector256.Create(x), b);
-            int skip = Avx.MoveMask(Avx.CompareGreaterThanOrEqual(Vector256.Abs(v), Vector256.Create(100.0f)));
-            if (skip == 255) continue;
+            Vector256<float> keep = Avx.CompareLessThan(Vector256.Abs(v), Vector256.Create(100.0f));
+            if (Avx.MoveMask(keep) == 0) continue;
             Vector256<float> vp = Fma.MultiplyAdd(a, Vector256.Create(xPlus), b);
             Vector256<float> vm = Fma.MultiplyAdd(a, Vector256.Create(xMinus), b);
             Vector256<float> scale = (2.0f / 3) * a;
-            Vector256<float> d = SignedAvx2(scale * (Vector256.Abs(v) + Vector256.Create(1.0f)), v);
-            Vector256<float> dp = SignedAvx2(scale * (Vector256.Abs(vp) + Vector256.Create(1.0f)), vp);
-            Vector256<float> dm = SignedAvx2(scale * (Vector256.Abs(vm) + Vector256.Create(1.0f)), vm);
-            // Transpose independent derivatives, not coefficients: each accumulator still consumes
-            // coefficients 0..7 in scalar order. No horizontal reduction or temporary stack buffer.
-            Vector256<float> lo = Avx.UnpackLow(d, dp), hi = Avx.UnpackHigh(d, dp);
-            Vector256<float> ml = Avx.UnpackLow(dm, Vector256<float>.Zero);
-            Vector256<float> mh = Avx.UnpackHigh(dm, Vector256<float>.Zero);
-            Vector256<float> d04 = Avx.Shuffle(lo, ml, 0x44), d15 = Avx.Shuffle(lo, ml, 0xEE);
-            Vector256<float> d26 = Avx.Shuffle(hi, mh, 0x44), d37 = Avx.Shuffle(hi, mh, 0xEE);
-            if ((skip & 1) == 0) sums += d04.GetLower();
-            if ((skip & 2) == 0) sums += d15.GetLower();
-            if ((skip & 4) == 0) sums += d26.GetLower();
-            if ((skip & 8) == 0) sums += d37.GetLower();
-            if ((skip & 16) == 0) sums += d04.GetUpper();
-            if ((skip & 32) == 0) sums += d15.GetUpper();
-            if ((skip & 64) == 0) sums += d26.GetUpper();
-            if ((skip & 128) == 0) sums += d37.GetUpper();
+            sum += Avx.And(keep, SignedAvx2(scale * (Vector256.Abs(v) + Vector256.Create(1.0f)), v));
+            sumPlus += Avx.And(keep, SignedAvx2(scale * (Vector256.Abs(vp) + Vector256.Create(1.0f)), vp));
+            sumMinus += Avx.And(keep, SignedAvx2(scale * (Vector256.Abs(vm) + Vector256.Create(1.0f)), vm));
         }
-        sum = sums.GetElement(0);
-        sumPlus = sums.GetElement(1);
-        sumMinus = sums.GetElement(2);
+
+        sum.CopyTo(lanes);
+        sumPlus.CopyTo(lanes[8..]);
+        sumMinus.CopyTo(lanes[16..]);
         return end;
     }
 

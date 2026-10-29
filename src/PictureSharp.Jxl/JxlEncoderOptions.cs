@@ -50,9 +50,12 @@ public sealed record JxlEncoderOptions : EncoderOptions
     }
 
     /// <summary>
-    /// Encoder effort 1–9 as <c>cjxl -e</c> for lossy frames: higher searches more transforms and quantization choices
-    /// and is slower. Efforts 8 and 9 currently behave as 7 (the butteraugli-guided quantization of libjxl is not
-    /// implemented); lossless frames always use the effort-7 Modular encoder. Default: <see cref="DefaultEffort"/>.
+    /// Encoder effort 1–9 as <c>cjxl -e</c>: higher is slower and usually smaller. Lossy frames search more transforms
+    /// and quantization choices; efforts 8 and 9 behave as 7 (the butteraugli-guided quantization of libjxl is not
+    /// implemented). Lossless frames follow libjxl's Modular tiers: effort 1 codes RGB as YCoCg with the gradient
+    /// predictor and one context per channel, 2 and 3 use libjxl's fixed gradient and weighted-predictor trees, 4–6 learn
+    /// a smaller tree from fewer samples, and 7 (also 8 and 9) learns the full tree and searches the colour transform.
+    /// Default: <see cref="DefaultEffort"/>.
     /// </summary>
     public int Effort
     {

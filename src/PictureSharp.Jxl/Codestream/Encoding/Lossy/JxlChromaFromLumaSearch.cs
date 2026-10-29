@@ -140,28 +140,37 @@ internal sealed partial class JxlChromaFromLumaSearch(JxlImage3F image, JxlQuant
         float xMinus = x - eps;
         ReadOnlySpan<float> slopes = slope.AsSpan(0, count);
         ReadOnlySpan<float> offsets = offset.AsSpan(0, count);
-        float sum = 0;
-        float sumPlus = 0;
-        float sumMinus = 0;
-        for (int i = DerivativesAvx2(slopes, offsets, x, xPlus, xMinus, ref sum, ref sumPlus, ref sumMinus); i < slopes.Length; i++)
+        // Each sum runs in eight lanes (coefficient i in lane i % 8) and is reduced as JxlAcStrategySearch's sums are;
+        // a coefficient left out adds zero to its lanes.
+        Span<float> lanes = stackalloc float[3 * Lanes];
+        lanes.Clear();
+        for (int i = DerivativesAvx2(slopes, offsets, x, xPlus, xMinus, lanes); i < slopes.Length; i++)
         {
             float a = slopes[i];
             float b = offsets[i];
             float v = MathF.FusedMultiplyAdd(a, x, b);
             // Values far from zero at x are left out of all three derivatives.
-            if (Math.Abs(v) >= threshold) continue;
+            bool keep = Math.Abs(v) < threshold;
             float vp = MathF.FusedMultiplyAdd(a, xPlus, b);
             float vm = MathF.FusedMultiplyAdd(a, xMinus, b);
             float scale = coefficientX2 * a;
-            sum += Signed(scale * (Math.Abs(v) + 1), v);
-            sumPlus += Signed(scale * (Math.Abs(vp) + 1), vp);
-            sumMinus += Signed(scale * (Math.Abs(vm) + 1), vm);
+            int lane = i % Lanes;
+            lanes[lane] += keep ? Signed(scale * (Math.Abs(v) + 1), v) : 0;
+            lanes[Lanes + lane] += keep ? Signed(scale * (Math.Abs(vp) + 1), vp) : 0;
+            lanes[2 * Lanes + lane] += keep ? Signed(scale * (Math.Abs(vm) + 1), vm) : 0;
         }
 
+        float sum = Reduce(lanes[..Lanes]);
+        float sumPlus = Reduce(lanes.Slice(Lanes, Lanes));
+        float sumMinus = Reduce(lanes.Slice(2 * Lanes, Lanes));
         plus = 2 * DistanceMultiplier * count * xPlus + sumPlus;
         minus = 2 * DistanceMultiplier * count * xMinus + sumMinus;
         return 2 * DistanceMultiplier * count * x + sum;
     }
+
+    private const int Lanes = 8;
+
+    private static float Reduce(ReadOnlySpan<float> l) => ((l[0] + l[4]) + (l[2] + l[6])) + ((l[1] + l[5]) + (l[3] + l[7]));
 
     // d, negated where v is negative (IfThenElse(v < 0, -d, d)): the sign bit flipped without a branch, as the signs
     // of v are close to random.

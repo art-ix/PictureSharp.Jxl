@@ -5,7 +5,8 @@ Needs Pillow 10.2+, NumPy and pinned cjxl/djxl 0.12.0 (PATH or JXL_TOOLS). The p
 samples/private/IMG_0160_q80.jxl (12 MP); without it only the synthetic screen image is created.
 Decode inputs are encoded by cjxl so they exercise the streams libjxl writes; encode inputs are PNGs.
 16-bit inputs (name suffix -16, crop16-*): the photo decoded by djxl to float sRGB and rounded to 16 bits (real 16-bit values
-from the lossy original) and the screen widened from 8 bits (v * 257).
+from the lossy original) and the screen widened from 8 bits (v * 257). photo1w-16 is the 8-bit photo1 widened the same way: an
+encode input with exactly the 8-bit image's content, for the 16-bit/8-bit time ratio.
 """
 import os
 from pathlib import Path
@@ -95,6 +96,8 @@ def inputs16(screen_png):
             luma = (crop.astype(np.uint32) * [2126, 7152, 722]).sum(axis=2) // 10000
             write_png16(OUT / 'crop16-gray.png', luma.astype(np.uint16)[:, :, None])
         pngs |= {'photo12-16': OUT / 'photo12-16.png', 'photo1-16': OUT / 'photo1-16.png'}
+        if not (OUT / 'photo1w-16.png').exists():
+            write_png16(OUT / 'photo1w-16.png', np.asarray(Image.open(OUT / 'photo1.png').convert('RGB'), np.uint16) * 257)
     return pngs
 
 

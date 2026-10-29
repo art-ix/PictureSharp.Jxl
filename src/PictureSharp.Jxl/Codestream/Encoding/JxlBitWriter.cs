@@ -80,6 +80,50 @@ internal sealed class JxlBitWriter
         length += data.Length;
     }
 
+    /// <summary>The low bits of a <see cref="WritePacked"/> entry that hold its bit count.</summary>
+    public const int PackedCountBits = 6;
+
+    /// <summary>
+    /// Writes every entry of <paramref name="entries"/>: the bit count (0–56) in the low <see cref="PackedCountBits"/> bits,
+    /// the bits above them. The same as calling <see cref="Write(int, ulong)"/> for each, with one capacity check.
+    /// </summary>
+    public void WritePacked(ReadOnlySpan<ulong> entries)
+    {
+        const int Batch = 1 << 20;
+        for (; entries.Length > Batch; entries = entries[Batch..]) WritePackedBatch(entries[..Batch]);
+        WritePackedBatch(entries);
+    }
+
+    private void WritePackedBatch(ReadOnlySpan<ulong> entries)
+    {
+        // The exact length, plus the 8-byte store of the last flush: a worst-case reservation (7 bytes per entry) would
+        // grow retained section buffers to several times their content.
+        long total = bufferedBits;
+        foreach (ulong entry in entries) total += (int)(entry & ((1 << PackedCountBits) - 1));
+        Reserve(checked((int)(total >> 3) + sizeof(ulong)));
+        Span<byte> output = bytes;
+        ulong bits = buffer;
+        int count = bufferedBits;
+        int position = length;
+        foreach (ulong entry in entries)
+        {
+            int n = (int)(entry & ((1 << PackedCountBits) - 1));
+            if (n > 56) throw new ArgumentOutOfRangeException(nameof(entries));
+            bits |= (entry >> PackedCountBits & ((1UL << n) - 1)) << count;
+            count += n;
+            if (count >= 8)
+            {
+                BinaryPrimitives.WriteUInt64LittleEndian(output[position..], bits);
+                int whole = count >> 3;
+                position += whole;
+                bits = whole == 8 ? 0 : bits >> (whole * 8);
+                count &= 7;
+            }
+        }
+
+        (buffer, bufferedBits, length) = (bits, count, position);
+    }
+
     /// <summary>Appends all bits of <paramref name="other"/>, which need not end at a byte boundary.</summary>
     public void Append(JxlBitWriter other)
     {

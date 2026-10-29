@@ -83,38 +83,38 @@ internal sealed class JxlEntropyEncoder
         ReadOnlySpan<int> ctx = tokens.Contexts;
         ReadOnlySpan<uint> values = tokens.Values;
         using var buffers = new JxlBufferScope();
-        int[] chunks = buffers.Rent<int>(ctx.Length, clear: false);
+        // Per symbol, its renormalization chunk (if any) and raw bits as JxlBitWriter.WritePacked takes them.
+        ulong[] packed = buffers.Rent<ulong>(ctx.Length, clear: false);
+        byte[] map = contextMap;
+        JxlHybridUint[] clusterConfigs = configs;
+        JxlAnsEncodingTable[] clusterTables = tables;
         // ANS codes backwards; the decoder reads the state, then per symbol a renormalization chunk and the raw bits.
         uint state = JxlEntropyCode.AnsSignature;
         cancellationToken.ThrowIfCancellationRequested();
         for (int i = ctx.Length - 1; i >= 0; i--)
         {
             if ((i & 0xffff) == 0) cancellationToken.ThrowIfCancellationRequested();
-            int cluster = contextMap[ctx[i]];
-            uint token = configs[cluster].Encode(values[i], out _, out _);
-            JxlAnsEncodingTable table = tables[cluster];
+            int cluster = map[ctx[i]];
+            uint token = clusterConfigs[cluster].Encode(values[i], out int bitCount, out uint bits);
+            JxlAnsEncodingTable table = clusterTables[cluster];
             uint frequency = table.Frequency(token);
             if (frequency == 0) throw new InvalidOperationException("A token has no probability.");
-            chunks[i] = -1;
+            ulong entry = (ulong)bits << JxlBitWriter.PackedCountBits | (uint)bitCount;
             if (state >> (32 - LogTabSize) >= frequency)
             {
-                chunks[i] = (int)(state & 0xFFFF);
+                entry = (entry >> JxlBitWriter.PackedCountBits << (16 + JxlBitWriter.PackedCountBits)) | (ulong)(state & 0xFFFF) << JxlBitWriter.PackedCountBits
+                    | (uint)(bitCount + 16);
                 state >>= 16;
             }
 
+            packed[i] = entry;
             uint quotient = table.Quotient(token, state);
             state = (quotient << LogTabSize) + table.Slot(token, state - quotient * frequency);
         }
 
         writer.Write(32, state);
-        for (int i = 0; i < ctx.Length; i++)
-        {
-            if ((i & 0xffff) == 0) cancellationToken.ThrowIfCancellationRequested();
-            if (chunks[i] >= 0) writer.Write(16, (uint)chunks[i]);
-            // Tokenized again rather than stored: fewer arrays keep encoding faster.
-            _ = configs[contextMap[ctx[i]]].Encode(values[i], out int bitCount, out uint bits);
-            writer.Write(bitCount, bits);
-        }
+        cancellationToken.ThrowIfCancellationRequested();
+        writer.WritePacked(packed.AsSpan(0, ctx.Length));
     }
 
     /// <summary>Codes <paramref name="tokens"/> with their own codes: header and stream.</summary>
@@ -125,11 +125,13 @@ internal sealed class JxlEntropyEncoder
         encoder.WriteStream(writer, tokens, cancellationToken);
     }
 
-    // Per context, the counts of the tokens under the default configuration.
+    // Per context, the counts of the tokens under the default configuration, up to the last used token (empty when unused).
     private static long[][] TokenHistograms(int contexts, IReadOnlyList<JxlTokens> streams, CancellationToken cancellationToken)
     {
-        var histograms = new long[contexts][];
-        for (int c = 0; c < contexts; c++) histograms[c] = [];
+        // The default configuration's tokens of 32-bit values stay below DefaultTokens: a fixed row per context that
+        // occurs (lossy AC streams have thousands of contexts, most unused), no growth checks per token.
+        const int DefaultTokens = 128;
+        var rows = new long[]?[contexts];
         foreach (JxlTokens stream in streams)
         {
             ReadOnlySpan<int> ctx = stream.Contexts;
@@ -138,8 +140,15 @@ internal sealed class JxlEntropyEncoder
             {
                 if ((i & 0xffff) == 0) cancellationToken.ThrowIfCancellationRequested();
                 uint token = JxlHybridUint.Default.Encode(streamValues[i], out _, out _);
-                Increment(ref histograms[ctx[i]], token, 1);
+                (rows[ctx[i]] ??= new long[DefaultTokens])[token]++;
             }
+        }
+
+        var histograms = new long[contexts][];
+        for (int c = 0; c < contexts; c++)
+        {
+            ReadOnlySpan<long> row = rows[c];
+            histograms[c] = row[..(row.LastIndexOfAnyExcept(0L) + 1)].ToArray();
         }
 
         return histograms;

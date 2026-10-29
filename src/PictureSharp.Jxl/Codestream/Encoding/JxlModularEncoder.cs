@@ -31,19 +31,27 @@ internal static class JxlModularEncoder
     /// <param name="metadata">The image metadata <paramref name="header"/> is written against.</param>
     /// <param name="dcQuant">Custom DC quantization steps of X, Y and B (the scale of XYB samples), or the defaults.</param>
     /// <param name="parallelism">The maximum degree of parallelism (1 = single-threaded, -1 = automatic); the output does not depend on it.</param>
+    /// <param name="effort">The effort tier (tree, learning and colour transform search); effort 7 by default.</param>
+    /// <param name="bitDepth">The bits per sample, which scale the cutoffs of the fixed trees.</param>
     public static void WriteFrame(JxlBitWriter writer, IReadOnlyList<JxlChannel> channels, int colorChannels, CancellationToken cancellationToken,
-        JxlFrameHeader? header = null, JxlImageMetadata? metadata = null, float[]? dcQuant = null, int parallelism = 1)
+        JxlFrameHeader? header = null, JxlImageMetadata? metadata = null, float[]? dcQuant = null, int parallelism = 1,
+        JxlModularEffort? effort = null, int bitDepth = 8)
     {
+        effort ??= JxlModularEffort.Default;
         JxlFrameHeader frame = header ?? new JxlFrameHeader
         {
             Encoding = JxlFrameEncoding.Modular, Width = (uint)channels[0].Width, Height = (uint)channels[0].Height, GroupSizeShift = GroupSizeShift,
         };
         if (frame.TocEntries > JxlToc.MaxEntries) throw JxlDescriptor.Unsupported("the image has too many groups to encode.");
-        (List<JxlChannel> image, List<JxlTransform> transforms, int meta) = ApplyTransforms(channels, colorChannels, cancellationToken, parallelism);
+        (List<JxlChannel> image, List<JxlTransform> transforms, int meta) =
+            ApplyTransforms(channels, colorChannels, cancellationToken, parallelism, effort.SearchRct, bitDepth);
         using var tokenBuffers = new JxlBufferScope();
         List<(int Id, List<JxlChannel> Channels)> streams = SplitIntoStreams(frame, image, meta, tokenBuffers);
         var errors = new Dictionary<JxlChannel, int[]>(ReferenceEqualityComparer.Instance);
-        List<JxlTreeNode> tree = JxlModularTreeEncoder.Learn(streams, cancellationToken, errors, tokenBuffers, parallelism);
+        List<JxlTreeNode> tree = effort.Tree == JxlModularTreeKind.Learned
+            ? JxlModularTreeEncoder.Learn(streams, cancellationToken, errors, tokenBuffers, parallelism, effort)
+            : effort.FixedTree(streams.Sum(stream => stream.Channels.Sum(channel => (long)channel.Width * channel.Height)), bitDepth,
+                streams.Max(stream => stream.Channels.Count));
         (JxlTokens treeTokens, int[] leafOf) = JxlModularTreeEncoder.Tokenize(tree, tokenBuffers);
         List<JxlTokens> tokens = JxlModularTreeEncoder.TokenizeStreams(streams, tree, leafOf, cancellationToken, errors, tokenBuffers, parallelism);
         JxlEntropyEncoder code = JxlEntropyEncoder.Build(leafOf.Count(leaf => leaf >= 0), tokens);
@@ -83,9 +91,11 @@ internal static class JxlModularEncoder
         WriteSections(writer, frame, global, groupSections);
     }
 
-    // A palette when it pays off, else the best colour transform of RGB; the palette adds one meta channel in front.
+    // A palette when it pays off; else, for samples of more than 8 bits, a palette per channel that uses few of its
+    // values (libjxl's channel compaction), then the best colour transform of RGB (or YCoCg without the search). Every
+    // palette adds one meta channel in front.
     private static (List<JxlChannel> Image, List<JxlTransform> Transforms, int Meta) ApplyTransforms(IReadOnlyList<JxlChannel> channels,
-        int colorChannels, CancellationToken cancellationToken, int parallelism)
+        int colorChannels, CancellationToken cancellationToken, int parallelism, bool searchRct, int bitDepth)
     {
         var image = new List<JxlChannel>(channels);
         if (JxlModularTransformChooser.Palette(image, image.Count, cancellationToken, parallelism) is { } palette)
@@ -93,17 +103,39 @@ internal static class JxlModularEncoder
             return ([palette.Palette, palette.Indices], [palette.Transform], 1);
         }
 
-        if (colorChannels == 3)
+        var transforms = new List<JxlTransform>();
+        int meta = 0;
+        bool compactedColor = false;
+        if (bitDepth > 8)
         {
-            JxlRctType rct = JxlModularTransformChooser.ChooseRct(image, cancellationToken, parallelism);
-            if (rct != JxlRctType.None)
+            for (int c = 0; c < channels.Count; c++)
             {
-                JxlModularTransformChooser.ForwardRct(image, rct, cancellationToken);
-                return (image, [new JxlTransform { Id = JxlTransformId.Rct, BeginC = 0, RctType = rct }], 0);
+                if (JxlModularTransformChooser.CompactChannel(image[meta + c], cancellationToken) is not { } compact) continue;
+                image[meta + c] = compact.Indices;
+                transforms.Add(compact.Transform with { BeginC = (uint)(meta + c) });
+                image.Insert(0, compact.Palette);
+                meta++;
+                compactedColor |= c < colorChannels;
             }
         }
 
-        return (image, [], 0);
+        if (colorChannels == 3)
+        {
+            List<JxlChannel> rgb = image.GetRange(meta, 3);
+            // Without the search RGB becomes YCoCg, unless compacted channels (indices of different scales) code
+            // cheaper untransformed.
+            JxlRctType rct = searchRct ? JxlModularTransformChooser.ChooseRct(rgb, cancellationToken, parallelism)
+                : compactedColor ? JxlModularTransformChooser.ChooseRct(rgb, cancellationToken, parallelism, [JxlRctType.None, JxlRctType.YCoCg])
+                : JxlRctType.YCoCg;
+            if (rct != JxlRctType.None)
+            {
+                JxlModularTransformChooser.ForwardRct(rgb, rct, cancellationToken);
+                for (int c = 0; c < 3; c++) image[meta + c] = rgb[c];
+                transforms.Add(new JxlTransform { Id = JxlTransformId.Rct, BeginC = (uint)meta, RctType = rct });
+            }
+        }
+
+        return (image, transforms, meta);
     }
 
     // The global stream holds the meta channels and the leading channels that fit a group; groups hold the rest.

@@ -23,7 +23,7 @@ Original JPEG bytes can be preserved with the separate [JPEG transcoder](transco
 | --- | --- | --- |
 | `Quality` | `90` | 0–100 on `cjxl -q`'s scale (100 lossless, 90 = distance 1.0); used when `Distance` is null |
 | `Distance` | `null` | butteraugli distance 0–25 as `cjxl -d`; overrides `Quality`; 0 is lossless |
-| `Effort` | `7` | 1–9 as `cjxl -e` (lossy); 8 and 9 currently behave as 7 |
+| `Effort` | `7` | 1–9 as `cjxl -e`; lossless tiers since 0.8.3 ([below](#lossless-frames)); 8 and 9 currently behave as 7 |
 | `Metadata` | `All` | which of ICC, EXIF and XMP are written |
 | `CompressMetadata` | `false` | Brotli-compress EXIF and XMP into `brob` boxes (as `cjxl`); readers without Brotli won't see them |
 
@@ -78,7 +78,7 @@ and peak RSS, see the [speed measurements](benchmarks/speed.md).
 
 ## Lossless frames
 
-One 8-bit or 16-bit Modular frame, chosen like `cjxl -d 0 -e 7`:
+One 8-bit or 16-bit Modular frame. Effort 7 is chosen like `cjxl -d 0 -e 7`:
 
 - **Channels:** gray when R = G = B everywhere (unless an RGB ICC profile is written), else RGB; alpha when any pixel
   is not opaque.
@@ -86,6 +86,40 @@ One 8-bit or 16-bit Modular frame, chosen like `cjxl -d 0 -e 7`:
   37 distinct RCTs, or none.
 - **Prediction:** meta-adaptive tree learned from a pixel sample, weighted or gradient predictor per leaf.
 - **Entropy coding:** clustered ANS (≤ 64 distributions), no LZ77; 256×256 groups, no progressive passes or squeeze.
+
+Since 0.8.3 lower efforts follow libjxl 0.12.0's Modular tiers (`enc_modular.cc`; node threshold 75 + 14 × speed
+tier, `nb_repeats` and `max_property_values` per tier). Before 0.8.3 every effort produced the effort-7 output;
+efforts 7–9 still do, byte for byte. The palette is tried at every effort.
+
+| Effort | libjxl tier | Colour transform | Tree | Properties, sample fraction, quantization |
+| --- | --- | --- | --- | --- |
+| 1 | lightning | YCoCg | one gradient-predictor leaf per channel | none |
+| 2 | thunder | YCoCg | fixed `kGradientFixedDC` tree on W + N − NW, gradient predictor | none |
+| 3 | falcon | YCoCg | fixed `kWPFixedDC` tree on the weighted predictor's error, weighted predictor | none |
+| 4 | cheetah | YCoCg | learned, weighted or gradient predictor per leaf | 3, 15%, 32 values |
+| 5 | hare | RCT search | learned | 4, 25%, 48 values |
+| 6 | wombat | RCT search | learned | 5, 35%, 64 values |
+| 7–9 | squirrel | RCT search | learned | 7, 50%, 96 values |
+
+Input of more than 8 bits (all efforts, since 0.8.3): the palette also accepts samples above 32767, and a channel
+that uses few of its values (at most a quarter of its range and one value per 16 pixels, and cheaper to predict) is
+replaced by a sorted per-channel palette and indices, like libjxl's channel compaction. 8-bit images widened to
+16 bits then code about as small as the 8-bit image; full-range 16-bit photos are unchanged.
+
+The fixed trees are libjxl's `MakeFixedTree`: 33 cutoffs, shallower below 2^14 pixels, cutoffs × 16 for 16-bit
+samples. libjxl's effort 1 is a separate encoder (`enc_fast_lossless`, prefix codes and run lengths); here effort 1
+keeps this encoder's ANS bitstream with the cheapest tree, so its files are smaller and it is slower than `cjxl -e 1`.
+
+Sizes against `cjxl` 0.12.0 (bytes, `--num_threads=1`):
+
+| Image | e1 | e2 | e3 | e4 | e5 | e6 | e7 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| 1280×800 photo, this encoder | 908 156 | 895 470 | 853 183 | 842 444 | 817 412 | 793 336 | 785 105 |
+| 1280×800 photo, `cjxl` | 1 015 203 | 880 332 | 854 203 | 840 469 | 830 459 | 814 919 | 785 474 |
+| 1600×1000 screen, this encoder | 207 130 | 178 723 | 198 170 | 140 252 | 126 351 | 118 958 | 108 866 |
+| 1600×1000 screen, `cjxl` | 245 462 | 218 166 | 237 860 | 200 927 | 127 520 | 118 863 | 109 392 |
+
+Encoding times per effort are in the [speed measurements](benchmarks/speed.md#encoder-work-083).
 
 Output is a bare codestream, or a container when EXIF or XMP are written; images beyond level 5 get a `jxll` box.
 

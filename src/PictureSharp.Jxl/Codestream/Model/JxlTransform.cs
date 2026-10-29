@@ -17,6 +17,9 @@ internal readonly record struct JxlRctType(uint Value)
 
     public static JxlRctType None => new(0);
 
+    /// <summary>YCoCg without a permutation (libjxl rct_type 6).</summary>
+    public static JxlRctType YCoCg => new(YCoCgTransform);
+
     /// <summary>0=RGB, 1=GBR, 2=BRG, 3=RBG, 4=GRB, 5=BGR.</summary>
     public int Permutation => (int)(Value / Transforms);
 

@@ -13,11 +13,7 @@ namespace PictureSharp.Formats.Jxl.Codestream.Encoding;
 /// </summary>
 internal static class JxlModularTreeEncoder
 {
-    // libjxl's splitting_heuristics_node_threshold at effort 7: 75 + 14 × speed tier 3.
-    private const float NodeThreshold = 117;
-    private const int MaxPropertyValues = 96;
     private const int MaxSamples = 1 << 20;
-    private const double SampleFraction = 0.5;
     // libjxl leaves out the stream property when there are fewer streams.
     private const int MinStreamsForStreamProperty = 30;
     private static readonly JxlPredictor[] Predictors = [JxlPredictor.Weighted, JxlPredictor.Gradient];
@@ -47,15 +43,18 @@ internal static class JxlModularTreeEncoder
     /// at the state of the sampling sequence its sequential scan would have, and its samples are added to the learner
     /// in channel order, so the tree does not depend on it.
     /// </param>
+    /// <param name="effort">The learning settings (properties, quantization, sample fraction, split threshold); effort 7 by default.</param>
     public static List<JxlTreeNode> Learn(List<(int Id, List<JxlChannel> Channels)> streams, CancellationToken cancellationToken,
-        Dictionary<JxlChannel, int[]>? errors = null, JxlBufferScope? buffers = null, int parallelism = JxlParallel.Sequential)
+        Dictionary<JxlChannel, int[]>? errors = null, JxlBufferScope? buffers = null, int parallelism = JxlParallel.Sequential,
+        JxlModularEffort? effort = null)
     {
+        effort ??= JxlModularEffort.Default;
         long total = streams.Sum(stream => stream.Channels.Sum(channel => (long)channel.Width * channel.Height));
-        int[] properties = streams.Count < MinStreamsForStreamProperty ? FewStreamProperties : ManyStreamProperties;
+        int[] properties = [.. (streams.Count < MinStreamsForStreamProperty ? FewStreamProperties : ManyStreamProperties).Take(effort.PropertyCount)];
         // The sample scan sets the local properties of sampled pixels only, so the running one is not available.
         System.Diagnostics.Debug.Assert(!properties.Contains(JxlMaProperty.WMinusPreviousGradient));
-        using var learner = new JxlTreeLearner(properties, Predictors, MaxPropertyValues);
-        double fraction = Math.Min(SampleFraction, MaxSamples / (double)Math.Max(total, 1));
+        using var learner = new JxlTreeLearner(properties, Predictors, effort.MaxPropertyValues);
+        double fraction = Math.Min(effort.SampleFraction, MaxSamples / (double)Math.Max(total, 1));
         uint threshold = (uint)(fraction * uint.MaxValue);
         // Empty channels are not scanned and do not advance the sampling sequence.
         var scans = new List<(int Id, int Index, JxlChannel Channel, uint State)>();
@@ -82,7 +81,7 @@ internal static class JxlModularTreeEncoder
                 }
             }
 
-            return learner.Learn(NodeThreshold, cancellationToken, parallelism);
+            return learner.Learn(effort.NodeThreshold, cancellationToken, parallelism);
         }
 
         // Each channel collects its own samples from its own position of the sequence.
@@ -93,7 +92,7 @@ internal static class JxlModularTreeEncoder
             JxlParallel.For(scans.Count, parallelism, cancellationToken, i =>
             {
                 (int id, int c, JxlChannel channel, uint start) = scans[i];
-                var batch = batches[i] = new JxlTreeLearner(properties, Predictors, MaxPropertyValues);
+                var batch = batches[i] = new JxlTreeLearner(properties, Predictors, effort.MaxPropertyValues);
                 var visitor = new SampleVisitor(batch, threshold, start);
                 int[]? channelErrors = NewErrors(channel, errors, buffers);
                 if (Scan(channel, c, id, ref visitor, cancellationToken, channelErrors)) recorded[i] = channelErrors;
@@ -110,7 +109,7 @@ internal static class JxlModularTreeEncoder
             foreach (JxlTreeLearner? batch in batches) batch?.Dispose();
         }
 
-        return learner.Learn(NodeThreshold, cancellationToken, parallelism);
+        return learner.Learn(effort.NodeThreshold, cancellationToken, parallelism);
     }
 
     private static int[]? NewErrors(JxlChannel channel, Dictionary<JxlChannel, int[]>? errors, JxlBufferScope? buffers) =>
@@ -166,6 +165,10 @@ internal static class JxlModularTreeEncoder
                 if (errors is not null && errors.TryGetValue(channels[c], out int[]? channelErrors))
                 {
                     TokenizeRecorded(channels[c], c, id, channelErrors, visitor.Nodes, visitor.Tokens, cancellationToken);
+                }
+                else if (IsGradientOnly(visitor.Nodes))
+                {
+                    TokenizeGradient(channels[c], visitor.Nodes, visitor.Tokens, cancellationToken);
                 }
                 else
                 {
@@ -295,6 +298,69 @@ internal static class JxlModularTreeEncoder
                 tokens.Add(leaf.Left, PackSigned(pixels[row + x] - prediction));
             }
         }
+    }
+
+    // Whether every decision is on the gradient property and every leaf predicts the gradient (the fixed trees of efforts
+    // 1 and 2): the pixels then need neither the weighted predictor nor the other properties.
+    private static bool IsGradientOnly(Node[] nodes)
+    {
+        foreach (Node node in nodes)
+        {
+            if (node.Property >= 0 ? node.Property != JxlMaProperty.Gradient : (JxlPredictor)node.Right != JxlPredictor.Gradient) return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>Tokenizes a channel as <see cref="TokenVisitor"/> does for a tree that <see cref="IsGradientOnly"/>.</summary>
+    private static void TokenizeGradient(JxlChannel channel, Node[] nodes, JxlTokens tokens, CancellationToken cancellationToken)
+    {
+        int width = channel.Width;
+        int[] pixels = channel.Pixels;
+        for (int y = 0; y < channel.Height; y++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            tokens.Append(width, out Span<int> contexts, out Span<uint> values);
+            ReadOnlySpan<int> row = pixels.AsSpan(y * width, width);
+            if (y == 0)
+            {
+                // The first row: W, with N and NW substituted by W (0 for the first pixel).
+                for (int x = 0; x < width; x++)
+                {
+                    int w = x > 0 ? row[x - 1] : 0;
+                    (contexts[x], values[x]) = GradientToken(nodes, w, w, w, row[x]);
+                }
+
+                continue;
+            }
+
+            ReadOnlySpan<int> above = pixels.AsSpan((y - 1) * width, width);
+            // The first column: W and NW substituted by N.
+            (contexts[0], values[0]) = GradientToken(nodes, above[0], above[0], above[0], row[0]);
+            if (nodes.Length == 1)
+            {
+                int context = nodes[0].Left;
+                contexts[1..].Fill(context);
+                for (int x = 1; x < row.Length; x++)
+                {
+                    values[x] = PackSigned(row[x] - (long)JxlMaProperty.ClampedGradient(row[x - 1], above[x], above[x - 1]));
+                }
+
+                continue;
+            }
+
+            for (int x = 1; x < row.Length; x++) (contexts[x], values[x]) = GradientToken(nodes, row[x - 1], above[x], above[x - 1], row[x]);
+        }
+    }
+
+    // The context (leaf found with the gradient property W + N − NW) and packed residual of the gradient prediction.
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    private static (int Context, uint Value) GradientToken(Node[] nodes, int w, int n, int nw, int pixel)
+    {
+        int gradient = unchecked((int)((long)w + n - nw));
+        Node node = nodes[0];
+        while (node.Property >= 0) node = nodes[gradient > node.Split ? node.Left : node.Right];
+        return (node.Left, PackSigned(pixel - (long)JxlMaProperty.ClampedGradient(w, n, nw)));
     }
 
     private struct SampleVisitor(JxlTreeLearner learner, uint threshold, uint state) : IPixelVisitor

@@ -77,6 +77,11 @@ internal sealed record SpeedCase(string Id, string Input, string Reference, Func
         ("photo12", 0, 7), ("photo12", 1, 7),
         ("photo1-16", 0, 7), ("photo1-16", 1, 7), ("screen-16", 0, 7), ("screen-16", 1, 7),
         ("photo12-16", 0, 7), ("photo12-16", 1, 7),
+        // Lossless effort tiers (0.8.3) and the widened 8-bit photo (same content as photo1) for the 16/8-bit ratio.
+        ("photo1", 0, 2), ("photo1", 0, 4), ("photo1", 0, 5), ("photo1", 0, 6),
+        ("screen", 0, 1), ("screen", 0, 2), ("screen", 0, 3), ("screen", 0, 4), ("screen", 0, 5),
+        ("photo1w-16", 0, 1), ("photo1w-16", 0, 3), ("photo1w-16", 0, 7), ("photo1w-16", 1, 3), ("photo1w-16", 1, 7),
+        ("screen-16", 0, 1), ("screen-16", 0, 3),
     ];
 
     // JXL_THREADS sets MaxDegreeOfParallelism (default -1, the library default); package builds before 0.8.1 have no

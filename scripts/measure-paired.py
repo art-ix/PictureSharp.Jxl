@@ -36,6 +36,8 @@ def main():
     parser.add_argument('--small-runs', type=int, default=200)
     parser.add_argument('--cpu', default='0')
     parser.add_argument('--cpus', default='0-15')
+    parser.add_argument('--allow-size-change', action='append', default=[], metavar='CASE',
+                        help='case whose output may differ between builds (intended encoder changes); repeatable')
     parser.add_argument('--out', type=Path, required=True)
     args = parser.parse_args()
     if min(args.rounds, args.runs, args.large_runs, args.small_runs) < 1:
@@ -98,7 +100,7 @@ def main():
                 if len(sizes) != 1:
                     raise RuntimeError(f'{case}: output size varies between runs')
                 summary[key + 'Bytes'] = sizes.pop()
-            if summary['baselineBytes'] != summary['currentBytes']:
+            if summary['baselineBytes'] != summary['currentBytes'] and case not in args.allow_size_change:
                 raise RuntimeError(f'{case}: output size differs between builds')
             summary['deltaPercent'] = (summary['currentMs'] / summary['baselineMs'] - 1) * 100
             record['summary'].append(summary)

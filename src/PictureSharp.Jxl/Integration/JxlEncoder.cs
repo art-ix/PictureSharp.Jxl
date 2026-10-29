@@ -99,7 +99,8 @@ internal sealed partial class JxlEncoder : IImageFormatEncoder<JxlEncoderOptions
         else
         {
             (int[][] color, int[]? alphaPlane) = wide ? SplitPlanes(pixels64, gray, alpha, cancellationToken) : SplitPlanes(pixels, gray, alpha, cancellationToken);
-            var input = new JxlEncodeImage(width, height, color, alphaPlane, encoding, icc, orientation, bitDepth, options.MaxDegreeOfParallelism);
+            var input = new JxlEncodeImage(width, height, color, alphaPlane, encoding, icc, orientation, bitDepth, options.MaxDegreeOfParallelism,
+                options.Effort);
             JxlCodestreamWriter.WriteTo(input, writer, cancellationToken);
         }
 

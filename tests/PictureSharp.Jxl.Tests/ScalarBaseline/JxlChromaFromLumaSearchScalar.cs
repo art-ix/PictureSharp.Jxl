@@ -1,4 +1,4 @@
-// Frozen 0.7.10 scalar reference (6cd7f9b).
+// Frozen 0.7.10 scalar reference (6cd7f9b); Derivatives sums in eight lanes since 0.8.3 (encoder output may change).
 using PictureSharp.Formats.Jxl.Codestream.VarDct;
 
 namespace PictureSharp.Formats.Jxl.Codestream.Encoding.Lossy;
@@ -141,23 +141,26 @@ internal sealed class JxlChromaFromLumaSearchScalar(JxlImage3F image, JxlQuantWe
         float xMinus = x - eps;
         ReadOnlySpan<float> slopes = slope.AsSpan(0, count);
         ReadOnlySpan<float> offsets = offset.AsSpan(0, count);
-        float sum = 0;
-        float sumPlus = 0;
-        float sumMinus = 0;
+        // 0.8.3: coefficient i adds to lane i % 8 (zero when left out); lanes k and k + 4, then even and odd pairs.
+        float[] lanes = new float[24];
         for (int i = 0; i < slopes.Length; i++)
         {
             float a = slopes[i];
             float b = offsets[i];
             float v = MathF.FusedMultiplyAdd(a, x, b);
-            // Values far from zero at x are left out of all three derivatives.
-            if (Math.Abs(v) >= threshold) continue;
+            bool keep = Math.Abs(v) < threshold;
             float vp = MathF.FusedMultiplyAdd(a, xPlus, b);
             float vm = MathF.FusedMultiplyAdd(a, xMinus, b);
             float scale = coefficientX2 * a;
-            sum += Signed(scale * (Math.Abs(v) + 1), v);
-            sumPlus += Signed(scale * (Math.Abs(vp) + 1), vp);
-            sumMinus += Signed(scale * (Math.Abs(vm) + 1), vm);
+            lanes[i % 8] += keep ? Signed(scale * (Math.Abs(v) + 1), v) : 0;
+            lanes[8 + i % 8] += keep ? Signed(scale * (Math.Abs(vp) + 1), vp) : 0;
+            lanes[16 + i % 8] += keep ? Signed(scale * (Math.Abs(vm) + 1), vm) : 0;
         }
+
+        static float Reduce(float[] l, int o) => ((l[o] + l[o + 4]) + (l[o + 2] + l[o + 6])) + ((l[o + 1] + l[o + 5]) + (l[o + 3] + l[o + 7]));
+        float sum = Reduce(lanes, 0);
+        float sumPlus = Reduce(lanes, 8);
+        float sumMinus = Reduce(lanes, 16);
 
         plus = 2 * DistanceMultiplier * count * xPlus + sumPlus;
         minus = 2 * DistanceMultiplier * count * xMinus + sumMinus;

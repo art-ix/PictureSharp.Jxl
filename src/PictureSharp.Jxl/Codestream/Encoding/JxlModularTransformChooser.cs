@@ -45,26 +45,29 @@ internal static class JxlModularTransformChooser
         int limit = (int)Math.Min(MaxPaletteColors, pixels / PixelsPerColor);
         int[][] planes = [.. image.Take(count).Select(channel => channel.Pixels)];
         int bands = JxlParallel.Bands(height, PaletteBandRows, parallelism);
-        var found = new HashSet<long>?[bands];
+        var found = new ColorTable?[bands];
         JxlParallel.For(bands, parallelism, cancellationToken, band =>
             found[band] = Colors(planes, width * JxlParallel.BandStart(height, bands, band), width * JxlParallel.BandStart(height, bands, band + 1),
                 limit, cancellationToken));
-        var colors = new Dictionary<long, int>();
-        foreach (HashSet<long>? set in found)
+        var colors = new ColorTable(limit);
+        // Keys hold 16 bits per sample: signed samples, or unsigned ones above 32767 (16-bit input), not both.
+        bool high = found.Any(set => set is { High: true });
+        if (high && found.Any(set => set is { Negative: true })) return null;
+        foreach (ColorTable? set in found)
         {
             if (set is null) return null;
-            foreach (long key in set)
+            foreach (long key in set.Keys)
             {
-                if (colors.TryAdd(key, 0) && colors.Count > limit) return null;
+                if (colors.Add(key) && colors.Count > limit) return null;
             }
         }
 
-        long[] sorted = [.. colors.Keys.OrderBy(key => Luma(key, count)).ThenBy(key => key)];
-        for (int i = 0; i < sorted.Length; i++) colors[sorted[i]] = i;
+        long[] sorted = [.. colors.Keys.ToArray().OrderBy(key => Luma(key, count, high)).ThenBy(key => key)];
+        for (int i = 0; i < sorted.Length; i++) colors.Set(sorted[i], i);
         var palette = new JxlChannel(sorted.Length, count, -1, -1);
         for (int i = 0; i < sorted.Length; i++)
         {
-            for (int c = 0; c < count; c++) palette.Pixels[c * sorted.Length + i] = Sample(sorted[i], c);
+            for (int c = 0; c < count; c++) palette.Pixels[c * sorted.Length + i] = Sample(sorted[i], c, high);
         }
 
         var indices = new JxlChannel(width, height);
@@ -76,7 +79,7 @@ internal static class JxlModularTransformChooser
             for (int i = width * start; i < width * end; i++)
             {
                 long key = Key(planes, i);
-                if (index < 0 || key != previous) (previous, index) = (key, colors[key]);
+                if (index < 0 || key != previous) (previous, index) = (key, colors.Get(key));
                 output[i] = index;
             }
         });
@@ -89,15 +92,74 @@ internal static class JxlModularTransformChooser
 
     private const int PaletteBandRows = 64;
 
-    // The colours of pixels [begin, end), or null when a sample does not fit 16 bits or there are more than limit.
-    private static HashSet<long>? Colors(int[][] planes, int begin, int end, int limit, CancellationToken cancellationToken)
+    // A channel is compacted when at most this share of its range occurs (libjxl's channel_colors_pre_transform_percent: 95).
+    private const double ChannelColorsPercent = 25;
+    // ... and when its palette has at most one entry per this many pixels.
+    private const int PixelsPerChannelColor = 16;
+
+    /// <summary>
+    /// libjxl's channel palette (FLIF's ChannelCompact, enc_palette.cc with one channel): when few of the values in the
+    /// range of <paramref name="channel"/> occur, the sorted values become a palette and the samples their indices.
+    /// Unlike libjxl (at most 95% of the range), at most a quarter of the range may occur: compaction then saves two bits
+    /// per sample (widened 8-bit, 10- and 12-bit data in 16 bits, alpha ramps), while on full-range 16-bit photos it made
+    /// the learned-tree output larger. It must also lower the gradient-residual cost of sampled rows.
+    /// </summary>
+    public static PaletteResult? CompactChannel(JxlChannel channel, CancellationToken cancellationToken)
     {
-        var colors = new HashSet<long>();
+        ReadOnlySpan<int> samples = channel.Pixels.AsSpan(0, channel.Width * channel.Height);
+        if (samples.IsEmpty) return null;
+        int min = int.MaxValue, max = int.MinValue;
+        foreach (int sample in samples)
+        {
+            min = Math.Min(min, sample);
+            max = Math.Max(max, sample);
+        }
+
+        long range = (long)max - min + 1;
+        long limit = Math.Min(samples.Length / PixelsPerChannelColor, (long)(ChannelColorsPercent / 100 * range));
+        if (limit < 2 || range > 1 << 24) return null;
+        int[] lookup = new int[range];
+        int count = 0;
+        for (int i = 0; i < samples.Length; i++)
+        {
+            if ((i & CancellationCheckMask) == 0) cancellationToken.ThrowIfCancellationRequested();
+            ref int seen = ref lookup[samples[i] - min];
+            if (seen != 0) continue;
+            seen = 1;
+            if (++count > limit) return null;
+        }
+
+        var palette = new JxlChannel(count, 1, -1, -1);
+        int next = 0;
+        for (int v = 0; v < lookup.Length; v++)
+        {
+            if (lookup[v] == 0) continue;
+            palette.Pixels[next] = min + v;
+            lookup[v] = next++;
+        }
+
+        var indices = new JxlChannel(channel.Width, channel.Height);
+        int[] output = indices.Pixels;
+        for (int i = 0; i < samples.Length; i++) output[i] = lookup[samples[i] - min];
+        // As libjxl's slower efforts check transforms (maybe_do_transform with EstimateCost): sorted indices of values
+        // that wrap or interleave lose their smoothness.
+        if (GradientCost(output, channel.Width, channel.Height) >= GradientCost(channel.Pixels, channel.Width, channel.Height)) return null;
+        var transform = new JxlTransform
+        {
+            Id = JxlTransformId.Palette, BeginC = 0, NumC = 1, Colors = (uint)count, Deltas = 0, Predictor = JxlPredictor.Zero,
+        };
+        return new PaletteResult(transform, palette, indices);
+    }
+
+    // The colours of pixels [begin, end), or null when a sample is outside -32768..65535 or there are more than limit.
+    private static ColorTable? Colors(int[][] planes, int begin, int end, int limit, CancellationToken cancellationToken)
+    {
+        var colors = new ColorTable(limit);
         long previous = 0;
         for (int i = begin; i < end; i++)
         {
             if ((i & CancellationCheckMask) == 0) cancellationToken.ThrowIfCancellationRequested();
-            if (!Fits16Bits(planes, i)) return null;
+            if (!Fits16Bits(planes, i, colors)) return null;
             long key = Key(planes, i);
             // Runs of one colour are common in screen content.
             if (i > begin && key == previous) continue;
@@ -108,6 +170,63 @@ internal static class JxlModularTransformChooser
         return colors;
     }
 
+    /// <summary>
+    /// A set of at most limit + 1 colour keys, each with a value: open addressing in a power-of-two table at most a
+    /// quarter full, so lookups of the (few) palette colours stay short.
+    /// </summary>
+    private sealed class ColorTable
+    {
+        private readonly long[] keys;
+        private readonly int[] values;
+        private readonly bool[] used;
+        private readonly long[] inserted;
+        private readonly int shift;
+
+        public ColorTable(int limit)
+        {
+            int size = (int)System.Numerics.BitOperations.RoundUpToPowerOf2((uint)(4 * (limit + 1)));
+            shift = 64 - System.Numerics.BitOperations.Log2((uint)size);
+            keys = new long[size];
+            values = new int[size];
+            used = new bool[size];
+            inserted = new long[limit + 1];
+        }
+
+        public int Count { get; private set; }
+
+        /// <summary>Whether a sample was negative.</summary>
+        public bool Negative { get; set; }
+
+        /// <summary>Whether a sample was above 32767.</summary>
+        public bool High { get; set; }
+
+        /// <summary>The keys in insertion order.</summary>
+        public ReadOnlySpan<long> Keys => inserted.AsSpan(0, Count);
+
+        /// <summary>Adds the key unless present (at most limit + 1 keys); whether it was added.</summary>
+        public bool Add(long key)
+        {
+            int slot = Find(key);
+            if (used[slot]) return false;
+            (used[slot], keys[slot]) = (true, key);
+            inserted[Count++] = key;
+            return true;
+        }
+
+        public void Set(long key, int value) => values[Find(key)] = value;
+
+        public int Get(long key) => values[Find(key)];
+
+        // The slot of the key, or the empty slot where it belongs.
+        private int Find(long key)
+        {
+            int mask = keys.Length - 1;
+            int slot = (int)((ulong)key * 0x9E3779B97F4A7C15UL >> shift);
+            while (used[slot] && keys[slot] != key) slot = (slot + 1) & mask;
+            return slot;
+        }
+    }
+
     // The signed 16-bit samples of pixel i packed into one key.
     private static long Key(int[][] planes, int i)
     {
@@ -116,37 +235,52 @@ internal static class JxlModularTransformChooser
         return key;
     }
 
-    private static bool Fits16Bits(int[][] planes, int i)
+    // Whether the samples of pixel i fit a key; records negative samples and samples above 32767 in the table.
+    private static bool Fits16Bits(int[][] planes, int i, ColorTable colors)
     {
         foreach (int[] plane in planes)
         {
-            if (plane[i] is < short.MinValue or > short.MaxValue) return false;
+            int sample = plane[i];
+            if (sample is < short.MinValue or > ushort.MaxValue) return false;
+            if (sample < 0) colors.Negative = true;
+            else if (sample > short.MaxValue) colors.High = true;
         }
 
         return true;
     }
 
-    private static int Sample(long key, int c) => (short)((key >> (16 * c)) & 0xFFFF);
+    private static int Sample(long key, int c, bool unsigned)
+    {
+        int bits = (int)((key >> (16 * c)) & 0xFFFF);
+        return unsigned ? bits : (short)bits;
+    }
 
-    private static long Luma(long key, int count) => count < 3
-        ? Sample(key, 0)
-        : 299L * Sample(key, 0) + 587L * Sample(key, 1) + 114L * Sample(key, 2);
+    private static long Luma(long key, int count, bool unsigned) => count < 3
+        ? Sample(key, 0, unsigned)
+        : 299L * Sample(key, 0, unsigned) + 587L * Sample(key, 1, unsigned) + 114L * Sample(key, 2, unsigned);
 
     /// <summary>
     /// The RCT type whose channels cost least with the gradient predictor on a sample of rows; none when no transform
     /// beats the untransformed channels. Candidates are costed independently (in parallel) and chosen in type order.
     /// </summary>
-    public static JxlRctType ChooseRct(List<JxlChannel> image, CancellationToken cancellationToken, int parallelism = JxlParallel.Sequential)
+    /// <param name="image">The channels; the first three are transformed.</param>
+    /// <param name="cancellationToken">Cancels the search.</param>
+    /// <param name="parallelism">The maximum degree of parallelism; the choice does not depend on it.</param>
+    /// <param name="only">The candidates in order, the first being None; by default every distinct RCT.</param>
+    public static JxlRctType ChooseRct(List<JxlChannel> image, CancellationToken cancellationToken, int parallelism = JxlParallel.Sequential,
+        JxlRctType[]? only = null)
     {
         int[][] planes = [image[0].Pixels, image[1].Pixels, image[2].Pixels];
         var candidates = new List<JxlRctType>();
-        for (uint value = 0; value < JxlRctType.Count; value++)
+        for (uint value = 0; value < JxlRctType.Count && only is null; value++)
         {
             var type = new JxlRctType(value);
             // The identity transform under another permutation only reorders the channels.
             if (type.Transform == 0 && type != JxlRctType.None) continue;
             candidates.Add(type);
         }
+
+        if (only is not null) candidates.AddRange(only);
 
         var costs = new double[candidates.Count];
         JxlParallel.For(candidates.Count, parallelism, cancellationToken, i =>
@@ -163,6 +297,28 @@ internal static class JxlModularTransformChooser
         }
 
         return best;
+    }
+
+    // The estimated bits of one channel's gradient residuals on a sample of rows (RctCost for one channel).
+    private static double GradientCost(int[] pixels, int width, int height)
+    {
+        int step = (int)Math.Max(1, (long)width * height / RctSamplePixels);
+        long[] histogram = new long[CostTokens];
+        long extra = 0;
+        for (int y = 1; y < height; y += step)
+        {
+            int row = y * width;
+            for (int x = 1; x < width; x++)
+            {
+                int i = row + x;
+                long residual = pixels[i] - (long)JxlMaProperty.ClampedGradient(pixels[i - 1], pixels[i - width], pixels[i - 1 - width]);
+                uint token = JxlHybridUint.Default.Encode(PackSigned(residual), out int bits, out _);
+                histogram[Math.Min(token, CostTokens - 1)]++;
+                extra += bits;
+            }
+        }
+
+        return extra + JxlHistogramClustering.Entropy(histogram);
     }
 
     private static double RctCost(int[][] planes, int width, int height, JxlRctType type)

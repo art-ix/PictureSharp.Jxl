@@ -51,7 +51,8 @@ when reading the result too. See [what changed in 0.7.8](https://github.com/art-
 - **Read:** still images as `cjxl` produces them: lossy (VarDCT) and lossless (Modular), recompressed JPEGs,
   progressive files, patches; RGB and grayscale with alpha, up to 16 bits per sample (`Rgba64` with `PreserveBitDepth`, otherwise reduced to 8).
 - **Write:** lossy VarDCT with `Quality`/`Distance` and `Effort` 1–9, about as small as `cjxl` at the same settings
-  (patches included); lossless 8-bit or 16-bit gray or RGB with alpha, about as small as `cjxl -d 0 -e 7`.
+  (patches included); lossless 8-bit or 16-bit gray or RGB with alpha, with libjxl's effort tiers and about as small
+  as `cjxl -d 0` at the same effort.
 - **Metadata:** ICC, EXIF, XMP (also Brotli-compressed), colour description and orientation; read, written and
   edited in place (editing files with JPEG reconstruction data is unsupported).
 - **JPEG transcoding:** `JxlTranscoder.FromJpeg` stores sequential or progressive 8-bit Huffman JPEG (gray or
@@ -78,7 +79,13 @@ per-worker scratch, with output identical to 0.8.1. On 16 logical CPUs JPEG reco
 encoding (effort 7) 1.3–2.8× faster than 0.8.1. See the [release notes](docs/releases/release-0.8.2.md) and
 [speed measurements](docs/benchmarks/speed.md#scheduling-and-scratch-082).
 
-**Status:** early development (0.8.2). Not for production use yet; the API may change. CI runs on Linux, including a Native AOT build.
+Version 0.8.3 gives lossless encoding libjxl's effort tiers (efforts 1–6 are 1.2–14× faster than before, when every
+effort coded as 7; 8-bit effort 7 is unchanged), shrinks 16-bit lossless files that use few values (a screenshot
+widened to 16 bits: 339 → 111 KB) and makes lossy encoding about 9% faster. Lossy files can differ in rare
+decisions, with the same size and decoded pixels. See the [release notes](docs/releases/release-0.8.3.md) and
+[speed measurements](docs/benchmarks/speed.md#encoder-work-083).
+
+**Status:** early development (0.8.3). Not for production use yet; the API may change. CI runs on Linux, including a Native AOT build.
 
 Guides: [decoding](docs/decoding.md) · [encoding](docs/encoding.md) · [JPEG transcoding](docs/transcoding.md) · [metadata](docs/metadata.md) ·
 [architecture](docs/architecture.md) · [release notes](docs/releases)

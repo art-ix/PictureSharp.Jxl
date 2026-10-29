@@ -14,7 +14,8 @@ keep it at most 600 lines by condensing the oldest entries.
 - Output identity (user decision, 2026-10-29): decoder output stays matched to djxl as before. From 0.8.3 the encoder
   may change bytes when size stays within ±0.5% and ssimulacra2/butteraugli do not degrade on the test set; record a
   new golden baseline per release. Lossless effort tiers like libjxl (e1 fast path, e2–e3 fixed trees, e4+ learned)
-  come in 0.8.3; e7 output unchanged. 16-bit target: decode/encode ≤ 1.1× the 8-bit time of the same image.
+  came in 0.8.3 (JxlModularEffort); 8-bit e7 output unchanged, > 8-bit lossless may change (palette above 32767,
+  channel compaction; user decision 2026-10-29). 16-bit target: decode/encode ≤ 1.1× the 8-bit time of the same image.
 - Public API: PictureSharp.Formats.Jxl. Implementation types stay internal.
 - Keep 0.7.x honest: Decode handles still single-image codestreams (VarDCT, Modular, patches, DC
   frames) and throws NotSupportedException for every other valid feature until it is implemented.

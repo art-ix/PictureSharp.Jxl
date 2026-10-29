@@ -52,7 +52,10 @@ images, contexts, options or pixels. A compiled boundary test checks signatures,
 2. `JxlCodestreamWriter` writes signature, SizeHeader, ImageMetadata, transform data and ICC stream;
    `JxlModularEncoder` writes the frame: palette or RCT, 256×256 group layout, samples for `JxlTreeLearner`, tokens,
    one `JxlEntropyEncoder`, then frame header, TOC and sections. It reuses the decoder's descriptions and weighted
-   predictor and computes properties exactly as `JxlMaTree`.
+   predictor and computes properties exactly as `JxlMaTree`. `JxlModularEffort` (0.8.3) maps the effort to libjxl's
+   tiers: a predefined tree (per channel, `kGradientFixedDC`, `kWPFixedDC`) for efforts 1–3, otherwise the learner's
+   properties, sample fraction and threshold, and YCoCg or the RCT search. Gradient-only trees are tokenized without the
+   weighted predictor.
 3. `JxlContainerWriter` writes Exif and xml boxes (optionally brob), the unchanged jxlc header and prepared
    codestream sections directly to the output stream.
 4. `JxlMetadataRewriter` (`EditMetadata`) rewrites ImageMetadata and the ICC stream at bit positions recorded by the
