@@ -73,7 +73,12 @@ any thread count: `DecoderOptions.MaxDegreeOfParallelism` (PictureSharp core), `
 lossless decoding is 5–8×, VarDCT decoding 1.9–3.2× and lossy encoding 3.1–4.6× faster than on one thread. See the
 [release notes](docs/releases/release-0.8.1.md) and [speed measurements](docs/benchmarks/speed.md#group-parallelism-081).
 
-**Status:** early development (0.8.1). Not for production use yet; the API may change. CI runs on Linux, including a Native AOT build.
+Version 0.8.2 also parallelizes JPEG reconstruction and lossless tree learning and shrinks the lossy encoder's
+per-worker scratch, with output identical to 0.8.1. On 16 logical CPUs JPEG reconstruction is 4.2× and lossless
+encoding (effort 7) 1.3–2.8× faster than 0.8.1. See the [release notes](docs/releases/release-0.8.2.md) and
+[speed measurements](docs/benchmarks/speed.md#scheduling-and-scratch-082).
+
+**Status:** early development (0.8.2). Not for production use yet; the API may change. CI runs on Linux, including a Native AOT build.
 
 Guides: [decoding](docs/decoding.md) · [encoding](docs/encoding.md) · [JPEG transcoding](docs/transcoding.md) · [metadata](docs/metadata.md) ·
 [architecture](docs/architecture.md) · [release notes](docs/releases)

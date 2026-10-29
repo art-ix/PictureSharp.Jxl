@@ -39,7 +39,7 @@ internal static class JxlModularEncoder
             Encoding = JxlFrameEncoding.Modular, Width = (uint)channels[0].Width, Height = (uint)channels[0].Height, GroupSizeShift = GroupSizeShift,
         };
         if (frame.TocEntries > JxlToc.MaxEntries) throw JxlDescriptor.Unsupported("the image has too many groups to encode.");
-        (List<JxlChannel> image, List<JxlTransform> transforms, int meta) = ApplyTransforms(channels, colorChannels, cancellationToken);
+        (List<JxlChannel> image, List<JxlTransform> transforms, int meta) = ApplyTransforms(channels, colorChannels, cancellationToken, parallelism);
         using var tokenBuffers = new JxlBufferScope();
         List<(int Id, List<JxlChannel> Channels)> streams = SplitIntoStreams(frame, image, meta, tokenBuffers);
         var errors = new Dictionary<JxlChannel, int[]>(ReferenceEqualityComparer.Instance);
@@ -85,17 +85,17 @@ internal static class JxlModularEncoder
 
     // A palette when it pays off, else the best colour transform of RGB; the palette adds one meta channel in front.
     private static (List<JxlChannel> Image, List<JxlTransform> Transforms, int Meta) ApplyTransforms(IReadOnlyList<JxlChannel> channels,
-        int colorChannels, CancellationToken cancellationToken)
+        int colorChannels, CancellationToken cancellationToken, int parallelism)
     {
         var image = new List<JxlChannel>(channels);
-        if (JxlModularTransformChooser.Palette(image, image.Count, cancellationToken) is { } palette)
+        if (JxlModularTransformChooser.Palette(image, image.Count, cancellationToken, parallelism) is { } palette)
         {
             return ([palette.Palette, palette.Indices], [palette.Transform], 1);
         }
 
         if (colorChannels == 3)
         {
-            JxlRctType rct = JxlModularTransformChooser.ChooseRct(image, cancellationToken);
+            JxlRctType rct = JxlModularTransformChooser.ChooseRct(image, cancellationToken, parallelism);
             if (rct != JxlRctType.None)
             {
                 JxlModularTransformChooser.ForwardRct(image, rct, cancellationToken);

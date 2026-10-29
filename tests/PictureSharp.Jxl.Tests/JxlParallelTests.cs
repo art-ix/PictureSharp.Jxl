@@ -244,6 +244,32 @@ public sealed class JxlParallelTests
             }
         }
 
+        // Few colours in runs, as on screens: the palette is found in row bands (0.8.2); with one stray colour too many
+        // in the last band it is not.
+        foreach (int extra in (int[])[0, 1])
+        {
+            using var palette = new Image(640, 420);
+            for (int y = 0; y < palette.Height; y++)
+            {
+                for (int x = 0; x < palette.Width; x++)
+                {
+                    int index = (x / 24 + y / 18 * 7) % 37;
+                    palette.GetRowSpan<Rgba32>(y)[x] = new((byte)(index * 7), (byte)(255 - index * 5), (byte)(index * 13 % 256), 255);
+                }
+            }
+
+            // 640 * 420 / 8 allows 1024 colours; the last rows add 1024 - 37 + extra more.
+            for (int i = 0; i < 1024 - 37 + extra; i++) palette.GetRowSpan<Rgba32>(palette.Height - 1 - i / 600)[i % 600] = new((byte)i, (byte)(i >> 8), 77, 255);
+            foreach (int effort in (int[])[1, 7])
+            {
+                string expected = Outcome(() => Hash(palette.ToJxl(Encode(1, 0, effort))));
+                foreach (int degree in (int[])[2, 7, -1])
+                {
+                    if (Outcome(() => Hash(palette.ToJxl(Encode(degree, 0, effort)))) != expected) differences.Add($"palette+{extra} e{effort} at {degree}");
+                }
+            }
+        }
+
         await Assert.That(differences).IsEmpty();
     }
 
@@ -275,6 +301,97 @@ public sealed class JxlParallelTests
         }
 
         await Assert.That(differences).IsEmpty();
+    }
+
+    [Test]
+    public async Task JpegWriter_IsIdenticalAndFailsTheSameWayAtEveryDegree()
+    {
+        // Scans are coded in chunks of MCUs (restart intervals or rows) from 0.8.2; mutations of the coefficients,
+        // reset points and extra zero runs must give the bytes or the first exception of the sequential writer.
+        string corpus = Path.Combine(AppContext.BaseDirectory, "corpus", "transcoding");
+        var differences = new List<string>();
+        int failures = 0, outputs = 0;
+        foreach (string path in Directory.GetFiles(corpus, "*.jpg").Order(StringComparer.Ordinal))
+        {
+            byte[] original = File.ReadAllBytes(path);
+            for (int mutation = -1; mutation < 24; mutation++)
+            {
+                string Run(int degree) => Outcome(() =>
+                {
+                    var jpeg = Codestream.Jpeg.JxlJpegReader.Read(original, 1 << 28, _ => { }, default);
+                    if (mutation >= 0) Mutate(jpeg, mutation);
+                    return Hash(Codestream.Jpeg.JxlJpegWriter.Write(jpeg, default, degree));
+                });
+                string expected = Run(1);
+                if (mutation < 0 && expected != Hash(original)) differences.Add($"{Path.GetFileName(path)} not reconstructed");
+                if (expected.Contains("Exception", StringComparison.Ordinal)) failures++;
+                else outputs++;
+                foreach (int degree in Degrees)
+                {
+                    string actual = Run(degree);
+                    if (actual != expected) differences.Add($"{Path.GetFileName(path)} #{mutation} at {degree}: {expected} / {actual}");
+                }
+            }
+        }
+
+        await Assert.That(differences).IsEmpty();
+        await Assert.That(failures).IsGreaterThan(50);
+        await Assert.That(outputs).IsGreaterThan(50);
+    }
+
+    [Test]
+    public async Task JpegWriter_ReportsMissingPaddingBeforeLaterCoefficientFailure()
+    {
+        byte[] original = File.ReadAllBytes(Path.Combine(AppContext.BaseDirectory, "corpus", "transcoding", "restart-0.jpg"));
+        string Run(int degree, bool lateFailure) => Outcome(() =>
+        {
+            var jpeg = Codestream.Jpeg.JxlJpegReader.Read(original, 1 << 28, _ => { }, default);
+            jpeg.HasZeroPadding = true;
+            jpeg.Padding.Clear();
+            // The first restart needs padding; place an unencodable coefficient before or after it.
+            foreach (var component in jpeg.Components)
+                component.Coefficients[lateFailure ? component.Coefficients.Length - 63 : 1] = short.MaxValue;
+            return Hash(Codestream.Jpeg.JxlJpegWriter.Write(jpeg, default, degree));
+        });
+        foreach (bool lateFailure in (bool[])[false, true])
+        {
+            string expected = Run(1, lateFailure);
+            await Assert.That(expected).Contains(lateFailure ? "Missing reconstructed JPEG padding." : "Reconstructed JPEG AC coefficient is too large.");
+            foreach (int degree in Degrees) await Assert.That(Run(degree, lateFailure)).IsEqualTo(expected);
+        }
+    }
+
+    // A deterministic damage of the reconstruction data: coefficients that cannot be coded at two places (the
+    // sequential writer meets one first), or reset points and extra zero runs added in or out of order.
+    private static void Mutate(Codestream.Jpeg.JxlJpegData jpeg, int mutation)
+    {
+        var random = new Random(mutation);
+        var component = jpeg.Components[random.Next(jpeg.Components.Count)];
+        int blocks = component.Coefficients.Length / 64;
+        Codestream.Jpeg.JxlJpegScan scan = jpeg.Scans[random.Next(jpeg.Scans.Count)];
+        int total = jpeg.Components.Sum(c => c.Coefficients.Length / 64);
+        switch (mutation % 4)
+        {
+            case 0:
+                component.Coefficients[random.Next(blocks) * 64 + 1 + random.Next(63)] = 4095;
+                component.Coefficients[random.Next(blocks) * 64] = short.MinValue;
+                break;
+            case 1:
+                component.Coefficients[random.Next(blocks) * 64 + 1 + random.Next(63)] = -4095;
+                component.Coefficients[random.Next(blocks) * 64 + 1 + random.Next(63)] = 2047;
+                break;
+            case 2:
+                int position = random.Next(total);
+                scan.ExtraZeroRuns.Clear();
+                scan.ExtraZeroRuns.Add((position, 1));
+                if (mutation % 8 == 6) scan.ExtraZeroRuns.Add((random.Next(total), 1));
+                break;
+            default:
+                scan.ResetPoints.Clear();
+                scan.ResetPoints.Add(random.Next(total));
+                scan.ResetPoints.Add(random.Next(total));
+                break;
+        }
     }
 
     [Test]

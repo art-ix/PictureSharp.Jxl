@@ -82,7 +82,7 @@ internal static class JxlModularTreeEncoder
                 }
             }
 
-            return learner.Learn(NodeThreshold, cancellationToken);
+            return learner.Learn(NodeThreshold, cancellationToken, parallelism);
         }
 
         // Each channel collects its own samples from its own position of the sequence.
@@ -110,7 +110,7 @@ internal static class JxlModularTreeEncoder
             foreach (JxlTreeLearner? batch in batches) batch?.Dispose();
         }
 
-        return learner.Learn(NodeThreshold, cancellationToken);
+        return learner.Learn(NodeThreshold, cancellationToken, parallelism);
     }
 
     private static int[]? NewErrors(JxlChannel channel, Dictionary<JxlChannel, int[]>? errors, JxlBufferScope? buffers) =>

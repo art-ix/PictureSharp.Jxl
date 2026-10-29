@@ -67,7 +67,7 @@ internal static class JxlTranscoding
             }
         }
         JxlJpegReconstruction.FillExternalMetadata(jpeg, icc, exif.Span, xmp.Span);
-        return JxlJpegWriter.Write(jpeg, cancellationToken);
+        return JxlJpegWriter.Write(jpeg, cancellationToken, options.MaxDegreeOfParallelism);
     }
 
     private static (byte[]? Icc, byte[]? Exif, byte[]? Xmp) ExtractMetadata(JxlJpegData jpeg)

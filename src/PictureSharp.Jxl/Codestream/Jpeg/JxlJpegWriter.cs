@@ -1,11 +1,12 @@
 using System.Numerics;
+using PictureSharp.Formats.Jxl.Codestream.Numerics;
 
 namespace PictureSharp.Formats.Jxl.Codestream.Jpeg;
 
 // Scalar, buffered port of libjxl v0.12.0 lib/jxl/jpeg/dec_jpeg_data_writer.cc (BSD-3-Clause).
 internal static class JxlJpegWriter
 {
-    public static byte[] Write(JxlJpegData jpeg, CancellationToken cancellationToken)
+    public static byte[] Write(JxlJpegData jpeg, CancellationToken cancellationToken, int parallelism = JxlParallel.Sequential)
     {
         using var output = new MemoryStream();
         Marker(output, 0xd8);
@@ -84,7 +85,7 @@ internal static class JxlJpegWriter
                         output.WriteByte((byte)((c.DcTable << 4) | c.AcTable));
                     }
                     output.WriteByte((byte)s.Ss); output.WriteByte((byte)s.Se); output.WriteByte((byte)((s.Ah << 4) | s.Al));
-                    WriteScan(jpeg, s, tables, progressive, seenDri, output, ref padding, cancellationToken);
+                    WriteScan(jpeg, s, tables, progressive, seenDri, output, ref padding, cancellationToken, parallelism);
                     break;
                 case 0xd9: output.Write(jpeg.Tail); break;
                 case >= 0xd0 and <= 0xd7: break;
@@ -105,15 +106,62 @@ internal static class JxlJpegWriter
     }
 
     private static void WriteScan(JxlJpegData jpeg, JxlJpegScan scan, JxlJpegHuffman?[] tables, bool progressive, bool seenDri, Stream output,
-        ref int padding, CancellationToken cancellationToken)
+        ref int padding, CancellationToken cancellationToken, int parallelism)
     {
         int ss = progressive ? scan.Ss : 0, se = progressive ? scan.Se : 63, al = progressive ? scan.Al : 0;
         int ah = progressive ? scan.Ah : 0;
         int interval = seenDri ? jpeg.RestartInterval : 0, remaining = interval, restart = 0;
+        (int columns, int rows) = jpeg.Mcus(scan);
+        // A scan that starts at the DC coefficient carries no state from block to block except the DC predictor (EOB
+        // runs never span blocks), so chunks of MCUs (whole restart intervals, or MCU rows without them) can be coded
+        // into separate bit strings and then appended with byte stuffing, padding and restart markers in order: the
+        // bytes are those of the sequential loop.
+        long mcus = (long)columns * rows;
+        int unit = interval > 0 ? interval : Math.Max(1, columns);
+        int units = (int)Math.Min(int.MaxValue, (mcus + unit - 1) / unit);
+        int chunks = Math.Min(units, 4 * JxlParallel.Workers(parallelism, units));
+        if (ah == 0 && ss == 0 && mcus <= int.MaxValue && JxlParallel.IsParallel(parallelism, chunks))
+        {
+            var parts = new ScanPart[chunks];
+            try
+            {
+                JxlParallel.For(chunks, parallelism, cancellationToken, i =>
+                    parts[i] = WriteMcus(jpeg, scan, tables, se, al, columns, interval,
+                        (int)Math.Min(mcus, (long)JxlParallel.BandStart(units, chunks, i) * unit),
+                        (int)Math.Min(mcus, (long)JxlParallel.BandStart(units, chunks, i + 1) * unit), cancellationToken));
+            }
+            catch (ImageFormatException)
+            {
+                // Padding is checked during the merge and may fail before this coefficient error. No scan bytes or
+                // padding have been consumed yet: replay corrupt scans sequentially to report the first error.
+                WriteScan(jpeg, scan, tables, progressive, seenDri, output, ref padding, cancellationToken, JxlParallel.Sequential);
+                return;
+            }
+            var merged = new Bits(output);
+            int consumedResets = 0, consumedZeros = 0;
+            for (int i = 0; i < chunks; i++)
+            {
+                ScanPart part = parts[i];
+                for (int k = 0; k < part.Bits.Segments; k++)
+                {
+                    // Chunks start at restart boundaries when there is an interval; every segment but the first starts one.
+                    if (k > 0 || (interval > 0 && i > 0))
+                    {
+                        merged.Finish(jpeg, ref padding);
+                        Marker(output, 0xd0 + restart); restart = (restart + 1) & 7;
+                    }
+                    merged.Append(part.Bits, k);
+                }
+                consumedResets += part.Resets; consumedZeros += part.Zeros;
+            }
+            merged.Finish(jpeg, ref padding);
+            if (consumedResets != scan.ResetPoints.Count || consumedZeros != scan.ExtraZeroRuns.Count) throw JxlDescriptor.Corrupt("Invalid JPEG reset or zero-run position.");
+            return;
+        }
+
         int[] lastDc = new int[jpeg.Components.Count];
         var bits = new Bits(output);
         var state = new CodingState(bits);
-        (int columns, int rows) = jpeg.Mcus(scan);
         int block = 0, reset = 0, zeros = 0;
         for (int my = 0; my < rows; my++)
         {
@@ -146,6 +194,78 @@ internal static class JxlJpegWriter
         }
         state.Flush(); bits.Finish(jpeg, ref padding);
         if (reset != scan.ResetPoints.Count || zeros != scan.ExtraZeroRuns.Count) throw JxlDescriptor.Corrupt("Invalid JPEG reset or zero-run position.");
+    }
+
+    private readonly record struct ScanPart(Bits Bits, int Resets, int Zeros);
+
+    /// <summary>
+    /// Codes MCUs [<paramref name="start"/>, <paramref name="end"/>) of a scan with Ss = 0 and Ah = 0 into unstuffed bits,
+    /// one bit string per restart interval, exactly as the sequential loop codes them: the DC predictors start at the
+    /// last DC of each component before the chunk (zero at a restart), and the reset points and extra zero runs at the
+    /// entries the sequential loop has consumed by then (the strictly increasing prefix below the chunk's first block).
+    /// </summary>
+    private static ScanPart WriteMcus(JxlJpegData jpeg, JxlJpegScan scan, JxlJpegHuffman?[] tables, int se, int al, int columns,
+        int interval, int start, int end, CancellationToken cancellationToken)
+    {
+        int[] lastDc = new int[jpeg.Components.Count];
+        int perMcu = 0;
+        bool restartAtStart = interval > 0 && start % interval == 0;
+        foreach (var sc in scan.Components)
+        {
+            var c = Get(jpeg.Components, sc.Component);
+            int nx = scan.Components.Count > 1 ? c.H : 1, ny = scan.Components.Count > 1 ? c.V : 1;
+            perMcu += nx * ny;
+            if (start > 0 && !restartAtStart)
+            {
+                int my = (start - 1) / columns, mx = (start - 1) % columns;
+                lastDc[sc.Component] = c.Coefficients.AsSpan(((my * ny + ny - 1) * c.WidthBlocks + mx * nx + nx - 1) * 64, 64)[0] >> al;
+            }
+        }
+        int block = start * perMcu;
+        int reset = Consumed(scan.ResetPoints.Count, i => scan.ResetPoints[i], block);
+        int zeros = Consumed(scan.ExtraZeroRuns.Count, i => scan.ExtraZeroRuns[i].Block, block);
+        int firstReset = reset, firstZeros = zeros;
+        var bits = new Bits(null);
+        var state = new CodingState(bits);
+        for (int m = start; m < end; m++)
+        {
+            int my = m / columns, mx = m % columns;
+            if (mx == 0 || m == start) cancellationToken.ThrowIfCancellationRequested();
+            if (interval > 0 && m > start && m % interval == 0)
+            {
+                state.Flush();
+                bits.EndSegment();
+                Array.Clear(lastDc);
+            }
+            foreach (var sc in scan.Components)
+            {
+                var c = Get(jpeg.Components, sc.Component);
+                int nx = scan.Components.Count > 1 ? c.H : 1, ny = scan.Components.Count > 1 ? c.V : 1;
+                for (int iy = 0; iy < ny; iy++)
+                    for (int ix = 0; ix < nx; ix++, block++)
+                    {
+                        if (reset < scan.ResetPoints.Count && block == scan.ResetPoints[reset]) { state.Flush(); reset++; }
+                        int extra = 0;
+                        if (zeros < scan.ExtraZeroRuns.Count && block == scan.ExtraZeroRuns[zeros].Block) extra = scan.ExtraZeroRuns[zeros++].Count;
+                        ReadOnlySpan<short> coefficients = c.Coefficients.AsSpan(((my * ny + iy) * c.WidthBlocks + mx * nx + ix) * 64, 64);
+                        EncodeBlock(coefficients, 0, se, al, extra, tables[sc.DcTable], tables[16 + sc.AcTable], ref lastDc[sc.Component], state, bits);
+                    }
+            }
+        }
+        state.Flush();
+        bits.EndSegment();
+        return new ScanPart(bits, reset - firstReset, zeros - firstZeros);
+    }
+
+    /// <summary>
+    /// How many entries of a block position list the sequential loop has consumed before <paramref name="block"/>: it
+    /// takes entry i when it reaches its block, so only a strictly increasing prefix of positions is ever consumed.
+    /// </summary>
+    private static int Consumed(int count, Func<int, int> position, int block)
+    {
+        int consumed = 0, previous = -1;
+        while (consumed < count && position(consumed) > previous && position(consumed) < block) previous = position(consumed++);
+        return consumed;
     }
 
     private static void EncodeBlock(ReadOnlySpan<short> coefficients, int ss, int se, int al, int extra,
@@ -243,25 +363,72 @@ internal static class JxlJpegWriter
         }
     }
 
-    private sealed class Bits(Stream output)
+    // Bits accumulate in a 64-bit register and leave as bytes into a local buffer that is copied to the output at
+    // every byte boundary the scan forces (restart markers and the end of the scan).
+    private sealed class Bits(Stream? output)
     {
-        private int pending, count;
+        private ulong pending;
+        private int count;
+        private byte[] buffer = new byte[4096];
+        private int length;
+
         public void Symbol(JxlJpegHuffman? table, int symbol)
         {
             if (table is null || (uint)symbol >= 256 || table.Depths[symbol] == 0) throw JxlDescriptor.Corrupt("Missing reconstructed JPEG Huffman symbol.");
             Write(table.Depths[symbol], table.Codes[symbol]);
         }
+
+        /// <summary>Writes the low <paramref name="n"/> (0–16) bits of <paramref name="value"/>, most significant first.</summary>
         public void Write(int n, int value)
         {
-            for (int i = n - 1; i >= 0; i--)
+            pending = (pending << n) | ((uint)value & ((1u << n) - 1));
+            count += n;
+            if (count < 8) return;
+            if (length > buffer.Length - 6) Array.Resize(ref buffer, buffer.Length * 2);
+            do
             {
-                pending = (pending << 1) | ((value >> i) & 1);
-                if (++count != 8) continue;
-                output.WriteByte((byte)pending);
-                if ((byte)pending == 255) output.WriteByte(0);
-                count = 0; pending = 0;
-            }
+                count -= 8;
+                byte b = (byte)(pending >> count);
+                buffer[length++] = b;
+                // A chunk without output collects unstuffed bits for Append.
+                if (b == 255 && output is not null) buffer[length++] = 0;
+            } while (count >= 8);
         }
+
+        // Unstuffed chunks: per segment its end in the buffer and its last 0–7 bits.
+        private List<(int End, int Tail, int TailBits)>? segments;
+
+        public int Segments => segments?.Count ?? 0;
+
+        /// <summary>Ends a segment of an unstuffed chunk; the next one starts at the next byte of the buffer.</summary>
+        public void EndSegment()
+        {
+            (segments ??= []).Add((length, (int)(pending & ((1u << count) - 1)), count));
+            pending = 0; count = 0;
+        }
+
+        /// <summary>Appends segment <paramref name="index"/> of an unstuffed chunk.</summary>
+        public void Append(Bits chunk, int index)
+        {
+            int start = index == 0 ? 0 : chunk.segments![index - 1].End;
+            (int end, int tail, int tailBits) = chunk.segments![index];
+            if (count == 0)
+            {
+                if (length > buffer.Length - 2 * (end - start)) Array.Resize(ref buffer, Math.Max(buffer.Length * 2, length + 2 * (end - start)));
+                for (int i = start; i < end; i++)
+                {
+                    byte b = chunk.buffer[i];
+                    buffer[length++] = b;
+                    if (b == 255) buffer[length++] = 0;
+                }
+            }
+            else
+            {
+                for (int i = start; i < end; i++) Write(8, chunk.buffer[i]);
+            }
+            Write(tailBits, tail);
+        }
+
         public void Finish(JxlJpegData jpeg, ref int padding)
         {
             while (count != 0)
@@ -274,6 +441,8 @@ internal static class JxlJpegWriter
                 }
                 Write(1, bit);
             }
+            output!.Write(buffer, 0, length);
+            length = 0;
         }
     }
 }

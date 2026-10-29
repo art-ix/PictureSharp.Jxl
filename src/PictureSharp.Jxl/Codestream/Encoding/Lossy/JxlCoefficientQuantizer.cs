@@ -10,7 +10,7 @@ namespace PictureSharp.Formats.Jxl.Codestream.Encoding.Lossy;
 /// </summary>
 internal sealed partial class JxlCoefficientQuantizer
 {
-    private const int MaxCoefficients = JxlAcStrategy.BlockSize << 10;
+    private const int MaxCoefficients = JxlAcStrategySearch.MaxCoefficients;
 
     // Blocks without a lowest-frequency part beyond their first coefficients; AdjustQuantBlockAC leaves them alone.
     private const uint PartialBlockKinds = (1u << (int)JxlAcStrategyType.Identity) | (1u << (int)JxlAcStrategyType.Dct2X2)

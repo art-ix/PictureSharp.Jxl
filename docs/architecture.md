@@ -20,7 +20,7 @@ only PictureSharp's public SPI; all implementation types are internal.
 | Codestream.Metadata | ICC entropy stream and prediction (decode; simplest prediction for writing) | IO, Entropy |
 | Codestream.Frames | Decode session, frame scheduling, support policy, section readers | Codec modules above, Jpeg |
 | Codestream.Numerics | Scalar numerics, integer helpers (`JxlIntMath`) | None; usable by all |
-| Codestream.Jpeg | JPEG coefficient/scan model, JPEG entropy parser/writer, bounded jbrd reader and shared field order | IO |
+| Codestream.Jpeg | JPEG coefficient/scan model, JPEG entropy parser/writer, bounded jbrd reader and shared field order | IO, Numerics |
 | Codestream.Encoding | Bit/field/header writers, ANS encoder, MA tree learner, lossless Modular encoder, lossy VarDCT encoder (`Lossy/`), header rewriting | Model, Buffers, IO, Entropy, Modular, Metadata, VarDct, Rendering, Jpeg |
 
 `JxlDescriptor` is the shared exception/format boundary and holds the signatures. The codec never touches PictureSharp
@@ -100,7 +100,7 @@ its ICC profile via `JxlIccTarget`) or sRGB for `ToSrgb`.
   coefficients, markers/scans, exact JPEG parsing/writing, and jbrd reading. Encoding implements the writing side
   of the shared reconstruction field visitor and prepares integer JPEG coefficients for the shared VarDCT section
   writer. Frames/VarDct recover coefficients with no IDCT, pixel planes or rendering. Their explicit dependency on
-  Jpeg is checked by the module boundary test; Jpeg depends only on IO, so there is no dependency cycle.
+  Jpeg is checked by the module boundary test; Jpeg depends on IO and Numerics, so there is no dependency cycle.
 - **Reconstruction metadata:** Container optionally borrows a unique jbrd payload. Ordinary image reads skip it.
   The jbrd bit header precedes its Brotli stream; canonical ICC/EXIF/XMP markers refer to external metadata.
   The per-call integration budget accounts for reconstruction header fields and expanded auxiliary data before
@@ -114,9 +114,18 @@ its ICC profile via `JxlIccTarget`) or sRGB for `ToSrgb`.
   parallelizes XYB input, adaptive quantization, inverse Gaborish, 64×64 AC-strategy/CfL tiles (per-worker search
   scratch), group quantization, tokenization and section coding, the EPF sharpness reconstruction, and Modular
   tree-sample scans (each channel starts at its jumped-ahead xorshift state; samples appended in channel order) and
-  stream tokenization. MA-tree splitting, histograms, entropy codes and section order stay sequential. Budgets are
+  stream tokenization. Since 0.8.2 MA-tree splitting is parallel as well (below).
+  Histograms, entropy codes and section order stay sequential. Budgets are
   charged on the calling thread before regions start; workers own their scratch, and shared scopes synchronize rentals.
   Output is identical at every degree; see the [parallelism design](design/0.8.1-parallelism.md).
+- **Scheduling and scratch (0.8.2):** MA-tree properties and then independent subtrees are learned in
+  parallel; replay in sequential depth-first order preserves node numbering and encoded bytes. RCT candidates
+  are costed independently, and palette discovery/index mapping uses row bands with deterministic final sorting.
+  JPEG scans with `Ss = 0` and `Ah = 0` encode restart-interval or MCU-row chunks independently, merging raw bits,
+  byte stuffing, padding and markers in order. A 64-bit accumulator replaces per-bit output. Corrupt chunk encoding
+  is replayed sequentially so an earlier padding error is not hidden by a later coefficient error. AC search, CfL
+  and quantizer scratch use the encoder's DCT64×64 maximum (4096 coefficients); decoder support is unchanged.
+  See the [scheduling design](design/0.8.2-scheduling.md) for ownership and determinism details.
 - **SIMD (0.8.0):** vector kernels live in sibling `*.Simd.cs` files of the same partial type. The scalar caller
   invokes a dispatch helper per row/block that returns the processed count or declines (unsupported ISA, short
   input, layout); scalar tails stay. Kernels whose scalar code uses `MathF.FusedMultiplyAdd` require AVX2 + FMA;

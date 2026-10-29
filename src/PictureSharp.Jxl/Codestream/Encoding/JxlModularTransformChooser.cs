@@ -2,6 +2,7 @@ using PictureSharp.Formats.Jxl.Codestream.Buffers;
 using PictureSharp.Formats.Jxl.Codestream.Entropy;
 using PictureSharp.Formats.Jxl.Codestream.Model;
 using PictureSharp.Formats.Jxl.Codestream.Modular;
+using PictureSharp.Formats.Jxl.Codestream.Numerics;
 using static PictureSharp.Formats.Jxl.Codestream.Numerics.JxlIntMath;
 
 namespace PictureSharp.Formats.Jxl.Codestream.Encoding;
@@ -30,21 +31,32 @@ internal static class JxlModularTransformChooser
     /// A palette of all <paramref name="count"/> channels when the image has at most 1024 colours, and few enough for
     /// the palette to pay off: entries sorted by luma, so that nearby indices have nearby colours.
     /// </summary>
-    public static PaletteResult? Palette(List<JxlChannel> image, int count, CancellationToken cancellationToken)
+    /// <remarks>
+    /// Whether there is a palette does not depend on the order pixels are visited (every sample fits 16 bits and there
+    /// are at most limit colours), so row bands collect their colours on their own and the sets are merged.
+    /// </remarks>
+    public static PaletteResult? Palette(List<JxlChannel> image, int count, CancellationToken cancellationToken,
+        int parallelism = JxlParallel.Sequential)
     {
         int width = image[0].Width;
         int height = image[0].Height;
         long pixels = (long)width * height;
         if (count > MaxPaletteChannels || pixels < MinPalettePixels) return null;
         int limit = (int)Math.Min(MaxPaletteColors, pixels / PixelsPerColor);
-        var colors = new Dictionary<long, int>();
         int[][] planes = [.. image.Take(count).Select(channel => channel.Pixels)];
-        for (int i = 0; i < width * height; i++)
+        int bands = JxlParallel.Bands(height, PaletteBandRows, parallelism);
+        var found = new HashSet<long>?[bands];
+        JxlParallel.For(bands, parallelism, cancellationToken, band =>
+            found[band] = Colors(planes, width * JxlParallel.BandStart(height, bands, band), width * JxlParallel.BandStart(height, bands, band + 1),
+                limit, cancellationToken));
+        var colors = new Dictionary<long, int>();
+        foreach (HashSet<long>? set in found)
         {
-            if ((i & CancellationCheckMask) == 0) cancellationToken.ThrowIfCancellationRequested();
-            if (!Fits16Bits(planes, i)) return null;
-            long key = Key(planes, i);
-            if (colors.TryAdd(key, 0) && colors.Count > limit) return null;
+            if (set is null) return null;
+            foreach (long key in set)
+            {
+                if (colors.TryAdd(key, 0) && colors.Count > limit) return null;
+            }
         }
 
         long[] sorted = [.. colors.Keys.OrderBy(key => Luma(key, count)).ThenBy(key => key)];
@@ -56,12 +68,44 @@ internal static class JxlModularTransformChooser
         }
 
         var indices = new JxlChannel(width, height);
-        for (int i = 0; i < width * height; i++) indices.Pixels[i] = colors[Key(planes, i)];
+        int[] output = indices.Pixels; // Allocated lazily: before the region.
+        JxlParallel.ForBands(height, PaletteBandRows, parallelism, cancellationToken, (start, end) =>
+        {
+            long previous = 0;
+            int index = -1;
+            for (int i = width * start; i < width * end; i++)
+            {
+                long key = Key(planes, i);
+                if (index < 0 || key != previous) (previous, index) = (key, colors[key]);
+                output[i] = index;
+            }
+        });
         var transform = new JxlTransform
         {
             Id = JxlTransformId.Palette, BeginC = 0, NumC = (uint)count, Colors = (uint)sorted.Length, Deltas = 0, Predictor = JxlPredictor.Zero,
         };
         return new PaletteResult(transform, palette, indices);
+    }
+
+    private const int PaletteBandRows = 64;
+
+    // The colours of pixels [begin, end), or null when a sample does not fit 16 bits or there are more than limit.
+    private static HashSet<long>? Colors(int[][] planes, int begin, int end, int limit, CancellationToken cancellationToken)
+    {
+        var colors = new HashSet<long>();
+        long previous = 0;
+        for (int i = begin; i < end; i++)
+        {
+            if ((i & CancellationCheckMask) == 0) cancellationToken.ThrowIfCancellationRequested();
+            if (!Fits16Bits(planes, i)) return null;
+            long key = Key(planes, i);
+            // Runs of one colour are common in screen content.
+            if (i > begin && key == previous) continue;
+            previous = key;
+            if (colors.Add(key) && colors.Count > limit) return null;
+        }
+
+        return colors;
     }
 
     // The signed 16-bit samples of pixel i packed into one key.
@@ -90,59 +134,69 @@ internal static class JxlModularTransformChooser
 
     /// <summary>
     /// The RCT type whose channels cost least with the gradient predictor on a sample of rows; none when no transform
-    /// beats the untransformed channels.
+    /// beats the untransformed channels. Candidates are costed independently (in parallel) and chosen in type order.
     /// </summary>
-    public static JxlRctType ChooseRct(List<JxlChannel> image, CancellationToken cancellationToken)
+    public static JxlRctType ChooseRct(List<JxlChannel> image, CancellationToken cancellationToken, int parallelism = JxlParallel.Sequential)
     {
-        int width = image[0].Width;
-        int height = image[0].Height;
         int[][] planes = [image[0].Pixels, image[1].Pixels, image[2].Pixels];
-        int step = (int)Math.Max(1, (long)width * height / RctSamplePixels);
-        JxlRctType best = JxlRctType.None;
-        double bestCost = double.MaxValue;
-        // The sampled row and the row above it after the transform, three interleaved channels per pixel.
-        int[] above = new int[3 * width];
-        int[] row = new int[3 * width];
+        var candidates = new List<JxlRctType>();
         for (uint value = 0; value < JxlRctType.Count; value++)
         {
             var type = new JxlRctType(value);
             // The identity transform under another permutation only reorders the channels.
             if (type.Transform == 0 && type != JxlRctType.None) continue;
-            var forward = new ForwardRctStep(type);
-            cancellationToken.ThrowIfCancellationRequested();
-            var histograms = new long[3][];
-            for (int c = 0; c < 3; c++) histograms[c] = new long[CostTokens];
-            long extra = 0;
-            for (int y = 1; y < height; y += step)
-            {
-                for (int x = 0; x < width; x++)
-                {
-                    (above[3 * x], above[3 * x + 1], above[3 * x + 2]) = forward.Apply(planes, (y - 1) * width + x);
-                    (row[3 * x], row[3 * x + 1], row[3 * x + 2]) = forward.Apply(planes, y * width + x);
-                }
+            candidates.Add(type);
+        }
 
-                for (int x = 1; x < width; x++)
-                {
-                    for (int c = 0; c < 3; c++)
-                    {
-                        int i = 3 * x + c;
-                        long residual = row[i] - JxlMaProperty.ClampedGradient(row[i - 3], above[i], above[i - 3]);
-                        uint token = JxlHybridUint.Default.Encode(PackSigned(residual), out int bits, out _);
-                        histograms[c][Math.Min(token, CostTokens - 1)]++;
-                        extra += bits;
-                    }
-                }
-            }
-
-            double cost = extra + histograms.Sum(JxlHistogramClustering.Entropy);
-            if (cost < bestCost * RctImprovement || type == JxlRctType.None)
+        var costs = new double[candidates.Count];
+        JxlParallel.For(candidates.Count, parallelism, cancellationToken, i =>
+            costs[i] = RctCost(planes, image[0].Width, image[0].Height, candidates[i]));
+        JxlRctType best = JxlRctType.None;
+        double bestCost = double.MaxValue;
+        for (int i = 0; i < candidates.Count; i++)
+        {
+            if (costs[i] < bestCost * RctImprovement || candidates[i] == JxlRctType.None)
             {
-                bestCost = cost;
-                best = type;
+                bestCost = costs[i];
+                best = candidates[i];
             }
         }
 
         return best;
+    }
+
+    private static double RctCost(int[][] planes, int width, int height, JxlRctType type)
+    {
+        int step = (int)Math.Max(1, (long)width * height / RctSamplePixels);
+        var forward = new ForwardRctStep(type);
+        // The sampled row and the row above it after the transform, three interleaved channels per pixel.
+        int[] above = new int[3 * width];
+        int[] row = new int[3 * width];
+        var histograms = new long[3][];
+        for (int c = 0; c < 3; c++) histograms[c] = new long[CostTokens];
+        long extra = 0;
+        for (int y = 1; y < height; y += step)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                (above[3 * x], above[3 * x + 1], above[3 * x + 2]) = forward.Apply(planes, (y - 1) * width + x);
+                (row[3 * x], row[3 * x + 1], row[3 * x + 2]) = forward.Apply(planes, y * width + x);
+            }
+
+            for (int x = 1; x < width; x++)
+            {
+                for (int c = 0; c < 3; c++)
+                {
+                    int i = 3 * x + c;
+                    long residual = row[i] - JxlMaProperty.ClampedGradient(row[i - 3], above[i], above[i - 3]);
+                    uint token = JxlHybridUint.Default.Encode(PackSigned(residual), out int bits, out _);
+                    histograms[c][Math.Min(token, CostTokens - 1)]++;
+                    extra += bits;
+                }
+            }
+        }
+
+        return extra + histograms.Sum(JxlHistogramClustering.Entropy);
     }
 
     /// <summary>Replaces the first three channels of <paramref name="image"/> by their transformed values.</summary>

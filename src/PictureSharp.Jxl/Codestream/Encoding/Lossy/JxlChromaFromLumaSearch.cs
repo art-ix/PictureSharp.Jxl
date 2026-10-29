@@ -12,7 +12,7 @@ internal sealed partial class JxlChromaFromLumaSearch(JxlImage3F image, JxlQuant
     /// <summary>The denominator of the coded factors (kDefaultColorFactor).</summary>
     public const int ColorFactor = 84;
     private const int TileBlocks = 8;
-    private const int MaxCoefficients = JxlAcStrategy.BlockSize << 10;
+    private const int MaxCoefficients = JxlAcStrategySearch.MaxCoefficients;
     private const int TileCoefficients = 64 * 64;
     private const float DistanceMultiplier = 1e-9f;
 

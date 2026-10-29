@@ -1,0 +1,826 @@
+{
+ "date": "2026-10-29",
+ "cpu": "Intel Core i5-12500H (4P+8E cores, 16 logical CPUs)",
+ "runtime": "10.0.12",
+ "tieredCompilation": false,
+ "affinity": {
+  "1": "CPU 0",
+  "-1": "CPUs 0-15"
+ },
+ "method": "scripts/measure-paired.py: separate processes, A/B then B/A per round; per-case value = median over rounds of each process warm median",
+ "variants": {
+  "baseline": "v0.8.1 sources (df9f7a7)",
+  "current": "0.8.2 sources"
+ },
+ "outputIdentical": "all-efforts golden 1433 results at 1 and -1 threads, SHA-256 92d936fd...e06",
+ "inputs": {
+  "tojpeg/IMG_0160-jpeg": "77d5b4a4bd48f279b238b36a94b54ba3f764745b8521b9c5bed52268fc2a611c",
+  "encode/photo1-d0-e7": "2a206c3d52f1a0203332c0ce01bb74ae8bbf6d8b02766bf29a18bd7f55abd871",
+  "encode/screen-d0-e7": "110e1a2c2d9a9896150908202d9878d926631129bfdff7410dd0017038e2ca7e",
+  "encode/photo1-d1-e1": "2a206c3d52f1a0203332c0ce01bb74ae8bbf6d8b02766bf29a18bd7f55abd871",
+  "encode/photo1-d1-e3": "2a206c3d52f1a0203332c0ce01bb74ae8bbf6d8b02766bf29a18bd7f55abd871",
+  "encode/photo1-d1-e5": "2a206c3d52f1a0203332c0ce01bb74ae8bbf6d8b02766bf29a18bd7f55abd871",
+  "encode/photo1-d1-e7": "2a206c3d52f1a0203332c0ce01bb74ae8bbf6d8b02766bf29a18bd7f55abd871",
+  "encode/screen-d1-e7": "110e1a2c2d9a9896150908202d9878d926631129bfdff7410dd0017038e2ca7e",
+  "encode16/photo1-16-d0-e7": "7ab17a82e089a44687f6da713740b8266a7744fdc0bc16ba363e4e477516d204",
+  "encode16/photo1-16-d1-e7": "7ab17a82e089a44687f6da713740b8266a7744fdc0bc16ba363e4e477516d204",
+  "encode16/screen-16-d0-e7": "5fe54981c26d57c75ee756edd99d72ffeb1bf75cc6747e91e0a64d93626b4ba9",
+  "encode16/screen-16-d1-e7": "5fe54981c26d57c75ee756edd99d72ffeb1bf75cc6747e91e0a64d93626b4ba9",
+  "decode/photo1-d0-e7": "04ac0507754f205e77afdba5645da082031276871091514567814edad863dd96",
+  "decode/photo1-d1-e7": "08e3fae5153645be1d6413813578f1a540eb8668e85ab5812b99ca8ad5bf88ae",
+  "decode/screen-d0-e7": "d6d14c45ecea4e76314087095d4dafd758bab7e4c280c2f71e301f11081264a4",
+  "decode/screen-d1-e7": "0bab25642824b762986eea853c8f96d752fee133e6cfa5466f59ad6af355e137",
+  "decode16/photo1-16-d0-e7": "b56f8fd278bef823412738f2d31bb728aff6e8bd2700ffb8980a48ffb1b83ca2",
+  "decode16/photo1-16-d1-e7": "a2aa2dcd92b945d12835d2de051dfdd5ca7cbafccc3ae7e684c6620ce750fe2f",
+  "decode/tiny-1x1": "5fb1551371837bba42db7dfc717bef035effd411da212d3ca602a1fe2df5f3b9",
+  "decode/small-64x64": "f3287bb07d85fef7b864b7f6ebe775ff53a9a24b299647533913e632165a43d7",
+  "decode/IMG_0160-jpeg": "77d5b4a4bd48f279b238b36a94b54ba3f764745b8521b9c5bed52268fc2a611c",
+  "decode/photo12-d1-e7": "5b57e772900a7a65035eb7ac2593243df4230c0d7df16733d0d246c65b9bbef9",
+  "decode16/photo12-16-d1-e7": "7d70cef00f1c356534a745fdde01eb8493df986651e51dfa3d93fbc54f7a3908",
+  "encode/photo12-d0-e7": "5408cccb413c4cf6a0596209b3e0d5675c1e7165c5418d58fb2b39c39d6dd55b",
+  "encode/photo12-d1-e7": "5408cccb413c4cf6a0596209b3e0d5675c1e7165c5418d58fb2b39c39d6dd55b",
+  "encode16/photo12-16-d0-e7": "7e163462552c7f44f47dda820ba43d3cc8ebc6e6a5881750403909cbdbf5e34e",
+  "encode16/photo12-16-d1-e7": "7e163462552c7f44f47dda820ba43d3cc8ebc6e6a5881750403909cbdbf5e34e"
+ },
+ "final": {
+  "rounds": 2,
+  "summary": [
+   {
+    "case": "tojpeg/IMG_0160-jpeg",
+    "threads": 1,
+    "baselineMs": 397.9558,
+    "baselineAllocatedMiB": 107.18,
+    "baselinePeakRssMiB": 291.8,
+    "currentMs": 316.4203,
+    "currentAllocatedMiB": 112.79,
+    "currentPeakRssMiB": 274.1,
+    "deltaPercent": -20.49
+   },
+   {
+    "case": "tojpeg/IMG_0160-jpeg",
+    "threads": -1,
+    "baselineMs": 255.6195,
+    "baselineAllocatedMiB": 107.9,
+    "baselinePeakRssMiB": 250.9,
+    "currentMs": 61.3922,
+    "currentAllocatedMiB": 124.74,
+    "currentPeakRssMiB": 442.5,
+    "deltaPercent": -75.98
+   },
+   {
+    "case": "encode/photo1-d0-e7",
+    "threads": 1,
+    "baselineMs": 811.3442,
+    "baselineAllocatedMiB": 57.52,
+    "baselinePeakRssMiB": 385.5,
+    "currentMs": 796.51,
+    "currentAllocatedMiB": 58.57,
+    "currentPeakRssMiB": 383.8,
+    "deltaPercent": -1.83
+   },
+   {
+    "case": "encode/photo1-d0-e7",
+    "threads": -1,
+    "baselineMs": 494.8945,
+    "baselineAllocatedMiB": 43.39,
+    "baselinePeakRssMiB": 598.6,
+    "currentMs": 215.4124,
+    "currentAllocatedMiB": 46.46,
+    "currentPeakRssMiB": 541.6,
+    "deltaPercent": -56.47
+   },
+   {
+    "case": "encode/screen-d0-e7",
+    "threads": 1,
+    "baselineMs": 481.5976,
+    "baselineAllocatedMiB": 52.94,
+    "baselinePeakRssMiB": 289.5,
+    "currentMs": 485.6821,
+    "currentAllocatedMiB": 53.01,
+    "currentPeakRssMiB": 290.1,
+    "deltaPercent": 0.85
+   },
+   {
+    "case": "encode/screen-d0-e7",
+    "threads": -1,
+    "baselineMs": 370.9976,
+    "baselineAllocatedMiB": 43.09,
+    "baselinePeakRssMiB": 587.8,
+    "currentMs": 167.6984,
+    "currentAllocatedMiB": 44.11,
+    "currentPeakRssMiB": 648.0,
+    "deltaPercent": -54.8
+   },
+   {
+    "case": "encode/photo1-d1-e1",
+    "threads": 1,
+    "baselineMs": 46.4537,
+    "baselineAllocatedMiB": 20.01,
+    "baselinePeakRssMiB": 206.8,
+    "currentMs": 47.7131,
+    "currentAllocatedMiB": 17.66,
+    "currentPeakRssMiB": 262.5,
+    "deltaPercent": 2.71
+   },
+   {
+    "case": "encode/photo1-d1-e1",
+    "threads": -1,
+    "baselineMs": 27.8182,
+    "baselineAllocatedMiB": 57.61,
+    "baselinePeakRssMiB": 490.7,
+    "currentMs": 25.6854,
+    "currentAllocatedMiB": 20.1,
+    "currentPeakRssMiB": 172.1,
+    "deltaPercent": -7.67
+   },
+   {
+    "case": "encode/photo1-d1-e3",
+    "threads": 1,
+    "baselineMs": 46.9392,
+    "baselineAllocatedMiB": 20.01,
+    "baselinePeakRssMiB": 222.4,
+    "currentMs": 47.2222,
+    "currentAllocatedMiB": 17.66,
+    "currentPeakRssMiB": 262.5,
+    "deltaPercent": 0.6
+   },
+   {
+    "case": "encode/photo1-d1-e3",
+    "threads": -1,
+    "baselineMs": 27.987,
+    "baselineAllocatedMiB": 57.65,
+    "baselinePeakRssMiB": 436.0,
+    "currentMs": 25.8494,
+    "currentAllocatedMiB": 20.1,
+    "currentPeakRssMiB": 179.9,
+    "deltaPercent": -7.64
+   },
+   {
+    "case": "encode/photo1-d1-e5",
+    "threads": 1,
+    "baselineMs": 258.102,
+    "baselineAllocatedMiB": 27.87,
+    "baselinePeakRssMiB": 189.6,
+    "currentMs": 258.7159,
+    "currentAllocatedMiB": 21.78,
+    "currentPeakRssMiB": 205.3,
+    "deltaPercent": 0.24
+   },
+   {
+    "case": "encode/photo1-d1-e5",
+    "threads": -1,
+    "baselineMs": 77.2557,
+    "baselineAllocatedMiB": 132.2,
+    "baselinePeakRssMiB": 473.2,
+    "currentMs": 74.2471,
+    "currentAllocatedMiB": 35.1,
+    "currentPeakRssMiB": 244.9,
+    "deltaPercent": -3.89
+   },
+   {
+    "case": "encode/photo1-d1-e7",
+    "threads": 1,
+    "baselineMs": 450.5405,
+    "baselineAllocatedMiB": 32.02,
+    "baselinePeakRssMiB": 216.6,
+    "currentMs": 447.3089,
+    "currentAllocatedMiB": 24.28,
+    "currentPeakRssMiB": 186.1,
+    "deltaPercent": -0.72
+   },
+   {
+    "case": "encode/photo1-d1-e7",
+    "threads": -1,
+    "baselineMs": 126.2328,
+    "baselineAllocatedMiB": 168.12,
+    "baselinePeakRssMiB": 529.4,
+    "currentMs": 122.5237,
+    "currentAllocatedMiB": 45.19,
+    "currentPeakRssMiB": 251.3,
+    "deltaPercent": -2.94
+   },
+   {
+    "case": "encode/screen-d1-e7",
+    "threads": 1,
+    "baselineMs": 814.7101,
+    "baselineAllocatedMiB": 141.84,
+    "baselinePeakRssMiB": 784.4,
+    "currentMs": 807.1418,
+    "currentAllocatedMiB": 134.13,
+    "currentPeakRssMiB": 578.5,
+    "deltaPercent": -0.93
+   },
+   {
+    "case": "encode/screen-d1-e7",
+    "threads": -1,
+    "baselineMs": 272.0229,
+    "baselineAllocatedMiB": 280.63,
+    "baselinePeakRssMiB": 607.9,
+    "currentMs": 266.4765,
+    "currentAllocatedMiB": 156.5,
+    "currentPeakRssMiB": 781.0,
+    "deltaPercent": -2.04
+   },
+   {
+    "case": "encode16/photo1-16-d0-e7",
+    "threads": 1,
+    "baselineMs": 1096.4432,
+    "baselineAllocatedMiB": 69.3,
+    "baselinePeakRssMiB": 490.5,
+    "currentMs": 1071.1791,
+    "currentAllocatedMiB": 70.4,
+    "currentPeakRssMiB": 507.0,
+    "deltaPercent": -2.3
+   },
+   {
+    "case": "encode16/photo1-16-d0-e7",
+    "threads": -1,
+    "baselineMs": 759.8668,
+    "baselineAllocatedMiB": 55.18,
+    "baselinePeakRssMiB": 657.0,
+    "currentMs": 272.7519,
+    "currentAllocatedMiB": 62.82,
+    "currentPeakRssMiB": 834.3,
+    "deltaPercent": -64.11
+   },
+   {
+    "case": "encode16/photo1-16-d1-e7",
+    "threads": 1,
+    "baselineMs": 460.6713,
+    "baselineAllocatedMiB": 32.19,
+    "baselinePeakRssMiB": 223.5,
+    "currentMs": 461.8433,
+    "currentAllocatedMiB": 24.45,
+    "currentPeakRssMiB": 218.5,
+    "deltaPercent": 0.25
+   },
+   {
+    "case": "encode16/photo1-16-d1-e7",
+    "threads": -1,
+    "baselineMs": 127.1135,
+    "baselineAllocatedMiB": 168.21,
+    "baselinePeakRssMiB": 482.6,
+    "currentMs": 129.7731,
+    "currentAllocatedMiB": 46.09,
+    "currentPeakRssMiB": 261.5,
+    "deltaPercent": 2.09
+   },
+   {
+    "case": "encode16/screen-16-d0-e7",
+    "threads": 1,
+    "baselineMs": 767.267,
+    "baselineAllocatedMiB": 95.4,
+    "baselinePeakRssMiB": 713.0,
+    "currentMs": 756.8673,
+    "currentAllocatedMiB": 96.74,
+    "currentPeakRssMiB": 694.3,
+    "deltaPercent": -1.36
+   },
+   {
+    "case": "encode16/screen-16-d0-e7",
+    "threads": -1,
+    "baselineMs": 456.9857,
+    "baselineAllocatedMiB": 67.2,
+    "baselinePeakRssMiB": 901.7,
+    "currentMs": 243.9326,
+    "currentAllocatedMiB": 69.96,
+    "currentPeakRssMiB": 1138.9,
+    "deltaPercent": -46.62
+   },
+   {
+    "case": "encode16/screen-16-d1-e7",
+    "threads": 1,
+    "baselineMs": 802.9162,
+    "baselineAllocatedMiB": 142.1,
+    "baselinePeakRssMiB": 497.2,
+    "currentMs": 795.9212,
+    "currentAllocatedMiB": 134.39,
+    "currentPeakRssMiB": 446.0,
+    "deltaPercent": -0.87
+   },
+   {
+    "case": "encode16/screen-16-d1-e7",
+    "threads": -1,
+    "baselineMs": 269.4511,
+    "baselineAllocatedMiB": 280.26,
+    "baselinePeakRssMiB": 720.9,
+    "currentMs": 272.7954,
+    "currentAllocatedMiB": 156.26,
+    "currentPeakRssMiB": 759.8,
+    "deltaPercent": 1.24
+   },
+   {
+    "case": "decode/photo1-d0-e7",
+    "threads": 1,
+    "baselineMs": 269.7662,
+    "baselineAllocatedMiB": 10.65,
+    "baselinePeakRssMiB": 89.4,
+    "currentMs": 269.7413,
+    "currentAllocatedMiB": 10.65,
+    "currentPeakRssMiB": 89.5,
+    "deltaPercent": -0.01
+   },
+   {
+    "case": "decode/photo1-d0-e7",
+    "threads": -1,
+    "baselineMs": 38.0328,
+    "baselineAllocatedMiB": 10.67,
+    "baselinePeakRssMiB": 143.3,
+    "currentMs": 37.7979,
+    "currentAllocatedMiB": 10.68,
+    "currentPeakRssMiB": 162.7,
+    "deltaPercent": -0.62
+   },
+   {
+    "case": "decode/photo1-d1-e7",
+    "threads": 1,
+    "baselineMs": 19.6213,
+    "baselineAllocatedMiB": 5.63,
+    "baselinePeakRssMiB": 130.4,
+    "currentMs": 19.4515,
+    "currentAllocatedMiB": 5.63,
+    "currentPeakRssMiB": 130.4,
+    "deltaPercent": -0.87
+   },
+   {
+    "case": "decode/photo1-d1-e7",
+    "threads": -1,
+    "baselineMs": 11.3501,
+    "baselineAllocatedMiB": 7.26,
+    "baselinePeakRssMiB": 183.6,
+    "currentMs": 10.8559,
+    "currentAllocatedMiB": 7.19,
+    "currentPeakRssMiB": 182.8,
+    "deltaPercent": -4.35
+   },
+   {
+    "case": "decode/screen-d0-e7",
+    "threads": 1,
+    "baselineMs": 98.858,
+    "baselineAllocatedMiB": 14.82,
+    "baselinePeakRssMiB": 129.2,
+    "currentMs": 98.388,
+    "currentAllocatedMiB": 14.82,
+    "currentPeakRssMiB": 129.2,
+    "deltaPercent": -0.48
+   },
+   {
+    "case": "decode/screen-d0-e7",
+    "threads": -1,
+    "baselineMs": 20.6926,
+    "baselineAllocatedMiB": 14.83,
+    "baselinePeakRssMiB": 225.3,
+    "currentMs": 20.3849,
+    "currentAllocatedMiB": 14.83,
+    "currentPeakRssMiB": 184.3,
+    "deltaPercent": -1.49
+   },
+   {
+    "case": "decode/screen-d1-e7",
+    "threads": 1,
+    "baselineMs": 33.5939,
+    "baselineAllocatedMiB": 8.23,
+    "baselinePeakRssMiB": 128.7,
+    "currentMs": 34.6781,
+    "currentAllocatedMiB": 8.23,
+    "currentPeakRssMiB": 128.6,
+    "deltaPercent": 3.23
+   },
+   {
+    "case": "decode/screen-d1-e7",
+    "threads": -1,
+    "baselineMs": 16.3925,
+    "baselineAllocatedMiB": 10.54,
+    "baselinePeakRssMiB": 204.0,
+    "currentMs": 17.106,
+    "currentAllocatedMiB": 10.68,
+    "currentPeakRssMiB": 256.3,
+    "deltaPercent": 4.35
+   },
+   {
+    "case": "decode16/photo1-16-d0-e7",
+    "threads": 1,
+    "baselineMs": 365.813,
+    "baselineAllocatedMiB": 28.8,
+    "baselinePeakRssMiB": 93.9,
+    "currentMs": 365.6911,
+    "currentAllocatedMiB": 28.8,
+    "currentPeakRssMiB": 93.9,
+    "deltaPercent": -0.03
+   },
+   {
+    "case": "decode16/photo1-16-d0-e7",
+    "threads": -1,
+    "baselineMs": 49.8022,
+    "baselineAllocatedMiB": 28.8,
+    "baselinePeakRssMiB": 218.4,
+    "currentMs": 50.5267,
+    "currentAllocatedMiB": 28.82,
+    "currentPeakRssMiB": 196.8,
+    "deltaPercent": 1.45
+   },
+   {
+    "case": "decode16/photo1-16-d1-e7",
+    "threads": 1,
+    "baselineMs": 20.7398,
+    "baselineAllocatedMiB": 9.55,
+    "baselinePeakRssMiB": 173.0,
+    "currentMs": 20.3677,
+    "currentAllocatedMiB": 9.55,
+    "currentPeakRssMiB": 173.1,
+    "deltaPercent": -1.79
+   },
+   {
+    "case": "decode16/photo1-16-d1-e7",
+    "threads": -1,
+    "baselineMs": 11.2142,
+    "baselineAllocatedMiB": 11.28,
+    "baselinePeakRssMiB": 186.7,
+    "currentMs": 11.0367,
+    "currentAllocatedMiB": 11.25,
+    "currentPeakRssMiB": 189.3,
+    "deltaPercent": -1.58
+   },
+   {
+    "case": "decode/tiny-1x1",
+    "threads": 1,
+    "baselineMs": 0.0111,
+    "baselineAllocatedMiB": 0.01,
+    "baselinePeakRssMiB": 49.5,
+    "currentMs": 0.0111,
+    "currentAllocatedMiB": 0.01,
+    "currentPeakRssMiB": 49.5,
+    "deltaPercent": 0.0
+   },
+   {
+    "case": "decode/tiny-1x1",
+    "threads": -1,
+    "baselineMs": 0.0107,
+    "baselineAllocatedMiB": 0.01,
+    "baselinePeakRssMiB": 49.0,
+    "currentMs": 0.0111,
+    "currentAllocatedMiB": 0.01,
+    "currentPeakRssMiB": 49.2,
+    "deltaPercent": 3.74
+   },
+   {
+    "case": "decode/small-64x64",
+    "threads": 1,
+    "baselineMs": 0.6266,
+    "baselineAllocatedMiB": 0.09,
+    "baselinePeakRssMiB": 54.9,
+    "currentMs": 0.6256,
+    "currentAllocatedMiB": 0.09,
+    "currentPeakRssMiB": 55.0,
+    "deltaPercent": -0.16
+   },
+   {
+    "case": "decode/small-64x64",
+    "threads": -1,
+    "baselineMs": 0.6617,
+    "baselineAllocatedMiB": 0.09,
+    "baselinePeakRssMiB": 54.9,
+    "currentMs": 0.6419,
+    "currentAllocatedMiB": 0.09,
+    "currentPeakRssMiB": 55.1,
+    "deltaPercent": -2.99
+   },
+   {
+    "case": "decode/IMG_0160-jpeg",
+    "threads": 1,
+    "baselineMs": 230.1036,
+    "baselineAllocatedMiB": 232.31,
+    "baselinePeakRssMiB": 892.4,
+    "currentMs": 229.738,
+    "currentAllocatedMiB": 232.31,
+    "currentPeakRssMiB": 890.6,
+    "deltaPercent": -0.16
+   },
+   {
+    "case": "decode/IMG_0160-jpeg",
+    "threads": -1,
+    "baselineMs": 88.2677,
+    "baselineAllocatedMiB": 232.72,
+    "baselinePeakRssMiB": 1261.6,
+    "currentMs": 90.6447,
+    "currentAllocatedMiB": 232.87,
+    "currentPeakRssMiB": 1258.6,
+    "deltaPercent": 2.69
+   },
+   {
+    "case": "decode/photo12-d1-e7",
+    "threads": 1,
+    "baselineMs": 243.8571,
+    "baselineAllocatedMiB": 56.18,
+    "baselinePeakRssMiB": 515.7,
+    "currentMs": 244.517,
+    "currentAllocatedMiB": 56.18,
+    "currentPeakRssMiB": 515.8,
+    "deltaPercent": 0.27
+   },
+   {
+    "case": "decode/photo12-d1-e7",
+    "threads": -1,
+    "baselineMs": 82.6492,
+    "baselineAllocatedMiB": 62.31,
+    "baselinePeakRssMiB": 514.5,
+    "currentMs": 81.3179,
+    "currentAllocatedMiB": 62.29,
+    "currentPeakRssMiB": 536.9,
+    "deltaPercent": -1.61
+   },
+   {
+    "case": "decode16/photo12-16-d1-e7",
+    "threads": 1,
+    "baselineMs": 256.346,
+    "baselineAllocatedMiB": 102.67,
+    "baselinePeakRssMiB": 586.8,
+    "currentMs": 252.0517,
+    "currentAllocatedMiB": 102.67,
+    "currentPeakRssMiB": 586.8,
+    "deltaPercent": -1.68
+   },
+   {
+    "case": "decode16/photo12-16-d1-e7",
+    "threads": -1,
+    "baselineMs": 85.503,
+    "baselineAllocatedMiB": 108.56,
+    "baselinePeakRssMiB": 791.3,
+    "currentMs": 83.9514,
+    "currentAllocatedMiB": 108.7,
+    "currentPeakRssMiB": 842.2,
+    "deltaPercent": -1.81
+   },
+   {
+    "case": "encode/photo12-d0-e7",
+    "threads": 1,
+    "baselineMs": 4677.5021,
+    "baselineAllocatedMiB": 931.22,
+    "baselinePeakRssMiB": 2490.6,
+    "currentMs": 4691.4239,
+    "currentAllocatedMiB": 934.54,
+    "currentPeakRssMiB": 2436.6,
+    "deltaPercent": 0.3
+   },
+   {
+    "case": "encode/photo12-d0-e7",
+    "threads": -1,
+    "baselineMs": 1203.2494,
+    "baselineAllocatedMiB": 518.46,
+    "baselinePeakRssMiB": 1934.1,
+    "currentMs": 927.1701,
+    "currentAllocatedMiB": 533.59,
+    "currentPeakRssMiB": 2122.1,
+    "deltaPercent": -22.94
+   },
+   {
+    "case": "encode/photo12-d1-e7",
+    "threads": 1,
+    "baselineMs": 5433.6319,
+    "baselineAllocatedMiB": 370.65,
+    "baselinePeakRssMiB": 1439.7,
+    "currentMs": 5432.8875,
+    "currentAllocatedMiB": 362.91,
+    "currentPeakRssMiB": 1459.5,
+    "deltaPercent": -0.01
+   },
+   {
+    "case": "encode/photo12-d1-e7",
+    "threads": -1,
+    "baselineMs": 1178.7175,
+    "baselineAllocatedMiB": 320.71,
+    "baselinePeakRssMiB": 1521.3,
+    "currentMs": 1202.6836,
+    "currentAllocatedMiB": 198.7,
+    "currentPeakRssMiB": 1427.9,
+    "deltaPercent": 2.03
+   },
+   {
+    "case": "encode16/photo12-16-d0-e7",
+    "threads": 1,
+    "baselineMs": 5291.3185,
+    "baselineAllocatedMiB": 1014.67,
+    "baselinePeakRssMiB": 4016.6,
+    "currentMs": 5219.558,
+    "currentAllocatedMiB": 1018.04,
+    "currentPeakRssMiB": 4014.1,
+    "deltaPercent": -1.36
+   },
+   {
+    "case": "encode16/photo12-16-d0-e7",
+    "threads": -1,
+    "baselineMs": 1660.8762,
+    "baselineAllocatedMiB": 581.87,
+    "baselinePeakRssMiB": 2164.6,
+    "currentMs": 1087.2556,
+    "currentAllocatedMiB": 591.89,
+    "currentPeakRssMiB": 2442.1,
+    "deltaPercent": -34.54
+   },
+   {
+    "case": "encode16/photo12-16-d1-e7",
+    "threads": 1,
+    "baselineMs": 6387.3862,
+    "baselineAllocatedMiB": 1560.23,
+    "baselinePeakRssMiB": 3614.4,
+    "currentMs": 6402.8492,
+    "currentAllocatedMiB": 1552.49,
+    "currentPeakRssMiB": 3544.5,
+    "deltaPercent": 0.24
+   },
+   {
+    "case": "encode16/photo12-16-d1-e7",
+    "threads": -1,
+    "baselineMs": 1981.8932,
+    "baselineAllocatedMiB": 1511.33,
+    "baselinePeakRssMiB": 3287.1,
+    "currentMs": 2050.4762,
+    "currentAllocatedMiB": 1389.0,
+    "currentPeakRssMiB": 3729.9,
+    "deltaPercent": 3.46
+   }
+  ]
+ },
+ "rechecks": {
+  "note": "cases above +1% in final; 6 rounds (12 MP: 4 rounds x 3 calls); decode/screen-d1-e7 t=1 again with 10 rounds x 15 calls",
+  "summary": [
+   {
+    "case": "encode/photo1-d1-e1",
+    "threads": 1,
+    "baselineMs": 48.8742,
+    "baselineAllocatedMiB": 20.01,
+    "baselinePeakRssMiB": 224.3,
+    "currentMs": 48.7544,
+    "currentAllocatedMiB": 17.66,
+    "currentPeakRssMiB": 266.2,
+    "deltaPercent": -0.25
+   },
+   {
+    "case": "decode/screen-d1-e7",
+    "threads": 1,
+    "baselineMs": 34.5123,
+    "baselineAllocatedMiB": 8.23,
+    "baselinePeakRssMiB": 137.3,
+    "currentMs": 35.0137,
+    "currentAllocatedMiB": 8.23,
+    "currentPeakRssMiB": 137.5,
+    "deltaPercent": 1.45
+   },
+   {
+    "case": "decode/screen-d1-e7",
+    "threads": -1,
+    "baselineMs": 15.7707,
+    "baselineAllocatedMiB": 10.66,
+    "baselinePeakRssMiB": 254.4,
+    "currentMs": 15.7989,
+    "currentAllocatedMiB": 10.61,
+    "currentPeakRssMiB": 254.5,
+    "deltaPercent": 0.18
+   },
+   {
+    "case": "encode16/photo1-16-d1-e7",
+    "threads": -1,
+    "baselineMs": 156.7969,
+    "baselineAllocatedMiB": 167.77,
+    "baselinePeakRssMiB": 510.8,
+    "currentMs": 153.0813,
+    "currentAllocatedMiB": 45.64,
+    "currentPeakRssMiB": 273.8,
+    "deltaPercent": -2.37
+   },
+   {
+    "case": "encode16/screen-16-d1-e7",
+    "threads": -1,
+    "baselineMs": 305.2307,
+    "baselineAllocatedMiB": 280.48,
+    "baselinePeakRssMiB": 733.9,
+    "currentMs": 290.4416,
+    "currentAllocatedMiB": 156.86,
+    "currentPeakRssMiB": 819.7,
+    "deltaPercent": -4.85
+   },
+   {
+    "case": "decode16/photo1-16-d0-e7",
+    "threads": -1,
+    "baselineMs": 62.7994,
+    "baselineAllocatedMiB": 28.81,
+    "baselinePeakRssMiB": 214.6,
+    "currentMs": 61.1436,
+    "currentAllocatedMiB": 28.81,
+    "currentPeakRssMiB": 205.7,
+    "deltaPercent": -2.64
+   },
+   {
+    "case": "decode/tiny-1x1",
+    "threads": -1,
+    "baselineMs": 0.0112,
+    "baselineAllocatedMiB": 0.01,
+    "baselinePeakRssMiB": 53.8,
+    "currentMs": 0.0111,
+    "currentAllocatedMiB": 0.01,
+    "currentPeakRssMiB": 53.9,
+    "deltaPercent": -0.89
+   },
+   {
+    "case": "decode/IMG_0160-jpeg",
+    "threads": -1,
+    "baselineMs": 87.9086,
+    "baselineAllocatedMiB": 232.84,
+    "baselinePeakRssMiB": 1236.4,
+    "currentMs": 88.2928,
+    "currentAllocatedMiB": 232.64,
+    "currentPeakRssMiB": 1258.7,
+    "deltaPercent": 0.44
+   },
+   {
+    "case": "encode/photo12-d1-e7",
+    "threads": -1,
+    "baselineMs": 1371.0697,
+    "baselineAllocatedMiB": 320.97,
+    "baselinePeakRssMiB": 1529.3,
+    "currentMs": 1377.3475,
+    "currentAllocatedMiB": 196.46,
+    "currentPeakRssMiB": 1341.2,
+    "deltaPercent": 0.46
+   },
+   {
+    "case": "encode16/photo12-16-d1-e7",
+    "threads": -1,
+    "baselineMs": 2049.5418,
+    "baselineAllocatedMiB": 1512.06,
+    "baselinePeakRssMiB": 3321.9,
+    "currentMs": 2047.6071,
+    "currentAllocatedMiB": 1388.01,
+    "currentPeakRssMiB": 3293.5,
+    "deltaPercent": -0.09
+   },
+   {
+    "case": "decode/screen-d1-e7",
+    "threads": 1,
+    "baselineMs": 33.2416,
+    "baselineAllocatedMiB": 8.23,
+    "baselinePeakRssMiB": 137.1,
+    "currentMs": 33.4757,
+    "currentAllocatedMiB": 8.23,
+    "currentPeakRssMiB": 136.9,
+    "deltaPercent": 0.7
+   }
+  ]
+ },
+ "rejected": {
+  "jpegStreaming4KiB": {
+   "note": "baseline = accepted 0.8.2 writer, current = 4 KiB streaming output; rejected",
+   "summary": [
+    {
+     "case": "tojpeg/IMG_0160-jpeg",
+     "threads": 1,
+     "baselineMs": 312.5146,
+     "baselineAllocatedMiB": 112.79,
+     "baselinePeakRssMiB": 312.0,
+     "currentMs": 313.2328,
+     "currentAllocatedMiB": 107.19,
+     "currentPeakRssMiB": 293.6,
+     "deltaPercent": 0.23
+    },
+    {
+     "case": "tojpeg/IMG_0160-jpeg",
+     "threads": -1,
+     "baselineMs": 61.6661,
+     "baselineAllocatedMiB": 124.73,
+     "baselinePeakRssMiB": 410.3,
+     "currentMs": 63.5416,
+     "currentAllocatedMiB": 119.06,
+     "currentPeakRssMiB": 463.1,
+     "deltaPercent": 3.04
+    }
+   ]
+  },
+  "paletteIsolation": {
+   "note": "baseline = 0.8.2 without parallel palette, current = with it; photo1 exceeds the palette limit; kept (byte-identical, no time cost; gains on palette content are in final)",
+   "summary": [
+    {
+     "case": "encode/photo1-d0-e7",
+     "threads": 1,
+     "baselineMs": 811.5437,
+     "baselineAllocatedMiB": 58.59,
+     "baselinePeakRssMiB": 387.3,
+     "currentMs": 809.8039,
+     "currentAllocatedMiB": 58.57,
+     "currentPeakRssMiB": 389.1,
+     "deltaPercent": -0.21
+    },
+    {
+     "case": "encode/photo1-d0-e7",
+     "threads": -1,
+     "baselineMs": 213.13,
+     "baselineAllocatedMiB": 45.89,
+     "baselinePeakRssMiB": 517.4,
+     "currentMs": 213.7015,
+     "currentAllocatedMiB": 46.55,
+     "currentPeakRssMiB": 562.5,
+     "deltaPercent": 0.27
+    }
+   ]
+  }
+ }
+}

@@ -1,6 +1,7 @@
 using PictureSharp.Formats.Jxl.Codestream.Buffers;
 using PictureSharp.Formats.Jxl.Codestream.Entropy;
 using PictureSharp.Formats.Jxl.Codestream.Model;
+using PictureSharp.Formats.Jxl.Codestream.Numerics;
 using static PictureSharp.Formats.Jxl.Codestream.Numerics.JxlIntMath;
 
 namespace PictureSharp.Formats.Jxl.Codestream.Encoding;
@@ -80,7 +81,13 @@ internal sealed class JxlTreeLearner : IDisposable
     }
 
     /// <summary>The tree; a single leaf with the first predictor when there are no samples or no useful split.</summary>
-    public List<JxlTreeNode> Learn(float threshold, CancellationToken cancellationToken)
+    /// <remarks>
+    /// With parallelism the tree is the same: properties are quantized in parallel, the largest nodes evaluate their
+    /// properties in parallel, and once no node holds more than a share of the samples the remaining subtrees grow on
+    /// their own workers. Every node's split depends only on its own samples and predictor, so the decisions are
+    /// assembled in the sequential (depth-first, left child first) order, which numbers the nodes as before.
+    /// </remarks>
+    public List<JxlTreeNode> Learn(float threshold, CancellationToken cancellationToken, int parallelism = JxlParallel.Sequential)
     {
         var tree = new List<JxlTreeNode> { JxlTreeNode.Leaf(predictors[0]) };
         int count = Count;
@@ -89,14 +96,12 @@ internal sealed class JxlTreeLearner : IDisposable
         // Quantize every property to at most maxPropertyValues bins at quantiles of its samples.
         int[][] thresholds = new int[properties.Length][];
         byte[][] bins = new byte[properties.Length][];
-        for (int p = 0; p < properties.Length; p++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            (thresholds[p], bins[p]) = Quantize(values[p].Span);
-        }
+        JxlParallel.For(properties.Length, parallelism, cancellationToken, p => (thresholds[p], bins[p]) = Quantize(values[p].Span));
 
         byte[][] tok = [.. tokens.Select(list => list.Span.ToArray())];
         byte[][] extra = [.. extraBits.Select(list => list.Span.ToArray())];
+        if (JxlParallel.IsParallel(parallelism, count)) return LearnParallel(tree, bins, tok, extra, thresholds, threshold, parallelism, cancellationToken);
+
         var learner = new Search(bins, tok, extra, thresholds, threshold);
         var nodes = new Stack<(int Node, int Begin, int End)>();
         nodes.Push((0, 0, count));
@@ -122,6 +127,116 @@ internal sealed class JxlTreeLearner : IDisposable
         }
 
         return tree;
+    }
+
+    // A split decision: the property and bin, and the predictor indices of the children; Property -1 keeps a leaf.
+    private readonly record struct Decision(int Property, int Bin, int LeftPredictor, int RightPredictor, int LeftKey = 0, int RightKey = 0)
+    {
+        public static readonly Decision Keep = new(-1, 0, 0, 0);
+    }
+
+    // A node not decided yet: its key, samples [Begin, End) and the index of its predictor.
+    private readonly record struct Pending(int Key, int Begin, int End, int Current);
+
+    // A node's samples are a share of the total small enough for the subtrees to balance across the workers.
+    private const int SubtreesPerWorker = 1;
+
+    private List<JxlTreeNode> LearnParallel(List<JxlTreeNode> tree, byte[][] bins, byte[][] tok, byte[][] extra, int[][] thresholds,
+        float threshold, int parallelism, CancellationToken cancellationToken)
+    {
+        int count = tok[0].Length;
+        long limit = Math.Max(1, (long)count / (SubtreesPerWorker * JxlParallel.Workers(parallelism, int.MaxValue)));
+        // Split the largest node until none is too large; children are keyed in the order they are created.
+        var decided = new Dictionary<int, Decision>();
+        var pending = new List<Pending> { new(0, 0, count, Array.IndexOf(predictors, tree[0].Predictor)) };
+        var top = new Search(bins, tok, extra, thresholds, threshold);
+        int keys = 1;
+        while (true)
+        {
+            int largest = -1;
+            for (int i = 0; i < pending.Count; i++)
+            {
+                if (pending[i].End - pending[i].Begin > limit && (largest < 0 || pending[i].End - pending[i].Begin > pending[largest].End - pending[largest].Begin)) largest = i;
+            }
+
+            if (largest < 0) break;
+            Pending node = pending[largest];
+            pending.RemoveAt(largest);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!top.FindSplit(node.Begin, node.End, node.Current, out int property, out int bin, out int position, out int leftPredictor,
+                    out int rightPredictor, parallelism, cancellationToken))
+            {
+                decided[node.Key] = Decision.Keep;
+                continue;
+            }
+
+            top.Partition(node.Begin, position, node.End, property, bin);
+            int leftKey = keys++, rightKey = keys++;
+            decided[node.Key] = new Decision(property, bin, leftPredictor, rightPredictor, leftKey, rightKey);
+            pending.Add(new Pending(leftKey, position, node.End, Array.IndexOf(predictors, predictors[leftPredictor])));
+            pending.Add(new Pending(rightKey, node.Begin, position, Array.IndexOf(predictors, predictors[rightPredictor])));
+        }
+
+        // The remaining subtrees, largest first, each recorded in its own depth-first order.
+        Pending[] order = [.. pending.OrderByDescending(node => node.End - node.Begin).ThenBy(node => node.Key)];
+        var subtrees = new List<Decision>[order.Length];
+        var subtreeOf = new Dictionary<int, int>();
+        for (int i = 0; i < order.Length; i++) subtreeOf[order[i].Key] = i;
+        JxlParallel.ForWorkers(order.Length, parallelism, cancellationToken, () => new Search(bins, tok, extra, thresholds, threshold),
+            (search, i) => subtrees[i] = Grow(search, order[i], cancellationToken));
+
+        // Replay the sequential loop over the decisions.
+        int[] next = new int[order.Length];
+        var nodes = new Stack<(int Node, int Key, int Subtree)>();
+        nodes.Push((0, 0, subtreeOf.GetValueOrDefault(0, -1)));
+        while (nodes.Count > 0)
+        {
+            (int node, int key, int subtree) = nodes.Pop();
+            Decision decision = subtree < 0 ? decided[key] : subtrees[subtree][next[subtree]++];
+            if (decision.Property < 0) continue;
+            int left = tree.Count;
+            tree[node] = new JxlTreeNode(properties[decision.Property], thresholds[decision.Property][decision.Bin], left, left + 1, JxlPredictor.Zero);
+            tree.Add(new JxlTreeNode(-1, 0, 0, 0, predictors[decision.LeftPredictor]));
+            tree.Add(new JxlTreeNode(-1, 0, 0, 0, predictors[decision.RightPredictor]));
+            if (subtree < 0)
+            {
+                nodes.Push((left + 1, decision.RightKey, subtreeOf.GetValueOrDefault(decision.RightKey, -1)));
+                nodes.Push((left, decision.LeftKey, subtreeOf.GetValueOrDefault(decision.LeftKey, -1)));
+            }
+            else
+            {
+                nodes.Push((left + 1, 0, subtree));
+                nodes.Push((left, 0, subtree));
+            }
+        }
+
+        return tree;
+    }
+
+    // The decisions of the subtree at root, in the order the sequential loop visits its nodes.
+    private List<Decision> Grow(Search search, Pending root, CancellationToken cancellationToken)
+    {
+        var decisions = new List<Decision>();
+        var nodes = new Stack<Pending>();
+        nodes.Push(root);
+        while (nodes.Count > 0)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            Pending node = nodes.Pop();
+            if (!search.FindSplit(node.Begin, node.End, node.Current, out int property, out int bin, out int position, out int leftPredictor,
+                    out int rightPredictor))
+            {
+                decisions.Add(Decision.Keep);
+                continue;
+            }
+
+            decisions.Add(new Decision(property, bin, leftPredictor, rightPredictor));
+            search.Partition(node.Begin, position, node.End, property, bin);
+            nodes.Push(new Pending(0, node.Begin, position, Array.IndexOf(predictors, predictors[rightPredictor])));
+            nodes.Push(new Pending(0, position, node.End, Array.IndexOf(predictors, predictors[leftPredictor])));
+        }
+
+        return decisions;
     }
 
     // The cut values at the quantiles of the samples, and the bin of every sample: the number of cuts below it. A
@@ -189,25 +304,38 @@ internal sealed class JxlTreeLearner : IDisposable
     {
         private readonly float changePenalty = 800.0f / (100.0f + threshold);
 
-        // Buffers reused between nodes, grown as needed.
+        // The node's symbol counts per predictor, reused between nodes and grown as needed.
         private int[][] counts = [];
         private int[][] present = [];
         private int[] presentCount = [];
         private long[] totalExtra = [];
-        private int[] below = [];
-        private int[] above = [];
-        private int[] used = [];
-        private float[] costLeft = [];
-        private float[] costRight = [];
-        private float[] scoreLeft = [];
-        private float[] scoreRight = [];
-        private int[] predictorLeft = [];
-        private int[] predictorRight = [];
-        private int[] increase = [];
-        private long[] extraIncrease = [];
+        private readonly Scratch scratch = new();
+
+        // Per-property buffers; one per worker when properties are evaluated in parallel.
+        private sealed class Scratch
+        {
+            public int[] Below = [];
+            public int[] Above = [];
+            public int[] Used = [];
+            public float[] CostLeft = [];
+            public float[] CostRight = [];
+            public float[] ScoreLeft = [];
+            public float[] ScoreRight = [];
+            public int[] PredictorLeft = [];
+            public int[] PredictorRight = [];
+            public int[] Increase = [];
+            public long[] ExtraIncrease = [];
+        }
+
+        // The best split found so far: the first of the lowest cost in property and bin order.
+        private struct Candidate
+        {
+            public float Cost;
+            public int Property, Bin, Position, Left, Right;
+        }
 
         public bool FindSplit(int begin, int end, int current, out int bestProperty, out int bestBin, out int bestPosition,
-            out int bestLeft, out int bestRight)
+            out int bestLeft, out int bestRight, int parallelism = JxlParallel.Sequential, CancellationToken cancellationToken = default)
         {
             bestProperty = bestBin = bestPosition = bestLeft = bestRight = 0;
             int predictorCount = tokens.Length;
@@ -254,125 +382,161 @@ internal sealed class JxlTreeLearner : IDisposable
             float baseBits = EstimateBits(counts[current], present[current], presentCount[current], total) + totalExtra[current];
             if (baseBits <= threshold) return false;
 
-            float bestCost = float.MaxValue;
-            Reuse(ref below, symbols);
-            Reuse(ref above, symbols);
-            for (int property = 0; property < bins.Length; property++)
+            var best = new Candidate { Cost = float.MaxValue };
+            if (!JxlParallel.IsParallel(parallelism, bins.Length))
             {
-                byte[] bin = bins[property];
-                int binCount = thresholds[property].Length + 1;
-                if (binCount < 2) continue;
-                Reuse(ref used, binCount);
-                int first = binCount;
-                int last = 0;
+                Reuse(ref scratch.Below, symbols);
+                Reuse(ref scratch.Above, symbols);
+                for (int property = 0; property < bins.Length; property++) Evaluate(property, begin, end, current, symbols, scratch, ref best);
+            }
+            else
+            {
+                // Each property's own best, then the first lowest in property order: the sequential choice.
+                var results = new Candidate[bins.Length];
+                JxlParallel.ForWorkers(bins.Length, parallelism, cancellationToken, () =>
+                {
+                    var own = new Scratch();
+                    Reuse(ref own.Below, symbols);
+                    Reuse(ref own.Above, symbols);
+                    return own;
+                }, (own, property) =>
+                {
+                    var candidate = new Candidate { Cost = float.MaxValue };
+                    Evaluate(property, begin, end, current, symbols, own, ref candidate);
+                    results[property] = candidate;
+                });
+                foreach (Candidate candidate in results)
+                {
+                    if (candidate.Cost < best.Cost) best = candidate;
+                }
+            }
+
+            (bestProperty, bestBin, bestPosition, bestLeft, bestRight) = (best.Property, best.Bin, best.Position, best.Left, best.Right);
+            return best.Cost + threshold < baseBits;
+        }
+
+        private void Evaluate(int property, int begin, int end, int current, int symbols, Scratch s, ref Candidate best)
+        {
+            int predictorCount = tokens.Length;
+            int total = end - begin;
+            int[] below = s.Below;
+            int[] above = s.Above;
+            byte[] bin = bins[property];
+            int binCount = thresholds[property].Length + 1;
+            if (binCount < 2) return;
+            Reuse(ref s.Used, binCount);
+            int[] used = s.Used;
+            int first = binCount;
+            int last = 0;
+            for (int i = begin; i < end; i++)
+            {
+                used[bin[i]]++;
+                first = Math.Min(first, bin[i]);
+                last = Math.Max(last, bin[i]);
+            }
+
+            if (first == last) return;
+            int splits = last - first;
+            Reuse(ref s.CostLeft, splits);
+            Reuse(ref s.CostRight, splits);
+            Reuse(ref s.ScoreLeft, splits);
+            Reuse(ref s.ScoreRight, splits);
+            Reuse(ref s.PredictorLeft, splits);
+            Reuse(ref s.PredictorRight, splits);
+            float[] costLeft = s.CostLeft, costRight = s.CostRight, scoreLeft = s.ScoreLeft, scoreRight = s.ScoreRight;
+            int[] predictorLeft = s.PredictorLeft, predictorRight = s.PredictorRight;
+            scoreLeft.AsSpan(0, splits).Fill(float.MaxValue);
+            scoreRight.AsSpan(0, splits).Fill(float.MaxValue);
+            if (s.Increase.Length < binCount * symbols) s.Increase = new int[binCount * symbols];
+            Reuse(ref s.ExtraIncrease, binCount);
+            int[] increase = s.Increase;
+            long[] extraIncrease = s.ExtraIncrease;
+            for (int p = 0; p < predictorCount; p++)
+            {
+                // Dense symbols are faster to clear as a contiguous active-bin range; sparse
+                // predictors initialize just the cells that can be read or incremented.
+                bool dense = presentCount[p] * 4 >= symbols;
+                if (dense) increase.AsSpan(first * symbols, (last - first + 1) * symbols).Clear();
+                for (int b = first; b <= last; b++)
+                {
+                    if (used[b] == 0) continue;
+                    extraIncrease[b] = 0;
+                    if (!dense)
+                        for (int j = 0; j < presentCount[p]; j++) increase[b * symbols + present[p][j]] = 0;
+                }
+
+                byte[] tok = tokens[p];
+                byte[] ext = extra[p];
                 for (int i = begin; i < end; i++)
                 {
-                    used[bin[i]]++;
-                    first = Math.Min(first, bin[i]);
-                    last = Math.Max(last, bin[i]);
+                    increase[bin[i] * symbols + tok[i]]++;
+                    extraIncrease[bin[i]] += ext[i];
                 }
 
-                if (first == last) continue;
-                int splits = last - first;
-                Reuse(ref costLeft, splits);
-                Reuse(ref costRight, splits);
-                Reuse(ref scoreLeft, splits);
-                Reuse(ref scoreRight, splits);
-                Reuse(ref predictorLeft, splits);
-                Reuse(ref predictorRight, splits);
-                scoreLeft.AsSpan(0, splits).Fill(float.MaxValue);
-                scoreRight.AsSpan(0, splits).Fill(float.MaxValue);
-                if (increase.Length < binCount * symbols) increase = new int[binCount * symbols];
-                Reuse(ref extraIncrease, binCount);
-                for (int p = 0; p < predictorCount; p++)
+                int[] symbolsOf = present[p];
+                int n = presentCount[p];
+                int[] pc = counts[p];
+                for (int j = 0; j < n; j++)
                 {
-                    // Dense symbols are faster to clear as a contiguous active-bin range; sparse
-                    // predictors initialize just the cells that can be read or incremented.
-                    bool dense = presentCount[p] * 4 >= symbols;
-                    if (dense) increase.AsSpan(first * symbols, (last - first + 1) * symbols).Clear();
-                    for (int b = first; b <= last; b++)
-                    {
-                        if (used[b] == 0) continue;
-                        extraIncrease[b] = 0;
-                        if (!dense)
-                            for (int j = 0; j < presentCount[p]; j++) increase[b * symbols + present[p][j]] = 0;
-                    }
-
-                    byte[] tok = tokens[p];
-                    byte[] ext = extra[p];
-                    for (int i = begin; i < end; i++)
-                    {
-                        increase[bin[i] * symbols + tok[i]]++;
-                        extraIncrease[bin[i]] += ext[i];
-                    }
-
-                    int[] symbolsOf = present[p];
-                    int n = presentCount[p];
-                    int[] pc = counts[p];
-                    for (int j = 0; j < n; j++)
-                    {
-                        above[symbolsOf[j]] = pc[symbolsOf[j]];
-                        below[symbolsOf[j]] = 0;
-                    }
-
-                    long extraBelow = 0;
-                    int countBelow = 0;
-                    // Discourage changing the predictor, but never moving away from the first (Weighted) one.
-                    float penalty = p != current && current != 0 ? changePenalty : 0;
-                    for (int b = first; b < last; b++)
-                    {
-                        if (used[b] == 0) continue;
-                        extraBelow += extraIncrease[b];
-                        countBelow += used[b];
-                        int row = b * symbols;
-                        for (int j = 0; j < n; j++)
-                        {
-                            int t = symbolsOf[j];
-                            int v = increase[row + t];
-                            above[t] -= v;
-                            below[t] += v;
-                        }
-
-                        // Samples at or below the split go right; the decoder takes the left child for property > split.
-                        float right = EstimateBits(below, symbolsOf, n, countBelow) + extraBelow;
-                        float left = EstimateBits(above, symbolsOf, n, total - countBelow) + totalExtra[p] - extraBelow;
-                        int k = b - first;
-                        if (right + penalty < scoreRight[k])
-                        {
-                            scoreRight[k] = right + penalty;
-                            costRight[k] = right;
-                            predictorRight[k] = p;
-                        }
-
-                        if (left + penalty < scoreLeft[k])
-                        {
-                            scoreLeft[k] = left + penalty;
-                            costLeft[k] = left;
-                            predictorLeft[k] = p;
-                        }
-                    }
+                    above[symbolsOf[j]] = pc[symbolsOf[j]];
+                    below[symbolsOf[j]] = 0;
                 }
 
-                int position = begin;
+                long extraBelow = 0;
+                int countBelow = 0;
+                // Discourage changing the predictor, but never moving away from the first (Weighted) one.
+                float penalty = p != current && current != 0 ? changePenalty : 0;
                 for (int b = first; b < last; b++)
                 {
                     if (used[b] == 0) continue;
-                    position += used[b];
-                    int k = b - first;
-                    float cost = costLeft[k] + costRight[k];
-                    if (cost < bestCost)
+                    extraBelow += extraIncrease[b];
+                    countBelow += used[b];
+                    int row = b * symbols;
+                    for (int j = 0; j < n; j++)
                     {
-                        bestCost = cost;
-                        bestProperty = property;
-                        bestBin = b;
-                        bestPosition = position;
-                        bestLeft = predictorLeft[k];
-                        bestRight = predictorRight[k];
+                        int t = symbolsOf[j];
+                        int v = increase[row + t];
+                        above[t] -= v;
+                        below[t] += v;
+                    }
+
+                    // Samples at or below the split go right; the decoder takes the left child for property > split.
+                    float right = EstimateBits(below, symbolsOf, n, countBelow) + extraBelow;
+                    float left = EstimateBits(above, symbolsOf, n, total - countBelow) + totalExtra[p] - extraBelow;
+                    int k = b - first;
+                    if (right + penalty < scoreRight[k])
+                    {
+                        scoreRight[k] = right + penalty;
+                        costRight[k] = right;
+                        predictorRight[k] = p;
+                    }
+
+                    if (left + penalty < scoreLeft[k])
+                    {
+                        scoreLeft[k] = left + penalty;
+                        costLeft[k] = left;
+                        predictorLeft[k] = p;
                     }
                 }
             }
 
-            return bestCost + threshold < baseBits;
+            int position = begin;
+            for (int b = first; b < last; b++)
+            {
+                if (used[b] == 0) continue;
+                position += used[b];
+                int k = b - first;
+                float cost = costLeft[k] + costRight[k];
+                if (cost < best.Cost)
+                {
+                    best.Cost = cost;
+                    best.Property = property;
+                    best.Bin = b;
+                    best.Position = position;
+                    best.Left = predictorLeft[k];
+                    best.Right = predictorRight[k];
+                }
+            }
         }
 
         // A cleared buffer of at least length elements.

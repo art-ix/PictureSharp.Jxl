@@ -11,7 +11,7 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/art-ix/picturesharp.jxl</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageReleaseNotes>0.8.1: deterministic group parallelism. MaxDegreeOfParallelism (default -1, all cores; 1 = single-threaded) on JxlEncoderOptions and JxlTranscoderOptions; decoding uses the core DecoderOptions.MaxDegreeOfParallelism. Encoded bytes, decoded pixels, metadata edits, reconstructed JPEGs and exceptions are identical at every thread count. On 16 logical CPUs vs 1 thread: lossless decode 5-8x, VarDCT decode 1.9-3.2x, lossy encode (effort 7) 3.1-4.6x, lossless encode 1.3-4x. Also more SIMD kernels after 0.8.0 (lossy encode effort 7 18% faster single-threaded). See docs/releases/release-0.8.1.md and docs/benchmarks/speed.md.</PackageReleaseNotes>
+    <PackageReleaseNotes>0.8.2: scheduling and scratch. JPEG reconstruction writes DC-first scans in parallel chunks with a 64-bit bit accumulator; MA-tree learning, RCT choice and palette discovery run in parallel; lossy encoder search scratch sized for DCT64x64. Output identical to 0.8.1 at every thread count. vs 0.8.1 on 16 logical CPUs: JPEG reconstruction 4.2x, lossless encode (effort 7) 1.3-2.8x, lossy encode effort 1-3 7.6% faster with 3x less allocation; 1 thread: JPEG reconstruction 20% faster, other cases within noise. No API changes. See docs/releases/release-0.8.2.md and docs/benchmarks/speed.md.</PackageReleaseNotes>
   </PropertyGroup>
   <ItemGroup><PackageReference Include="PictureSharp" Version="$(PictureSharpVersion)" /></ItemGroup>
   <ItemGroup>

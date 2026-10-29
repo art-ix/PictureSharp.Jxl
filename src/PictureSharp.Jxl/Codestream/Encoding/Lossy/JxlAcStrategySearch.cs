@@ -12,7 +12,8 @@ namespace PictureSharp.Formats.Jxl.Codestream.Encoding.Lossy;
 internal sealed partial class JxlAcStrategySearch
 {
     private const int TileBlocks = 8;
-    private const int MaxCoefficients = JxlAcStrategy.BlockSize << 10;
+    // The largest transform the search chooses is DCT64x64; per-worker scratch is sized for it, not for DCT256x256.
+    internal const int MaxCoefficients = JxlAcStrategy.BlockSize << 6;
 
     private static readonly (JxlAcStrategyType Type, int MaxSpeedTier, float EntropyMul)[] Transforms8X8 =
     [

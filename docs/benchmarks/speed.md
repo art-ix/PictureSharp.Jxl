@@ -1,4 +1,4 @@
-# Speed measurements — 0.7.3–0.8.1
+# Speed measurements — 0.7.3–0.8.2
 
 Measured on 2026-10-27, Linux x64, Intel Core i5-12500H, .NET 10, one thread (`DOTNET_PROCESSOR_COUNT=1`).
 libjxl 0.12.0 (`4128790`) times are its own `--num_reps=3` geomean with `--num_threads=1`, PNG I/O excluded, AVX2 enabled.
@@ -523,3 +523,61 @@ timed by cjxl/djxl themselves (`--num_threads=1` on CPU 0, `16` on CPUs 0–15, 
 - Peak RSS grows with the worker count where workers hold group coefficients, search scratch or band buffers, and
   falls in some 12 MP cases (not investigated; 0.8.2 profiles memory with threading). `ReservePixels` budgets are
   unchanged and charged before workers start.
+
+## Scheduling and scratch (0.8.2)
+
+Parallel JPEG scan writing, parallel MA-tree learning, RCT choice and palette discovery, and encoder search scratch
+sized for DCT64×64 (see the [scheduling design](../design/0.8.2-scheduling.md)). Output is byte-identical to 0.8.1:
+the all-efforts golden set (1433 results, SHA-256 92d936fd…e06) at 1 and 16 threads. Measured 2026-10-29 with
+`scripts/measure-paired.py` on the machine and runtime of the 0.8.1 section: v0.8.1 and 0.8.2 sources in separate
+processes, A/B then B/A, 2 rounds × 5 warm calls (12 MP: 3), tiered compilation off, 1 thread on CPU 0 and -1 on
+CPUs 0–15; values are medians over rounds. Cases above +1% were rechecked with 6 rounds.
+[Raw data](../measurements/scheduling-0.8.2.json).
+
+| Case | 1 thread 0.8.1 → 0.8.2 (ms) | 16 threads 0.8.1 → 0.8.2 (ms) | Peak RSS 16 threads (MiB) | Allocated 16 threads (MiB) |
+| --- | ---: | ---: | ---: | ---: |
+| tojpeg/IMG_0160-jpeg | 398 → 316 (−20.5%) | 256 → 61.4 (−76.0%) | 251 → 442 | 108 → 125 |
+| encode/photo1-d0-e7 | 811 → 797 (−1.8%) | 495 → 215 (−56.5%) | 599 → 542 | 43 → 46 |
+| encode/screen-d0-e7 | 482 → 486 (+0.8%) | 371 → 168 (−54.8%) | 588 → 648 | 43 → 44 |
+| encode16/photo1-16-d0-e7 | 1096 → 1071 (−2.3%) | 760 → 273 (−64.1%) | 657 → 834 | 55 → 63 |
+| encode16/screen-16-d0-e7 | 767 → 757 (−1.4%) | 457 → 244 (−46.6%) | 902 → 1139 | 67 → 70 |
+| encode/photo12-d0-e7 | 4678 → 4691 (+0.3%) | 1203 → 927 (−22.9%) | 1934 → 2122 | 518 → 534 |
+| encode16/photo12-16-d0-e7 | 5291 → 5220 (−1.4%) | 1661 → 1087 (−34.5%) | 2165 → 2442 | 582 → 592 |
+| encode/photo1-d1-e1 | 46.5 → 47.7, recheck −0.3% | 27.8 → 25.7 (−7.7%) | 491 → 172 | 58 → 20 |
+| encode/photo1-d1-e3 | 46.9 → 47.2 (+0.6%) | 28.0 → 25.8 (−7.6%) | 436 → 180 | 58 → 20 |
+| encode/photo1-d1-e5 | 258 → 259 (+0.2%) | 77.3 → 74.2 (−3.9%) | 473 → 245 | 132 → 35 |
+| encode/photo1-d1-e7 | 451 → 447 (−0.7%) | 126 → 123 (−2.9%) | 529 → 251 | 168 → 45 |
+| encode/screen-d1-e7 | 815 → 807 (−0.9%) | 272 → 266 (−2.0%) | 608 → 781 | 281 → 156 |
+| encode16/photo1-16-d1-e7 | 461 → 462 (+0.3%) | +2.1%, recheck −2.4% | 483 → 262 | 168 → 46 |
+| encode16/screen-16-d1-e7 | 803 → 796 (−0.9%) | +1.2%, recheck −4.9% | 721 → 760 | 280 → 156 |
+| encode/photo12-d1-e7 | 5434 → 5433 (0.0%) | +2.0%, recheck +0.5% | 1521 → 1428 | 321 → 199 |
+| encode16/photo12-16-d1-e7 | 6387 → 6403 (+0.2%) | +3.5%, recheck −0.1% | 3287 → 3730 | 1511 → 1389 |
+
+- Decoding is not changed by 0.8.2 (no decoder source differs). All 22 decode configurations are within −4.4..+4.4%
+  in the first pass; every one above +1% was within +0.7% (decode/screen-d1-e7, 1 thread, 10 rounds × 15 calls) or
+  faster on recheck: screen-d1-e7 16 threads +0.2%, decode16/photo1-16-d0-e7 −2.6%, recompressed JPEG +0.4%,
+  tiny-1x1 −0.9%.
+- JPEG reconstruction: the 64-bit bit accumulator gives the 1-thread gain; DC-first scans (restart intervals, or MCU
+  rows without them) give the parallel one. Each chunk keeps its encoded bytes until the in-order merge, so 16-thread
+  peak RSS grows (251 → 442 MiB for 12 MP; the 1-thread figure stays below 0.8.1's).
+- Lossless encoding at 16 threads is 2.2–2.8× (1 MP) and 1.3–1.5× (12 MP) faster than 0.8.1: tree splitting no
+  longer runs on one thread.
+  At 1 thread it is within −2.3..+0.8%.
+- Lossy encoding: the AC search, CfL and quantizer scratch use 4096 instead of 65536 coefficients. Per-worker Large
+  Object Heap scratch was the main allocation: 16-thread allocations drop 168 → 45 MiB (photo1 e7) and RSS
+  529 → 251 MiB, with e1/e3 7.6% faster. Screen content allocates less but peaks higher (fewer, later Gen2
+  collections); peak RSS is not a controlled quantity.
+
+Rejected after measurement (not included):
+
+| Candidate | Result |
+| --- | --- |
+| JPEG output streamed through a 4 KiB buffer instead of per-chunk byte buffers | tojpeg +0.2% (1 thread), +3.0% (16 threads); RSS and allocations not better than the kept writer |
+| 2–4 decode row bands per worker | 12 MP decode 4–6% slower |
+| Cache of histogram-pair merge costs in cluster merging | no gain |
+| Parallel or skipped zero counting for coefficient orders | e3 no gain, 1 thread +1.4% |
+| Core image buffer without initial fill | changes `HasAlpha`; needs a core API |
+
+Parallel palette discovery was also measured in isolation on a photo that exceeds the palette limit: −0.2% (1 thread)
+and +0.3% (16 threads). It is kept: its gain applies to palette content, and the output is identical.
+A 1 MP VarDCT frame has one LF group whose DC entropy stream is sequential; scheduling cannot split it.
