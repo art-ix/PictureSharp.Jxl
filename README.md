@@ -44,7 +44,7 @@ scan.SaveAsJxl("scan.jxl", new JxlEncoderOptions { Distance = 0 });
 ```
 
 This preserves every 16-bit sample, including alpha. Default loading returns 8-bit pixels; enable `PreserveBitDepth`
-when reading the result too. See [what changed in 0.7.8](https://github.com/art-ix/PictureSharp.Jxl/blob/main/docs/releases/release-0.7.8.md).
+when reading the result too.
 
 ## Support
 
@@ -63,27 +63,11 @@ when reading the result too. See [what changed in 0.7.8](https://github.com/art-
 Pixels match djxl (libjxl 0.12.0): lossless images exactly, lossy ones within 1 of 255 in a few samples. Files this
 package writes decode with djxl the same way.
 
-Version 0.8.0 adds SIMD kernels (AVX2 with FMA, SSE4.1, scalar fallback) with byte-identical results to 0.7.10:
-on an AVX2 CPU, VarDCT decoding is 2.8–3.8× and lossy encoding 1.4–2.6× faster, single-threaded. Native AOT
-applications get the AVX2/FMA kernels only when published with `-p:IlcInstructionSet=x86-64-v3` (or `native`).
-See the [release notes](docs/releases/release-0.8.0.md) and [speed measurements](docs/benchmarks/speed.md#simd-080).
-
-Version 0.8.1 decodes and encodes independent groups, tiles and row bands in parallel, with byte-identical output at
-any thread count: `DecoderOptions.MaxDegreeOfParallelism` (PictureSharp core), `JxlEncoderOptions` and
-`JxlTranscoderOptions.MaxDegreeOfParallelism` (default -1, all cores; 1 = single-threaded). On 16 logical CPUs
-lossless decoding is 5–8×, VarDCT decoding 1.9–3.2× and lossy encoding 3.1–4.6× faster than on one thread. See the
-[release notes](docs/releases/release-0.8.1.md) and [speed measurements](docs/benchmarks/speed.md#group-parallelism-081).
-
-Version 0.8.2 also parallelizes JPEG reconstruction and lossless tree learning and shrinks the lossy encoder's
-per-worker scratch, with output identical to 0.8.1. On 16 logical CPUs JPEG reconstruction is 4.2× and lossless
-encoding (effort 7) 1.3–2.8× faster than 0.8.1. See the [release notes](docs/releases/release-0.8.2.md) and
-[speed measurements](docs/benchmarks/speed.md#scheduling-and-scratch-082).
-
-Version 0.8.3 gives lossless encoding libjxl's effort tiers (efforts 1–6 are 1.2–14× faster than before, when every
-effort coded as 7; 8-bit effort 7 is unchanged), shrinks 16-bit lossless files that use few values (a screenshot
-widened to 16 bits: 339 → 111 KB) and makes lossy encoding about 9% faster. Lossy files can differ in rare
-decisions, with the same size and decoded pixels. See the [release notes](docs/releases/release-0.8.3.md) and
-[speed measurements](docs/benchmarks/speed.md#encoder-work-083).
+**Performance:** AVX2/FMA and SSE4.1 kernels with a scalar fallback (identical output); Native AOT applications get the
+AVX2/FMA kernels only when published with `-p:IlcInstructionSet=x86-64-v3` (or `native`). Independent groups run in
+parallel: `DecoderOptions.MaxDegreeOfParallelism` (PictureSharp core), `JxlEncoderOptions` and
+`JxlTranscoderOptions.MaxDegreeOfParallelism` (default -1, all cores; 1 = single-threaded); output does not depend on
+it. See the [speed measurements](docs/benchmarks/speed.md).
 
 **Status:** early development (0.8.3). Not for production use yet; the API may change. CI runs on Linux, including a Native AOT build.
 
