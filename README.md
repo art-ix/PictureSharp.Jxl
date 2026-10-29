@@ -63,16 +63,22 @@ when reading the result too.
 Pixels match djxl (libjxl 0.12.0): lossless images exactly, lossy ones within 1 of 255 in a few samples. Files this
 package writes decode with djxl the same way.
 
-**Performance:** AVX2/FMA and SSE4.1 kernels with a scalar fallback (identical output); Native AOT applications get the
-AVX2/FMA kernels only when published with `-p:IlcInstructionSet=x86-64-v3` (or `native`). Independent groups run in
-parallel: `DecoderOptions.MaxDegreeOfParallelism` (PictureSharp core), `JxlEncoderOptions` and
-`JxlTranscoderOptions.MaxDegreeOfParallelism` (default -1, all cores; 1 = single-threaded); output does not depend on
-it. See the [speed measurements](docs/benchmarks/speed.md).
-
 **Status:** early development (0.8.3). Not for production use yet; the API may change. CI runs on Linux, including a Native AOT build.
 
 Guides: [decoding](docs/decoding.md) · [encoding](docs/encoding.md) · [JPEG transcoding](docs/transcoding.md) · [metadata](docs/metadata.md) ·
 [architecture](docs/architecture.md) · [release notes](docs/releases)
+
+## Performance
+
+- **SIMD:** AVX2/FMA and SSE4.1 kernels with a scalar fallback; all paths produce identical output.
+- **Native AOT:** publish with `-p:IlcInstructionSet=x86-64-v3` (or `native`) to get the AVX2/FMA kernels; the
+  default target uses SSE4.1 only.
+- **Threads:** decoding, encoding and JPEG transcoding run independent groups in parallel. Set
+  `MaxDegreeOfParallelism` (-1 = all cores, the default; 1 = single-threaded) on `DecoderOptions`,
+  `JxlEncoderOptions` or `JxlTranscoderOptions`. The output does not depend on it.
+- **Encoding effort:** lower `Effort` is faster; lossless efforts 1–3 are several times faster than 7.
+
+Measurements: [speed](docs/benchmarks/speed.md).
 
 ## License
 
