@@ -7,7 +7,7 @@ namespace PictureSharp.Formats.Jxl.Codestream.Encoding.Lossy;
 /// </summary>
 internal static class JxlGaborish
 {
-    public static void Inverse(JxlImage3F image, CancellationToken cancellationToken)
+    public static void Inverse(JxlImage3F image, CancellationToken cancellationToken, int parallelism = 1)
     {
         // Optimized with butteraugli on the whole system rather than as a mathematical inverse.
         ReadOnlySpan<float> k = [-0.09495815671340026f, -0.041031725066768575f, 0.013710004822696948f, 0.006510206083837737f,
@@ -18,7 +18,7 @@ internal static class JxlGaborish
         for (int c = 0; c < 3; c++)
         {
             using var buffers = new JxlBufferScope();
-            JxlConvolution.Symmetric5(image.Planes[c], image.Width, image.Height, weights, cancellationToken, buffers)
+            JxlConvolution.Symmetric5(image.Planes[c], image.Width, image.Height, weights, cancellationToken, buffers, parallelism)
                 .AsSpan(0, image.Width * image.Height).CopyTo(image.Planes[c]);
         }
     }

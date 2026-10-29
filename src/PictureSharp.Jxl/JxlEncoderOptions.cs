@@ -66,6 +66,16 @@ public sealed record JxlEncoderOptions : EncoderOptions
     /// </summary>
     public bool CompressMetadata { get; init; }
 
+    /// <summary>
+    /// Maximum number of threads to use (1 = single-threaded, -1 = automatic). Output does not depend on it.
+    /// Default: -1.
+    /// </summary>
+    public int MaxDegreeOfParallelism
+    {
+        get;
+        init => field = value == -1 || value >= 1 ? value : throw new ArgumentOutOfRangeException(nameof(MaxDegreeOfParallelism), value, "Expected -1 or a positive number.");
+    } = -1;
+
     /// <summary>The distance that will be encoded: <see cref="Distance"/>, or <see cref="Quality"/> mapped as cjxl does.</summary>
     public float EffectiveDistance => Distance ?? (float)(Quality >= 100 ? 0
         : Quality >= 30 ? 0.1 + (100 - Quality) * 0.09

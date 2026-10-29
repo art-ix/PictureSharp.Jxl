@@ -68,6 +68,17 @@ internal sealed class JxlTreeLearner : IDisposable
         }
     }
 
+    /// <summary>Appends the samples of <paramref name="batch"/> (a learner of the same properties and predictors) in their order.</summary>
+    public void Append(JxlTreeLearner batch)
+    {
+        for (int i = 0; i < values.Length; i++) values[i].AddRange(batch.values[i].Span);
+        for (int i = 0; i < tokens.Length; i++)
+        {
+            tokens[i].AddRange(batch.tokens[i].Span);
+            extraBits[i].AddRange(batch.extraBits[i].Span);
+        }
+    }
+
     /// <summary>The tree; a single leaf with the first predictor when there are no samples or no useful split.</summary>
     public List<JxlTreeNode> Learn(float threshold, CancellationToken cancellationToken)
     {

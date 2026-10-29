@@ -6,6 +6,7 @@
     <RestoreAdditionalProjectSources>$(MSBuildThisFileDirectory)../../artifacts</RestoreAdditionalProjectSources>
     <RestorePackagesPath>$(MSBuildThisFileDirectory)../../artifacts/consumer-packages</RestorePackagesPath>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(JxlPackageVersion)' == ''"><DefineConstants>$(DefineConstants);JXL_PARALLEL</DefineConstants></PropertyGroup>
   <ItemGroup Condition="'$(JxlPackageVersion)' == ''"><ProjectReference Include="../../src/PictureSharp.Jxl/PictureSharp.Jxl.csproj" /></ItemGroup>
   <ItemGroup Condition="'$(JxlPackageVersion)' != ''"><PackageReference Include="PictureSharp.Jxl" Version="$(JxlPackageVersion)" /></ItemGroup>
 </Project>

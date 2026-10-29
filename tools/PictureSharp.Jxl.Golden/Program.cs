@@ -20,6 +20,23 @@ System.Globalization.CultureInfo.CurrentUICulture = System.Globalization.Culture
 string root = Path.GetFullPath(args[0]);
 var filter = args.Length == 2 ? new System.Text.RegularExpressions.Regex(args[1]) : null;
 ImageConfiguration.Default = ImageConfiguration.Default.ToBuilder().AddFormat(new JxlFormat()).Build();
+// JXL_GOLDEN_THREADS sets MaxDegreeOfParallelism of every operation (default: the library defaults); the output must not
+// depend on it. Encoder and transcoder options have it from 0.8.1 (source builds define JXL_PARALLEL).
+int threads = int.TryParse(Environment.GetEnvironmentVariable("JXL_GOLDEN_THREADS"), out int t) ? t : -1;
+var load = new DecoderOptions { MaxDegreeOfParallelism = threads };
+JxlEncoderOptions Encode(float? distance = null, int effort = JxlEncoderOptions.DefaultEffort, bool compress = false) => new()
+{
+    Distance = distance, Effort = effort, CompressMetadata = compress,
+#if JXL_PARALLEL
+    MaxDegreeOfParallelism = threads,
+#endif
+};
+var transcode = new JxlTranscoderOptions
+{
+#if JXL_PARALLEL
+    MaxDegreeOfParallelism = threads,
+#endif
+};
 var output = new StringBuilder();
 void Line(string name, string kind, Func<string> result)
 {
@@ -40,34 +57,34 @@ foreach (string file in decodeFiles)
     string name = Path.GetRelativePath(root, file);
     byte[] data = File.ReadAllBytes(file);
     bool big = data.Length > 2_000_000 || name.Contains("photo12", StringComparison.Ordinal);
-    Line(name, "identify", () => Image.Identify(data).ToString());
-    Line(name, "meta", () => Meta(Image.ReadMetadata((ReadOnlyMemory<byte>)data)));
-    Line(name, "decode", () => { using var image = Image.Load(data); return Pixels(image) + " " + Meta(image.Metadata); });
+    Line(name, "identify", () => Image.Identify(data, load).ToString());
+    Line(name, "meta", () => Meta(Image.ReadMetadata((ReadOnlyMemory<byte>)data, load)));
+    Line(name, "decode", () => { using var image = Image.Load(data, load); return Pixels(image) + " " + Meta(image.Metadata); });
     Line(name, "srgb", () =>
     {
-        using var image = Image.Load(data, new DecoderOptions { ColorConversion = ColorConversionMode.ToSrgb });
+        using var image = Image.Load(data, load with { ColorConversion = ColorConversionMode.ToSrgb });
         return Pixels(image) + " " + Meta(image.Metadata);
     });
     Line(name, "edit", () => Hash(Image.EditMetadata((ReadOnlyMemory<byte>)data, m =>
     {
         m.Orientation = ExifOrientation.RightTop;
         m.Xmp = "<x/>"u8.ToArray();
-    })));
-    Line(name, "tojpeg", () => { using var jpeg = new MemoryStream(); JxlTranscoder.ToJpeg(data, jpeg); return Hash(jpeg.ToArray()); });
+    }, load)));
+    Line(name, "tojpeg", () => { using var jpeg = new MemoryStream(); JxlTranscoder.ToJpeg(data, jpeg, transcode); return Hash(jpeg.ToArray()); });
     if (!big)
     {
-        Line(name, "lossless", () => { using var image = Image.Load(data); return Hash(image.ToJxl(new JxlEncoderOptions { Distance = 0 })); });
+        Line(name, "lossless", () => { using var image = Image.Load(data, load); return Hash(image.ToJxl(Encode(0))); });
         Line(name, "losslessC", () =>
         {
-            using var image = Image.Load(data);
-            return Hash(image.ToJxl(new JxlEncoderOptions { Distance = 0, CompressMetadata = true }));
+            using var image = Image.Load(data, load);
+            return Hash(image.ToJxl(Encode(0, compress: true)));
         });
-        Line(name, "lossy", () => { using var image = Image.Load(data); return Hash(image.ToJxl()); });
+        Line(name, "lossy", () => { using var image = Image.Load(data, load); return Hash(image.ToJxl(Encode())); });
     }
 
     if (Deep(data))
     {
-        var preserve = new DecoderOptions { PreserveBitDepth = true };
+        var preserve = load with { PreserveBitDepth = true };
         Line(name, "decode16", () => { using var image = Image.Load(data, preserve); return Pixels(image) + " " + Meta(image.Metadata); });
         Line(name, "srgb16", () =>
         {
@@ -76,8 +93,8 @@ foreach (string file in decodeFiles)
         });
         if (!big)
         {
-            Line(name, "lossless16", () => { using var image = Image.Load(data, preserve); return Hash(image.ToJxl(new JxlEncoderOptions { Distance = 0 })); });
-            Line(name, "lossy16", () => { using var image = Image.Load(data, preserve); return Hash(image.ToJxl()); });
+            Line(name, "lossless16", () => { using var image = Image.Load(data, preserve); return Hash(image.ToJxl(Encode(0))); });
+            Line(name, "lossy16", () => { using var image = Image.Load(data, preserve); return Hash(image.ToJxl(Encode())); });
         }
     }
 
@@ -88,7 +105,7 @@ foreach (string file in Files("tests/assets/corpus", "*.jpg"))
 {
     string name = Path.GetRelativePath(root, file);
     byte[] data = File.ReadAllBytes(file);
-    Line(name, "fromjpeg", () => { using var jxl = new MemoryStream(); JxlTranscoder.FromJpeg(data, jxl); return Hash(jxl.ToArray()); });
+    Line(name, "fromjpeg", () => { using var jxl = new MemoryStream(); JxlTranscoder.FromJpeg(data, jxl, transcode); return Hash(jxl.ToArray()); });
 }
 
 // Encoder sweep: synthetic patterns plus optional photo/screen crops, lossless and lossy at several distances/efforts.
@@ -100,7 +117,7 @@ foreach ((int width, int height, int kind) in new[] { (300, 200, 0), (513, 260, 
 
 foreach (string file in Files("artifacts/speed-inputs", "crop-*.png"))
 {
-    sources.Add((Path.GetRelativePath(root, file), Image.Load(file)));
+    sources.Add((Path.GetRelativePath(root, file), Image.Load(file, load)));
 }
 
 int[] efforts = [1, 2, 3, 4, 5, 6, 7, 8, 9];
@@ -111,7 +128,7 @@ foreach ((string name, Image image) in sources)
     {
         foreach (int effort in efforts)
         {
-            Line(name, $"encode-d{distance}-e{effort}", () => Hash(image.ToJxl(new JxlEncoderOptions { Distance = distance, Effort = effort })));
+            Line(name, $"encode-d{distance}-e{effort}", () => Hash(image.ToJxl(Encode(distance, effort))));
         }
     }
 
@@ -128,7 +145,7 @@ foreach ((int width, int height, int kind) in new[] { (300, 200, 0), (700, 300, 
 
 foreach (string file in Files("artifacts/speed-inputs", "crop16-*.png"))
 {
-    sources16.Add((Path.GetRelativePath(root, file), Image.Load(file, new DecoderOptions { PreserveBitDepth = true })));
+    sources16.Add((Path.GetRelativePath(root, file), Image.Load(file, load with { PreserveBitDepth = true })));
 }
 
 foreach ((string name, Image image) in sources16)
@@ -136,7 +153,7 @@ foreach ((string name, Image image) in sources16)
     Line(name, "pixels", () => Pixels(image));
     foreach ((float distance, int effort) in new[] { (0f, 1), (0f, 3), (0f, 7), (1f, 3), (1f, 7) })
     {
-        Line(name, $"encode-d{distance}-e{effort}", () => Hash(image.ToJxl(new JxlEncoderOptions { Distance = distance, Effort = effort })));
+        Line(name, $"encode-d{distance}-e{effort}", () => Hash(image.ToJxl(Encode(distance, effort))));
     }
 
     image.Dispose();

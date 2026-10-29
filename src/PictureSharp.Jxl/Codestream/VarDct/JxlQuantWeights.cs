@@ -132,7 +132,8 @@ internal sealed class JxlQuantWeights
     public float[] Matrix(JxlAcStrategyType strategy)
     {
         int table = StrategyTable[(int)strategy];
-        return tables[table] ??= Compute(encodings[table].Mode == JxlQuantMode.Library ? Library[table] : encodings[table], table);
+        // Workers of a parallel region may compute a table at the same time: the results are identical, one is kept.
+        return tables[table] ?? Publish(ref tables[table], Compute(encodings[table].Mode == JxlQuantMode.Library ? Library[table] : encodings[table], table));
     }
 
     /// <summary>
@@ -155,8 +156,10 @@ internal sealed class JxlQuantWeights
             }
         }
 
-        return inverseTables[table] = weights;
+        return Publish(ref inverseTables[table], weights);
     }
+
+    private static float[] Publish(ref float[]? slot, float[] value) => Interlocked.CompareExchange(ref slot, value, null) ?? value;
 
     private static JxlQuantEncoding ReadEncoding(ref JxlBitReader reader, int index, RawTableReader readRaw)
     {

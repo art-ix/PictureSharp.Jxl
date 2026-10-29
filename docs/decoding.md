@@ -87,7 +87,9 @@ Identify also reports features `Load` rejects. Widths above `int.MaxValue` throw
 - `MaxPixels` and `MaxMetadataBytes` are checked before allocating; metadata is charged as it grows, so a
   decompression bomb stops with `ImageFormatException`.
 - Other `DecoderOptions` work as for built-in formats; `TargetSize` resizes after full decoding.
-- Memory: ~12 bytes per pixel per frame buffer, two buffers while filtering. Scalar, single-threaded.
+- Memory: ~12 bytes per pixel per frame buffer, two buffers while filtering.
+- `MaxDegreeOfParallelism` (default -1, all cores; 1 = single-threaded) limits the threads that decode LF and pass
+  groups and render row bands. Pixels and exceptions do not depend on it; limits are checked before any worker starts.
 - Corrupt or truncated data (also a corrupt ICC stream with `IgnoreMetadata`): `ImageFormatException`.
 - Container rules follow libjxl: `JXL ` box first, `ftyp` second, one `jxlc` or contiguous `jxlp` parts, never both.
 

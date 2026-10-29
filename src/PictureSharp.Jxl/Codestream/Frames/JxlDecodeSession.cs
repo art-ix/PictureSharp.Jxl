@@ -9,10 +9,12 @@ namespace PictureSharp.Formats.Jxl.Codestream.Frames;
 /// <summary>
 /// Owns the reference/DC frames of one decode; never shared between calls. The ICC profile is limited to
 /// <paramref name="maxIccBytes"/> and charged to <paramref name="reserveIcc"/> before it is allocated. With
-/// <paramref name="renderSrgb"/> XYB frames are rendered as sRGB instead of the image's colour space.
+/// <paramref name="renderSrgb"/> XYB frames are rendered as sRGB instead of the image's colour space. Groups and rendering
+/// use up to <paramref name="parallelism"/> threads (1 = single-threaded, -1 = automatic).
 /// </summary>
 internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders headers, CancellationToken cancellationToken = default,
-    long maxIccBytes = JxlIccStream.MaxProfileSize, Action<long>? reserveIcc = null, bool renderSrgb = false, JxlBufferScope? buffers = null)
+    long maxIccBytes = JxlIccStream.MaxProfileSize, Action<long>? reserveIcc = null, bool renderSrgb = false, JxlBufferScope? buffers = null,
+    int parallelism = 1)
 {
     private readonly JxlReferenceFrames references = new();
     private bool started;
@@ -59,7 +61,7 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
             // A reference frame saved after the colour transform can only serve blending, which is not supported.
             if (frame.Type != JxlFrameType.ReferenceOnly || frame.SaveBeforeColorTransform)
             {
-                var decoder = new JxlFrameDecoder(frame, headers, references, cancellationToken, target, buffers: buffers);
+                var decoder = new JxlFrameDecoder(frame, headers, references, cancellationToken, target, buffers: buffers, parallelism: parallelism);
                 JxlFrameSectionReader.DecodeSections(codestream, frame, start, toc, decoder);
                 if (frame.Type == JxlFrameType.Regular)
                 {

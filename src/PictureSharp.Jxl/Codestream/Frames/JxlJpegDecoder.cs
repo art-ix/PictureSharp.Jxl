@@ -9,7 +9,7 @@ namespace PictureSharp.Formats.Jxl.Codestream.Frames;
 internal static class JxlJpegDecoder
 {
     public static byte[]? Decode(JxlCodestream codestream, JxlHeaders headers, JxlJpegData jpeg, long maxMetadataBytes,
-        Action<long> reserve, CancellationToken cancellationToken)
+        Action<long> reserve, CancellationToken cancellationToken, int parallelism = 1)
     {
         JxlImageMetadata metadata = headers.Metadata;
         if (metadata.XybEncoded || metadata.Animation is not null || metadata.ExtraChannels.Count != 0 || metadata.Preview is not null
@@ -41,7 +41,7 @@ internal static class JxlJpegDecoder
         }
         jpeg.ValidateSupported();
         long start = JxlFrameSectionReader.ReadToc(ref reader, codestream, frame, out JxlToc toc);
-        var decoder = new JxlFrameDecoder(frame, headers, references, cancellationToken, jpeg: jpeg);
+        var decoder = new JxlFrameDecoder(frame, headers, references, cancellationToken, jpeg: jpeg, parallelism: parallelism);
         JxlFrameSectionReader.DecodeSections(codestream, frame, start, toc, decoder);
         return icc;
     }

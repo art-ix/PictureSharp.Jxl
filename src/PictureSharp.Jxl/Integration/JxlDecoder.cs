@@ -34,13 +34,15 @@ internal sealed class JxlDecoder : IImageFormatDecoder
         // quantized once and get no colour description for PictureSharp to convert again.
         using var buffers = new JxlBufferScope();
         var session = options.IgnoreMetadata
-            ? new JxlDecodeSession(codestream, headers, context.CancellationToken, buffers: buffers)
+            ? new JxlDecodeSession(codestream, headers, context.CancellationToken, buffers: buffers,
+                parallelism: options.MaxDegreeOfParallelism)
             : new JxlDecodeSession(codestream, headers, context.CancellationToken, options.MaxMetadataBytes, context.ReserveMetadata,
-                renderSrgb: options.ColorConversion == ColorConversionMode.ToSrgb, buffers: buffers);
+                renderSrgb: options.ColorConversion == ColorConversionMode.ToSrgb, buffers: buffers,
+                parallelism: options.MaxDegreeOfParallelism);
         JxlDecodedImage decoded = session.Decode();
         Image image = pixelType == PixelType.Rgba64
-            ? JxlPixelWriter.WriteWide(decoded, context.CancellationToken)
-            : JxlPixelWriter.Write(decoded, context.CancellationToken);
+            ? JxlPixelWriter.WriteWide(decoded, context.CancellationToken, options.MaxDegreeOfParallelism)
+            : JxlPixelWriter.Write(decoded, context.CancellationToken, options.MaxDegreeOfParallelism);
         try
         {
             if (!options.IgnoreMetadata)

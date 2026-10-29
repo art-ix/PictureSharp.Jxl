@@ -30,7 +30,7 @@ internal static class JxlTranscoding
             if ((space == JxlColorSpace.Gray) != jpeg.Gray) throw JxlDescriptor.Unsupported("the JPEG ICC color space does not match its components.");
         }
         byte[] reconstruction = JxlJpegReconstructionWriter.Write(jpeg, cancellationToken);
-        byte[] codestream = JxlJpegEncoder.Write(jpeg, color, icc, orientation, cancellationToken);
+        byte[] codestream = JxlJpegEncoder.Write(jpeg, color, icc, orientation, cancellationToken, options.MaxDegreeOfParallelism);
         var boxes = new List<JxlBox> { new(JxlBoxType.JpegReconstruction, reconstruction) };
         if (exif is not null) boxes.Add(new(JxlBoxType.Exif, new byte[4].Concat(exif).ToArray()));
         if (xmp is not null) boxes.Add(new(JxlBoxType.Xmp, xmp));
@@ -46,7 +46,8 @@ internal static class JxlTranscoding
         if ((long)headers.Size.Width * headers.Size.Height > options.MaxPixels) throw JxlDescriptor.Corrupt("JPEG XL exceeds MaxPixels.");
         if (container.JpegReconstruction is not { } reconstruction) throw JxlDescriptor.Unsupported("the JPEG XL file has no JPEG reconstruction data.");
         JxlJpegData jpeg = JxlJpegReconstruction.Read(reconstruction, budget.Reserve, cancellationToken);
-        byte[]? icc = JxlJpegDecoder.Decode(container.Codestream, headers, jpeg, options.MaxMetadataBytes, budget.Reserve, cancellationToken);
+        byte[]? icc = JxlJpegDecoder.Decode(container.Codestream, headers, jpeg, options.MaxMetadataBytes, budget.Reserve, cancellationToken,
+            options.MaxDegreeOfParallelism);
         ReadOnlyMemory<byte> exif = default, xmp = default;
         bool haveExif = false, haveXmp = false;
         foreach (var box in container.MetadataBoxes)

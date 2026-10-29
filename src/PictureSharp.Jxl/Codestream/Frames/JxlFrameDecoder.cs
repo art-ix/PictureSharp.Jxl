@@ -5,6 +5,7 @@ using PictureSharp.Formats.Jxl.Codestream.IO;
 using PictureSharp.Formats.Jxl.Codestream.Jpeg;
 using PictureSharp.Formats.Jxl.Codestream.Model;
 using PictureSharp.Formats.Jxl.Codestream.Modular;
+using PictureSharp.Formats.Jxl.Codestream.Numerics;
 using PictureSharp.Formats.Jxl.Codestream.Rendering;
 using PictureSharp.Formats.Jxl.Codestream.VarDct;
 using static PictureSharp.Formats.Jxl.Codestream.Numerics.JxlIntMath;
@@ -38,9 +39,11 @@ internal sealed class JxlFrameDecoder
     private readonly JxlJpegData? jpeg;
 
     public JxlFrameDecoder(JxlFrameHeader frame, JxlHeaders headers, JxlReferenceFrames references,
-        CancellationToken cancellationToken, JxlColorTarget? colorTarget = null, JxlJpegData? jpeg = null, JxlBufferScope? buffers = null)
+        CancellationToken cancellationToken, JxlColorTarget? colorTarget = null, JxlJpegData? jpeg = null, JxlBufferScope? buffers = null,
+        int parallelism = JxlParallel.Sequential)
     {
         this.frame = frame;
+        Parallelism = parallelism;
         this.buffers = buffers;
         this.jpeg = jpeg;
         this.colorTarget = colorTarget;
@@ -60,6 +63,9 @@ internal sealed class JxlFrameDecoder
             colorChannels = codedChannels;
         }
     }
+
+    /// <summary>The maximum degree of parallelism of group decoding and rendering (1 = single-threaded, -1 = automatic).</summary>
+    public int Parallelism { get; }
 
     private int Width => (int)frame.XSize;
 
@@ -112,6 +118,26 @@ internal sealed class JxlFrameDecoder
     public void DecodeLfGroup(ref JxlBitReader reader, int group)
     {
         progress.LfGroup(group);
+        DecodeLfGroupSection(ref reader, group);
+    }
+
+    /// <summary>
+    /// Decodes every LF group from its own section, in parallel up to <see cref="Parallelism"/>; each group writes
+    /// only its own rectangle of the frame state.
+    /// </summary>
+    public void DecodeLfGroups(Func<int, JxlCodestream> section)
+    {
+        PrepareFullChannels();
+        JxlParallel.For((int)frame.DcGroups, Parallelism, cancellationToken, group =>
+        {
+            var reader = new JxlBitReader(section(group));
+            DecodeLfGroupSection(ref reader, group);
+        });
+        for (int group = 0; group < frame.DcGroups; group++) progress.LfGroup(group);
+    }
+
+    private void DecodeLfGroupSection(ref JxlBitReader reader, int group)
+    {
         cancellationToken.ThrowIfCancellationRequested();
         if (!frame.UsesDcFrame)
         {
@@ -179,6 +205,49 @@ internal sealed class JxlFrameDecoder
     public void DecodePassGroup(ref JxlBitReader reader, int pass, int group, int[]? coefficients)
     {
         progress.Pass(group, pass);
+        DecodePassSection(ref reader, pass, group, coefficients);
+    }
+
+    /// <summary>
+    /// Decodes every group, all its passes from their own sections and then its rendering or JPEG coefficient
+    /// recovery, in parallel up to <see cref="Parallelism"/>. Each group owns its coefficients and writes only its
+    /// own rectangle of the frame state.
+    /// </summary>
+    public void DecodeGroups(Func<int, int, JxlCodestream> section)
+    {
+        PrepareFullChannels();
+        int passes = (int)frame.Passes.Count;
+        JxlParallel.For((int)frame.Groups, Parallelism, cancellationToken, group =>
+        {
+            using var groupBuffers = new JxlBufferScope();
+            int[]? coefficients = varDct?.NewGroupCoefficients(group, groupBuffers);
+            for (int pass = 0; pass < passes; pass++)
+            {
+                var reader = new JxlBitReader(section(pass, group));
+                DecodePassSection(ref reader, pass, group, coefficients);
+            }
+
+            FinishGroupSection(group, coefficients);
+        });
+        for (int group = 0; group < frame.Groups; group++)
+        {
+            progress.BeginGroup(group);
+            for (int pass = 0; pass < passes; pass++) progress.Pass(group, pass);
+            progress.FinishGroup(group);
+        }
+    }
+
+    // Groups copy into the full-image channels, whose storage is otherwise created on first access.
+    private void PrepareFullChannels()
+    {
+        foreach (JxlChannel channel in image.Channels)
+        {
+            if (!channel.IsEmpty) _ = channel.Pixels;
+        }
+    }
+
+    private void DecodePassSection(ref JxlBitReader reader, int pass, int group, int[]? coefficients)
+    {
         cancellationToken.ThrowIfCancellationRequested();
         varDct?.DecodePass(ref reader, group, pass, coefficients!);
         int dimension = frame.GroupDimension;
@@ -190,6 +259,11 @@ internal sealed class JxlFrameDecoder
     public void FinishGroup(int group, int[]? coefficients)
     {
         progress.FinishGroup(group);
+        FinishGroupSection(group, coefficients);
+    }
+
+    private void FinishGroupSection(int group, int[]? coefficients)
+    {
         if (varDct is not null)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -317,7 +391,7 @@ internal sealed class JxlFrameDecoder
             ? JxlEpfSigma.Compute(frame.LoopFilter, (int)frame.XSizeBlocks, (int)frame.YSizeBlocks,
                 varDct.QuantScale, varDct.QuantField, varDct.Sharpness, varDct.Varblocks, cancellationToken)
             : null;
-        color = new JxlFrameRenderer(frame, headers, patches, references, sigma, cancellationToken, colorTarget)
+        color = new JxlFrameRenderer(frame, headers, patches, references, sigma, cancellationToken, colorTarget, Parallelism)
             .Render(color, extraPlanes, colorTransform);
         return (color, extraPlanes);
     }

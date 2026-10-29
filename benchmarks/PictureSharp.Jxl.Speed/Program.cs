@@ -38,8 +38,8 @@ static int Transcode(string[] args)
     byte[] Convert()
     {
         using var output = new MemoryStream();
-        if (args[0] == "encode") JxlTranscoder.FromJpeg(input, output);
-        else JxlTranscoder.ToJpeg(input, output);
+        if (args[0] == "encode") JxlTranscoder.FromJpeg(input, output, SpeedCase.Transcoding);
+        else JxlTranscoder.ToJpeg(input, output, SpeedCase.Transcoding);
         return output.ToArray();
     }
 
@@ -79,7 +79,20 @@ internal sealed record SpeedCase(string Id, string Input, string Reference, Func
         ("photo12-16", 0, 7), ("photo12-16", 1, 7),
     ];
 
-    private static readonly DecoderOptions Preserve = new() { PreserveBitDepth = true };
+    // JXL_THREADS sets MaxDegreeOfParallelism (default -1, the library default); package builds before 0.8.1 have no
+    // encoder or transcoder option (source builds define JXL_PARALLEL) and ignore the decoder one.
+    internal static readonly int Threads = int.TryParse(Environment.GetEnvironmentVariable("JXL_THREADS"), out int threads) ? threads : -1;
+
+    private static readonly DecoderOptions Load = new() { MaxDegreeOfParallelism = Threads };
+
+    private static readonly DecoderOptions Preserve = Load with { PreserveBitDepth = true };
+
+    internal static readonly JxlTranscoderOptions Transcoding = new()
+    {
+#if JXL_PARALLEL
+        MaxDegreeOfParallelism = Threads,
+#endif
+    };
 
     public static IEnumerable<SpeedCase> All(string root)
     {
@@ -87,21 +100,21 @@ internal sealed record SpeedCase(string Id, string Input, string Reference, Func
         foreach (string name in new[] { "tiny-1x1", "small-64x64", "lossy-e1" })
         {
             string tiny = Path.Combine(root, "tests/assets/corpus", name + ".jxl");
-            if (File.Exists(tiny)) yield return new($"decode/{name}", tiny, "djxl {in} {out}.png", Decode(new DecoderOptions()));
+            if (File.Exists(tiny)) yield return new($"decode/{name}", tiny, "djxl {in} {out}.png", Decode(Load));
         }
         string inputs = Path.Combine(root, "artifacts/speed-inputs");
         if (Directory.Exists(inputs))
         {
             foreach (string file in Directory.GetFiles(inputs, "*.jxl").Order(StringComparer.Ordinal))
             {
-                yield return new($"decode/{Path.GetFileNameWithoutExtension(file)}", file, "djxl {in} {out}.png", Decode(new DecoderOptions()));
+                yield return new($"decode/{Path.GetFileNameWithoutExtension(file)}", file, "djxl {in} {out}.png", Decode(Load));
             }
 
             string lossy12 = Path.Combine(inputs, "photo12-d1-e7.jxl");
             if (File.Exists(lossy12))
             {
                 yield return new("decode-srgb/photo12-d1-e7", lossy12, "djxl {in} {out}.png --color_space=sRGB",
-                    Decode(new DecoderOptions { ColorConversion = ColorConversionMode.ToSrgb }));
+                    Decode(Load with { ColorConversion = ColorConversionMode.ToSrgb }));
             }
 
             // 16-bit inputs (name suffix -16) decoded to Rgba64.
@@ -122,7 +135,13 @@ internal sealed record SpeedCase(string Id, string Input, string Reference, Func
                 string file = Path.Combine(inputs, image + ".png");
                 if (File.Exists(file))
                 {
-                    var options = new JxlEncoderOptions { Distance = distance, Effort = effort };
+                    var options = new JxlEncoderOptions
+                    {
+                        Distance = distance, Effort = effort,
+#if JXL_PARALLEL
+                        MaxDegreeOfParallelism = Threads,
+#endif
+                    };
                     string kind = image.EndsWith("-16", StringComparison.Ordinal) ? "encode16" : "encode";
                     yield return new($"{kind}/{image}-d{distance}-e{effort}", file, $"cjxl {{in}} {{out}}.jxl -d {distance} -e {effort}", Encode(options));
                 }
@@ -132,7 +151,7 @@ internal sealed record SpeedCase(string Id, string Input, string Reference, Func
         string recompressed = Path.Combine(root, "samples/private/IMG_0160.jxl");
         if (File.Exists(recompressed))
         {
-            yield return new("decode/IMG_0160-jpeg", recompressed, "djxl {in} {out}.png", Decode(new DecoderOptions()));
+            yield return new("decode/IMG_0160-jpeg", recompressed, "djxl {in} {out}.png", Decode(Load));
             yield return new("tojpeg/IMG_0160-jpeg", recompressed, "djxl {in} {out}.jpg", ToJpeg);
         }
     }
@@ -146,7 +165,7 @@ internal sealed record SpeedCase(string Id, string Input, string Reference, Func
     private static Func<byte[]> ToJpeg(byte[] input) => () =>
     {
         using var output = new MemoryStream();
-        JxlTranscoder.ToJpeg(input, output);
+        JxlTranscoder.ToJpeg(input, output, Transcoding);
         return output.ToArray();
     };
 
@@ -189,6 +208,8 @@ internal sealed record SpeedCase(string Id, string Input, string Reference, Func
         return new
         {
             id = Id,
+            threads = Threads,
+            processors = Environment.ProcessorCount,
             hardware = new { avx2 = Avx2.IsSupported, sse41 = Sse41.IsSupported, fma = Fma.IsSupported },
             bytes = result.Length,
             coldMs,

@@ -51,6 +51,7 @@ internal sealed partial class JxlVarDctFrame
     private float colorScale = 1.0f / DefaultColorFactor;
     private float baseCorrelationX;
     private float baseCorrelationB = 1.0f;
+    private readonly Lock usedGate = new();
 
     public JxlVarDctFrame(JxlFrameHeader frame, JxlImageMetadata metadata, JxlQuantWeights matrices, IReadOnlyList<float> quantBiases, CancellationToken cancellationToken = default, bool recoverJpeg = false, JxlBufferScope? buffers = null)
     {
@@ -368,7 +369,8 @@ internal sealed partial class JxlVarDctFrame
             }
         }
 
-        UsedStrategies = UsedStrategies.Union(used);
+        // LF groups may be decoded in parallel; the union does not depend on their order.
+        lock (usedGate) UsedStrategies = UsedStrategies.Union(used);
     }
 
     // Marks the blocks a varblock covers; it must stay inside its group and the LF group and not overlap another.

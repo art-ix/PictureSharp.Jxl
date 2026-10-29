@@ -2,6 +2,7 @@ using PictureSharp.Formats.Jxl.Codestream.Buffers;
 using PictureSharp.Formats.Jxl.Codestream.Entropy;
 using PictureSharp.Formats.Jxl.Codestream.Model;
 using PictureSharp.Formats.Jxl.Codestream.Modular;
+using PictureSharp.Formats.Jxl.Codestream.Numerics;
 
 namespace PictureSharp.Formats.Jxl.Codestream.Encoding;
 
@@ -29,8 +30,9 @@ internal static class JxlModularEncoder
     /// </param>
     /// <param name="metadata">The image metadata <paramref name="header"/> is written against.</param>
     /// <param name="dcQuant">Custom DC quantization steps of X, Y and B (the scale of XYB samples), or the defaults.</param>
+    /// <param name="parallelism">The maximum degree of parallelism (1 = single-threaded, -1 = automatic); the output does not depend on it.</param>
     public static void WriteFrame(JxlBitWriter writer, IReadOnlyList<JxlChannel> channels, int colorChannels, CancellationToken cancellationToken,
-        JxlFrameHeader? header = null, JxlImageMetadata? metadata = null, float[]? dcQuant = null)
+        JxlFrameHeader? header = null, JxlImageMetadata? metadata = null, float[]? dcQuant = null, int parallelism = 1)
     {
         JxlFrameHeader frame = header ?? new JxlFrameHeader
         {
@@ -41,9 +43,9 @@ internal static class JxlModularEncoder
         using var tokenBuffers = new JxlBufferScope();
         List<(int Id, List<JxlChannel> Channels)> streams = SplitIntoStreams(frame, image, meta, tokenBuffers);
         var errors = new Dictionary<JxlChannel, int[]>(ReferenceEqualityComparer.Instance);
-        List<JxlTreeNode> tree = JxlModularTreeEncoder.Learn(streams, cancellationToken, errors, tokenBuffers);
+        List<JxlTreeNode> tree = JxlModularTreeEncoder.Learn(streams, cancellationToken, errors, tokenBuffers, parallelism);
         (JxlTokens treeTokens, int[] leafOf) = JxlModularTreeEncoder.Tokenize(tree, tokenBuffers);
-        List<JxlTokens> tokens = JxlModularTreeEncoder.TokenizeStreams(streams, tree, leafOf, cancellationToken, errors, tokenBuffers);
+        List<JxlTokens> tokens = JxlModularTreeEncoder.TokenizeStreams(streams, tree, leafOf, cancellationToken, errors, tokenBuffers, parallelism);
         JxlEntropyEncoder code = JxlEntropyEncoder.Build(leafOf.Count(leaf => leaf >= 0), tokens);
 
         var global = new JxlBitWriter(writer.Buffers);
@@ -62,15 +64,19 @@ internal static class JxlModularEncoder
             if (streams[0].Channels.Any(channel => !channel.IsEmpty)) code.WriteStream(global, tokens[0]);
         }
 
+        // Every group section is coded on its own; they are written in group order.
         var groupSections = new JxlBitWriter[frame.Groups];
-        for (int g = 0; g < groupSections.Length; g++)
+        JxlParallel.For(groupSections.Length, parallelism, cancellationToken, g =>
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            groupSections[g] = new JxlBitWriter(writer.Buffers);
-            if (streams[g + 1].Channels.Count == 0) continue;
-            GroupHeader(groupSections[g], []);
-            code.WriteStream(groupSections[g], tokens[g + 1]);
-        }
+            var section = new JxlBitWriter(writer.Buffers);
+            if (streams[g + 1].Channels.Count != 0)
+            {
+                GroupHeader(section, []);
+                code.WriteStream(section, tokens[g + 1]);
+            }
+
+            groupSections[g] = section;
+        });
 
         if (header is null) JxlHeaderWriter.LosslessModularFrame(writer, channels.Count - colorChannels, GroupSizeShift);
         else JxlHeaderWriter.Frame(writer, header, metadata!);

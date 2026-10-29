@@ -23,30 +23,14 @@ internal static class JxlFrameSectionReader
             return;
         }
 
-        JxlBitReader Section(long index) => new(codestream.Slice(start + toc.Offsets[(int)index], toc.Sizes[(int)index]));
-        var global = Section(JxlFrameHeader.LfGlobalSection);
+        JxlCodestream Slice(long index) => codestream.Slice(start + toc.Offsets[(int)index], toc.Sizes[(int)index]);
+        var global = new JxlBitReader(Slice(JxlFrameHeader.LfGlobalSection));
         decoder.DecodeLfGlobal(ref global);
-        for (int group = 0; group < frame.DcGroups; group++)
-        {
-            var section = Section(JxlFrameHeader.LfGroupSection(group));
-            decoder.DecodeLfGroup(ref section, group);
-        }
-
+        decoder.DecodeLfGroups(group => Slice(JxlFrameHeader.LfGroupSection(group)));
         decoder.FinishLf();
-        var hfGlobal = Section(frame.HfGlobalSection);
+        var hfGlobal = new JxlBitReader(Slice(frame.HfGlobalSection));
         decoder.DecodeHfGlobal(ref hfGlobal);
-        for (int group = 0; group < frame.Groups; group++)
-        {
-            using var buffers = new JxlBufferScope();
-            int[]? coefficients = decoder.BeginGroup(group, buffers);
-            for (int pass = 0; pass < frame.Passes.Count; pass++)
-            {
-                var section = Section(frame.PassGroupSection(pass, group));
-                decoder.DecodePassGroup(ref section, pass, group, coefficients);
-            }
-
-            decoder.FinishGroup(group, coefficients);
-        }
+        decoder.DecodeGroups((pass, group) => Slice(frame.PassGroupSection(pass, group)));
     }
 
     /// <summary>

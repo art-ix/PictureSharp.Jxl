@@ -113,15 +113,21 @@ internal sealed partial class JxlColorOutput
     }
 
     /// <summary>Converts the three colour planes in place to the output colour space and transfer function.</summary>
-    public void Apply(JxlPlane[] planes, CancellationToken cancellationToken = default)
+    public void Apply(JxlPlane[] planes, CancellationToken cancellationToken = default, int parallelism = JxlParallel.Sequential)
     {
         if (transform is not (JxlColorTransform.YCbCr or JxlColorTransform.Xyb))
         {
             return;
         }
 
+        // Every pixel is converted on its own: row bands are independent.
+        JxlParallel.ForBands(planes[0].Height, 16, parallelism, cancellationToken, (start, end) => ApplyRows(planes, start, end, cancellationToken));
+    }
+
+    private void ApplyRows(JxlPlane[] planes, int start, int end, CancellationToken cancellationToken)
+    {
         // Direct calls per sample (no delegate) so the conversion inlines into the row loop.
-        for (int y = 0; y < planes[0].Height; y++)
+        for (int y = start; y < end; y++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             Span<float> r0 = planes[0].Row(y);

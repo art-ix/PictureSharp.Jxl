@@ -54,7 +54,7 @@ internal sealed class JxlModularStreamSet : IDisposable
     /// Builds the tree and code; <paramref name="splits"/> are the first stream ids of the tree ranges, ending with the
     /// number of streams.
     /// </summary>
-    public void Build(IReadOnlyList<int> splits, CancellationToken cancellationToken)
+    public void Build(IReadOnlyList<int> splits, CancellationToken cancellationToken, int parallelism = 1)
     {
         this.cancellationToken = cancellationToken;
         cancellationToken.ThrowIfCancellationRequested();
@@ -75,7 +75,7 @@ internal sealed class JxlModularStreamSet : IDisposable
                 JxlTreeKind.WeightedFixedDc => FixedTree(JxlMaProperty.WeightedMaxError, DcCutoffs, JxlPredictor.Weighted, pixels),
                 JxlTreeKind.AcMetadata => AcMetadataTree(pixels),
                 JxlTreeKind.LeftPredictor => [JxlTreeNode.Leaf(JxlPredictor.Left)],
-                _ => JxlModularTreeEncoder.Learn(range, cancellationToken, errors, buffers),
+                _ => JxlModularTreeEncoder.Learn(range, cancellationToken, errors, buffers, parallelism),
             });
         }
 
@@ -85,7 +85,7 @@ internal sealed class JxlModularStreamSet : IDisposable
         Merge(trees, useful, 0, trees.Count, tree);
         (treeTokens, int[] leafOf) = JxlModularTreeEncoder.Tokenize(tree, buffers);
         List<(int Id, List<JxlChannel> Channels)> all = [.. streams.Select(pair => (pair.Key, pair.Value.Channels))];
-        List<JxlTokens> streamTokens = JxlModularTreeEncoder.TokenizeStreams(all, tree, leafOf, cancellationToken, errors, buffers);
+        List<JxlTokens> streamTokens = JxlModularTreeEncoder.TokenizeStreams(all, tree, leafOf, cancellationToken, errors, buffers, parallelism);
         for (int i = 0; i < all.Count; i++) tokens[all[i].Id] = streamTokens[i];
         code = JxlEntropyEncoder.Build(leafOf.Count(leaf => leaf >= 0), streamTokens, cancellationToken);
     }

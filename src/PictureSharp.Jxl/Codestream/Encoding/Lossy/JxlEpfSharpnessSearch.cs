@@ -1,5 +1,6 @@
 using PictureSharp.Formats.Jxl.Codestream.Buffers;
 using PictureSharp.Formats.Jxl.Codestream.Model;
+using PictureSharp.Formats.Jxl.Codestream.Numerics;
 using PictureSharp.Formats.Jxl.Codestream.Rendering;
 using PictureSharp.Formats.Jxl.Codestream.VarDct;
 
@@ -39,7 +40,7 @@ internal static partial class JxlEpfSharpnessSearch
             Array.Fill(frame.Sharpness, value);
             using var buffers = new JxlBufferScope();
             JxlPlane[] decoded = Reconstruct(frame, dequantizedDc, patches, references, cancellationToken, buffers);
-            errors[value] = BlockErrors(xBlocks, yBlocks, original, decoded, mask1X1);
+            errors[value] = BlockErrors(xBlocks, yBlocks, original, decoded, mask1X1, frame.Settings.Parallelism, cancellationToken);
         }
 
         byte[] output = frame.Sharpness;
@@ -148,26 +149,29 @@ internal static partial class JxlEpfSharpnessSearch
 
         varDct.SetEncoded(dequantizedDc, frame.UsedStrategies);
         varDct.SmoothDc();
-        for (int group = 0; group < frame.Coefficients.Length; group++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            varDct.RenderGroup(group, frame.Coefficients[group]);
-        }
+        int parallelism = frame.Settings.Parallelism;
+        // Every group renders only its own pixels, as when decoding.
+        JxlParallel.For(frame.Coefficients.Length, parallelism, cancellationToken, group => varDct.RenderGroup(group, frame.Coefficients[group]));
 
         float[] sigma = JxlEpfSigma.Compute(header.LoopFilter, frame.XBlocks, frame.YBlocks, varDct.QuantScale, varDct.QuantField, varDct.Sharpness,
             varDct.Varblocks, cancellationToken);
         var headers = new JxlHeaders(new JxlSizeHeader(header.Width, header.Height), metadata, JxlCustomTransformData.Default);
-        return new JxlFrameRenderer(header, headers, patches, references, sigma, cancellationToken).Render(varDct.Planes, [], colorTransform: false);
+        return new JxlFrameRenderer(header, headers, patches, references, sigma, cancellationToken, parallelism: parallelism)
+            .Render(varDct.Planes, [], colorTransform: false);
     }
 
     // ComputeBlockL2Distance: the squared, masked error of each block, weighted per channel.
-    internal static float[] BlockErrors(int xBlocks, int yBlocks, JxlImage3F original, JxlPlane[] decoded, float[] mask1X1)
+    internal static float[] BlockErrors(int xBlocks, int yBlocks, JxlImage3F original, JxlPlane[] decoded, float[] mask1X1,
+        int parallelism = JxlParallel.Sequential, CancellationToken cancellationToken = default)
     {
         int width = decoded[0].Width;
         int height = decoded[0].Height;
         float[] errors = new float[xBlocks * yBlocks];
+        // Every block's error is summed on its own: block rows are independent.
+        JxlParallel.ForBands(yBlocks, 2, parallelism, cancellationToken, (start, end) =>
+        {
         Span<float> error = stackalloc float[3];
-        for (int by = 0; by < yBlocks; by++)
+        for (int by = start; by < end; by++)
         {
             int done = BlockErrorsAvx2(original, decoded, mask1X1, by, width, height, errors.AsSpan(by * xBlocks, xBlocks));
             for (int bx = done; bx < xBlocks; bx++)
@@ -190,6 +194,7 @@ internal static partial class JxlEpfSharpnessSearch
                 errors[by * xBlocks + bx] = (float)(12.339445295782363 * error[0] + 1.0 * error[1] + 0.2 * error[2]);
             }
         }
+        });
 
         return errors;
     }

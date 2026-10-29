@@ -2,14 +2,23 @@ using System.Buffers;
 
 namespace PictureSharp.Formats.Jxl.Codestream.Buffers;
 
-/// <summary>Explicit ownership of temporary rentals. Scopes are confined to one operation or group.</summary>
+/// <summary>
+/// Explicit ownership of temporary rentals. Scopes are confined to one operation or group; the workers of a parallel
+/// region may add to the scope of their operation (adding is synchronized), which is disposed once on its owning thread
+/// after the region has joined.
+/// </summary>
 internal sealed class JxlBufferScope : IDisposable
 {
     private readonly List<IDisposable> rentals = [];
+    private readonly Lock gate = new();
     public T Own<T>(T resource) where T : IDisposable
     {
-        ObjectDisposedException.ThrowIf(disposed, this);
-        rentals.Add(resource);
+        lock (gate)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            rentals.Add(resource);
+        }
+
         return resource;
     }
     public JxlPooledBuffer<T> Lease<T>(int count, bool clear = true) where T : unmanaged
@@ -23,8 +32,12 @@ internal sealed class JxlBufferScope : IDisposable
     private bool disposed;
     public void Dispose()
     {
-        if (disposed) return;
-        disposed = true;
+        lock (gate)
+        {
+            if (disposed) return;
+            disposed = true;
+        }
+
         foreach (IDisposable rental in rentals) rental.Dispose();
         rentals.Clear();
     }

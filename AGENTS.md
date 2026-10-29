@@ -26,6 +26,11 @@ keep it at most 600 lines by condensing the oldest entries.
   Follow docs/design/0.8.0-simd.md (AVX2/SSE4.1, FMA checked separately). Vector implementations belong in sibling `*.Simd.cs`
   partial-class files (same capitalization as the core); keep scalar fallback, 0.7.10 bit identity,
   explicit FMA/reduction semantics, logical buffer bounds and the no-unsafe constraint.
+- Parallelism (0.8.1, docs/design/0.8.1-parallelism.md): `MaxDegreeOfParallelism` (-1 default, 1 = sequential) on core
+  `DecoderOptions`, `JxlEncoderOptions` and `JxlTranscoderOptions`. Use only `JxlParallel` (no nested regions); output,
+  pixels and exceptions must be identical at 1 and N threads (golden at both), merges in item order, budgets charged
+  on the calling thread, per-worker scratch released by the worker. JXL_GOLDEN_THREADS / JXL_THREADS select the degree
+  in the golden tool and speed harness; scripts/measure-parallel.py measures 0.8.0 vs 1 vs N threads.
 - Tests use TUnit / Microsoft.Testing.Platform; public API changes require snapshot review.
   Parsers under src/.../Container and Codestream stay self-contained (they may use only
   JxlDescriptor) because the tests compile them directly. Regenerate the synthetic corpus with

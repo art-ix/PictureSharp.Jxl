@@ -1,9 +1,10 @@
 using PictureSharp.Formats.Jxl.Codestream.Buffers;
-using PictureSharp.Formats.Jxl.Codestream.IO;
 using PictureSharp.Formats.Jxl.Codestream.Color;
-using PictureSharp.Formats.Jxl.Codestream.Encoding;
 using PictureSharp.Formats.Jxl.Codestream.Encoding.Lossy;
+using PictureSharp.Formats.Jxl.Codestream.Encoding;
+using PictureSharp.Formats.Jxl.Codestream.IO;
 using PictureSharp.Formats.Jxl.Codestream.Model;
+using PictureSharp.Formats.Jxl.Codestream.Numerics;
 using PictureSharp.Formats.Jxl.Container;
 
 namespace PictureSharp.Formats.Jxl.Integration;
@@ -83,17 +84,22 @@ internal sealed partial class JxlEncoder : IImageFormatEncoder<JxlEncoderOptions
         if (xybInput is not null)
         {
             // Profiles and transfer functions XYB cannot be converted from (lookup tables, HLG) stay lossless.
-            JxlImage3F xyb = wide ? ToXyb(pixels64, width, height, xybInput, cancellationToken, workingBuffers) : ToXyb(pixels, width, height, xybInput, cancellationToken, workingBuffers);
+            ImageFrame root = image.Frames.RootFrame;
+            int parallelism = options.MaxDegreeOfParallelism;
+            JxlImage3F xyb = wide
+                ? ToXyb(root.GetPixelMemory<Rgba64>(), width, height, xybInput, cancellationToken, workingBuffers, parallelism)
+                : ToXyb(root.GetPixelMemory<Rgba32>(), width, height, xybInput, cancellationToken, workingBuffers, parallelism);
             int[]? alphaPlane = alpha ? (wide ? AlphaPlane(pixels64, cancellationToken) : AlphaPlane(pixels, cancellationToken)) : null;
             // Alpha stays lossless at full size, so frames with alpha are not downsampled at high distances.
-            var settings = JxlLossySettings.Create(Math.Max(distance, JxlLossySettings.MinDistance), options.Effort, resample: !alpha);
+            var settings = JxlLossySettings.Create(Math.Max(distance, JxlLossySettings.MinDistance), options.Effort, resample: !alpha)
+                with { Parallelism = parallelism };
             JxlCodestreamWriter.WriteLossyTo(new JxlLossyEncodeImage(width, height, xyb, alphaPlane, gray, encoding, icc, orientation, settings, bitDepth), writer,
                 cancellationToken);
         }
         else
         {
             (int[][] color, int[]? alphaPlane) = wide ? SplitPlanes(pixels64, gray, alpha, cancellationToken) : SplitPlanes(pixels, gray, alpha, cancellationToken);
-            var input = new JxlEncodeImage(width, height, color, alphaPlane, encoding, icc, orientation, bitDepth);
+            var input = new JxlEncodeImage(width, height, color, alphaPlane, encoding, icc, orientation, bitDepth, options.MaxDegreeOfParallelism);
             JxlCodestreamWriter.WriteTo(input, writer, cancellationToken);
         }
 
@@ -113,25 +119,30 @@ internal sealed partial class JxlEncoder : IImageFormatEncoder<JxlEncoderOptions
     }
 
     // The XYB planes of the pixels; gray pixels have equal channels.
-    private static JxlImage3F ToXyb(ReadOnlySpan<Rgba32> pixels, int width, int height, JxlXybInput input, CancellationToken cancellationToken, JxlBufferScope? buffers = null)
+    private static JxlImage3F ToXyb(ReadOnlyMemory<Rgba32> pixels, int width, int height, JxlXybInput input, CancellationToken cancellationToken,
+        JxlBufferScope? buffers, int parallelism)
     {
         var xyb = new JxlImage3F(width, height, buffers);
-        for (int y = 0; y < height; y++)
+        // Every pixel is converted on its own: row bands are independent.
+        JxlParallel.ForBands(height, 16, parallelism, cancellationToken, (start, end) =>
         {
-            if ((y & 0xF) == 0) cancellationToken.ThrowIfCancellationRequested();
-            Span<float> r = xyb.Row(0, y);
-            Span<float> g = xyb.Row(1, y);
-            Span<float> b = xyb.Row(2, y);
-            ReadOnlySpan<Rgba32> row = pixels.Slice(y * width, width);
-            for (int x = 0; x < width; x++)
+            for (int y = start; y < end; y++)
             {
-                r[x] = row[x].R;
-                g[x] = row[x].G;
-                b[x] = row[x].B;
-            }
+                if ((y & 0xF) == 0) cancellationToken.ThrowIfCancellationRequested();
+                Span<float> r = xyb.Row(0, y);
+                Span<float> g = xyb.Row(1, y);
+                Span<float> b = xyb.Row(2, y);
+                ReadOnlySpan<Rgba32> row = pixels.Span.Slice(y * width, width);
+                for (int x = 0; x < width; x++)
+                {
+                    r[x] = row[x].R;
+                    g[x] = row[x].G;
+                    b[x] = row[x].B;
+                }
 
-            input.Convert(r, g, b);
-        }
+                input.Convert(r, g, b);
+            }
+        });
 
         return xyb;
     }

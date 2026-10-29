@@ -65,7 +65,9 @@ Modular frame (`JxlPatchEncoder`). The EPF search reconstructs with the decoder'
 `JxlFrameRenderer`, so both sides share dequantization, transforms and filters.
 
 Encoder and public decoder are stateless (the decoder can be shared); sessions and frame decoders are single-use.
-Everything is single-threaded. Kernels are static; Modular transforms use their shared execution interface.
+Kernels are static; Modular transforms use their shared execution interface. Since 0.8.1 independent groups, tiles,
+streams and row bands run on up to `MaxDegreeOfParallelism` threads (core `DecoderOptions`, `JxlEncoderOptions`,
+`JxlTranscoderOptions`; default -1) through `JxlParallel`; see **Parallelism** below.
 
 ## Values and ownership
 
@@ -105,6 +107,16 @@ its ICC profile via `JxlIccTarget`) or sRGB for `ToSrgb`.
   corresponding payload allocations. Streams are buffered; the limits are not a bound on all temporary memory.
 - **Animation:** extend session composition and map frames, durations and looping; until then it throws.
 - **Performance:** benchmark before pooling, SIMD or parallel groups; keep scalar results unchanged.
+- **Parallelism (0.8.1):** `JxlParallel.For`/`ForWorkers`/`ForBands` is the only primitive: degree 1 is a plain loop
+  on the calling thread; otherwise the exception of the lowest failed item is rethrown unchanged after the join.
+  Decoding parallelizes LF groups, pass groups with their rendering or JPEG coefficient recovery, and row bands of
+  Gaborish/EPF (band edges written back after all bands), upsampling, colour output and pixel writing. Encoding
+  parallelizes XYB input, adaptive quantization, inverse Gaborish, 64×64 AC-strategy/CfL tiles (per-worker search
+  scratch), group quantization, tokenization and section coding, the EPF sharpness reconstruction, and Modular
+  tree-sample scans (each channel starts at its jumped-ahead xorshift state; samples appended in channel order) and
+  stream tokenization. MA-tree splitting, histograms, entropy codes and section order stay sequential. Budgets are
+  charged on the calling thread before regions start; workers own their scratch, and shared scopes synchronize rentals.
+  Output is identical at every degree; see the [parallelism design](design/0.8.1-parallelism.md).
 - **SIMD (0.8.0):** vector kernels live in sibling `*.Simd.cs` files of the same partial type. The scalar caller
   invokes a dispatch helper per row/block that returns the processed count or declines (unsupported ISA, short
   input, layout); scalar tails stay. Kernels whose scalar code uses `MathF.FusedMultiplyAdd` require AVX2 + FMA;

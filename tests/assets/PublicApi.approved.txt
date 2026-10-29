@@ -8,7 +8,9 @@ PictureSharp.Formats.Jxl.JxlEncoderOptions
   Boolean op_Inequality(PictureSharp.Formats.Jxl.JxlEncoderOptions, PictureSharp.Formats.Jxl.JxlEncoderOptions)
   Int32 Effort
   Int32 GetHashCode()
+  Int32 MaxDegreeOfParallelism
   Int32 get_Effort()
+  Int32 get_MaxDegreeOfParallelism()
   PictureSharp.Formats.Jxl.JxlEncoderOptions <Clone>$()
   PictureSharp.ImageFormat Format
   PictureSharp.ImageFormat get_Format()
@@ -23,6 +25,7 @@ PictureSharp.Formats.Jxl.JxlEncoderOptions
   Void set_CompressMetadata(Boolean)
   Void set_Distance(System.Nullable`1[System.Single])
   Void set_Effort(Int32)
+  Void set_MaxDegreeOfParallelism(Int32)
   Void set_Quality(Single)
 PictureSharp.Formats.Jxl.JxlFormat
   Boolean IsSupported(System.ReadOnlySpan`1[System.Byte])
@@ -64,6 +67,8 @@ PictureSharp.Formats.Jxl.JxlTranscoderOptions
   Boolean op_Equality(PictureSharp.Formats.Jxl.JxlTranscoderOptions, PictureSharp.Formats.Jxl.JxlTranscoderOptions)
   Boolean op_Inequality(PictureSharp.Formats.Jxl.JxlTranscoderOptions, PictureSharp.Formats.Jxl.JxlTranscoderOptions)
   Int32 GetHashCode()
+  Int32 MaxDegreeOfParallelism
+  Int32 get_MaxDegreeOfParallelism()
   Int64 MaxInputBytes
   Int64 MaxMetadataBytes
   Int64 MaxPixels
@@ -73,6 +78,7 @@ PictureSharp.Formats.Jxl.JxlTranscoderOptions
   PictureSharp.Formats.Jxl.JxlTranscoderOptions <Clone>$()
   System.String ToString()
   Void .ctor()
+  Void set_MaxDegreeOfParallelism(Int32)
   Void set_MaxInputBytes(Int64)
   Void set_MaxMetadataBytes(Int64)
   Void set_MaxPixels(Int64)

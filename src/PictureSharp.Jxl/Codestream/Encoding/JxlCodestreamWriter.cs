@@ -8,7 +8,7 @@ namespace PictureSharp.Formats.Jxl.Codestream.Encoding;
 
 /// <summary>A still image to encode losslessly: integer colour channels (gray or RGB), optional straight alpha.</summary>
 internal sealed record JxlEncodeImage(int Width, int Height, int[][] Color, int[]? Alpha, JxlColorEncoding ColorEncoding, byte[]? Icc,
-    uint Orientation, int BitDepth = 8);
+    uint Orientation, int BitDepth = 8, int Parallelism = 1);
 
 /// <summary>
 /// A still image to encode lossily: its XYB pixels (gray images with equal channels before conversion), optional
@@ -65,7 +65,7 @@ internal static class JxlCodestreamWriter
             channels.Add(channel);
         }
 
-        JxlModularEncoder.WriteFrame(writer, channels, image.Color.Length, cancellationToken);
+        JxlModularEncoder.WriteFrame(writer, channels, image.Color.Length, cancellationToken, parallelism: image.Parallelism);
     }
 
     /// <summary>Writes the headers and one VarDCT frame of XYB-encoded <paramref name="image"/>.</summary>

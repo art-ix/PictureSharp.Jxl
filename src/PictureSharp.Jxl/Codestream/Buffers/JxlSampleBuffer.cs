@@ -20,12 +20,20 @@ internal sealed class JxlSampleBuffer<T> : IDisposable where T : unmanaged
         Count = count + 1;
     }
 
+    public void AddRange(ReadOnlySpan<T> items)
+    {
+        if (values.Length - Count < items.Length) Grow(items.Length);
+        items.CopyTo(values.AsSpan(Count));
+        Count += items.Length;
+    }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void Grow()
+    private void Grow(int extra = 1)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
+        if (Count > Array.MaxLength - extra) throw JxlDescriptor.Unsupported("too many tree samples.");
         int capacity = values.Length == 0 ? 64 : Count <= Array.MaxLength / 2 ? Count * 2 : Array.MaxLength;
-        if (capacity <= Count) throw JxlDescriptor.Unsupported("too many tree samples.");
+        capacity = Math.Max(capacity, Count + extra);
         var next = new JxlPooledBuffer<T>(capacity, clear: false);
         Span.CopyTo(next.Span);
         buffer?.Dispose();

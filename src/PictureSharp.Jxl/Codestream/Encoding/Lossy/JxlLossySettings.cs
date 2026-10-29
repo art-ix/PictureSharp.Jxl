@@ -1,3 +1,5 @@
+using PictureSharp.Formats.Jxl.Codestream.Numerics;
+
 namespace PictureSharp.Formats.Jxl.Codestream.Encoding.Lossy;
 
 /// <summary>
@@ -38,6 +40,12 @@ internal sealed record JxlLossySettings
 
     /// <summary>1, or 2 when the image is downsampled before encoding (distances of 10 and more).</summary>
     public int Resampling { get; }
+
+    /// <summary>
+    /// The maximum degree of parallelism of tiles, groups and row bands (1 = single-threaded, -1 = automatic); the
+    /// output does not depend on it.
+    /// </summary>
+    public int Parallelism { get; init; } = JxlParallel.Sequential;
 
     /// <summary>
     /// Settings for <paramref name="distance"/> (0.05–25) and <paramref name="effort"/> (1–9); without

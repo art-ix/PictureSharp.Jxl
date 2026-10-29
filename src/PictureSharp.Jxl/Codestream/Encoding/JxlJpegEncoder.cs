@@ -2,6 +2,7 @@ using PictureSharp.Formats.Jxl.Codestream.Buffers;
 using PictureSharp.Formats.Jxl.Codestream.Encoding.Lossy;
 using PictureSharp.Formats.Jxl.Codestream.Jpeg;
 using PictureSharp.Formats.Jxl.Codestream.Model;
+using PictureSharp.Formats.Jxl.Codestream.Numerics;
 
 namespace PictureSharp.Formats.Jxl.Codestream.Encoding;
 
@@ -9,7 +10,8 @@ namespace PictureSharp.Formats.Jxl.Codestream.Encoding;
 // JPEG coefficients bypass the XYB input, transforms, quantizer search and restoration filters.
 internal static class JxlJpegEncoder
 {
-    public static byte[] Write(JxlJpegData jpeg, JxlColorEncoding color, byte[]? icc, uint orientation, CancellationToken cancellationToken)
+    public static byte[] Write(JxlJpegData jpeg, JxlColorEncoding color, byte[]? icc, uint orientation, CancellationToken cancellationToken,
+        int parallelism = JxlParallel.Sequential)
     {
         var metadata = new JxlImageMetadata { XybEncoded = false, Color = color, Orientation = orientation };
         var writer = new JxlBitWriter();
@@ -28,7 +30,7 @@ internal static class JxlJpegEncoder
             LoopFilter = new JxlLoopFilter { Gaborish = false, EpfIterations = 0 },
         };
         int[] qtable = new int[3 * 64];
-        var frame = new JxlLossyFrame(header, JxlLossySettings.Create(1, 7, false)) { Jpeg = true };
+        var frame = new JxlLossyFrame(header, JxlLossySettings.Create(1, 7, false) with { Parallelism = parallelism }) { Jpeg = true };
         frame.Quantizer.SetJpeg();
         Array.Fill(frame.QuantField, 1);
         Array.Clear(frame.Sharpness);
@@ -40,9 +42,8 @@ internal static class JxlJpegEncoder
             frame.Matrices.DcQuant[c] = (float)(Half)(128.0f * quant[0] / (8 * 255)) / 128;
             for (int y = 0; y < 8; y++) for (int x = 0; x < 8; x++) qtable[c * 64 + x * 8 + y] = quant[y * 8 + x];
         }
-        for (int group = 0; group < header.Groups; group++)
+        JxlParallel.For((int)header.Groups, parallelism, cancellationToken, group =>
         {
-            cancellationToken.ThrowIfCancellationRequested();
             (int x0, int y0, int width, int height) = frame.GroupRect(group);
             int area = width * height * 64;
             int[] coefficients = new int[3 * area];
@@ -62,7 +63,7 @@ internal static class JxlJpegEncoder
                         coefficients[dst] = 0; // DC is stored separately, as integer Modular samples.
                     }
             }
-        }
+        });
         using var streams = new JxlModularStreamSet();
         for (int group = 0; group < header.DcGroups; group++)
         {
@@ -89,7 +90,7 @@ internal static class JxlJpegEncoder
         }
         streams.Add(header.QuantTableStream(0), quantChannels, JxlTreeKind.Learn);
         streams.Build([0, JxlFrameHeader.VarDctDcStream(0), header.ModularDcStream(0), header.AcMetadataStream(0), header.QuantTableStream(0),
-            header.ModularAcStream(0, 0), header.ModularAcStream(0, header.Groups)], cancellationToken);
+            header.ModularAcStream(0, 0), header.ModularAcStream(0, header.Groups)], cancellationToken, parallelism);
         JxlVarDctEncoder.WritePrepared(writer, frame, metadata, streams, false, null, cancellationToken);
         return writer.ToArray();
     }

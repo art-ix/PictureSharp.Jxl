@@ -64,7 +64,8 @@ internal static partial class JxlRenderPipeline
     }
 
     /// <summary>The 3x3 Gaborish convolution of the three colour planes, in place.</summary>
-    public static void Gaborish(JxlPlane[] planes, JxlLoopFilter filter, CancellationToken cancellationToken = default)
+    public static void Gaborish(JxlPlane[] planes, JxlLoopFilter filter, CancellationToken cancellationToken = default,
+        int parallelism = JxlParallel.Sequential)
     {
         for (int c = 0; c < 3; c++)
         {
@@ -77,12 +78,10 @@ internal static partial class JxlRenderPipeline
             (w0, w1, w2) = (w0 * mul, w1 * mul, w2 * mul);
             float[] data = plane.Data;
             int stride = plane.Stride;
-            var rows = new DelayedRows(plane, 1);
-            for (int y = 0; y < plane.Height; y++)
+            BandedRows.Run([plane], 1, parallelism, cancellationToken, (y, rows) =>
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                Span<float> result = rows[0].Row(y);
                 int i = plane.Offset(-1, y);
-                Span<float> result = rows.Row(y);
                 ReadOnlySpan<float> up = data.AsSpan(i - stride, result.Length + 2);
                 ReadOnlySpan<float> middle = data.AsSpan(i, result.Length + 2);
                 ReadOnlySpan<float> down = data.AsSpan(i + stride, result.Length + 2);
@@ -103,57 +102,101 @@ internal static partial class JxlRenderPipeline
                     (left, centre) = (centre, right);
                     (downLeft, downCentre) = (downCentre, downRight);
                 }
-
-                rows.Done(y);
-            }
-
-            rows.Finish();
+            });
         }
     }
 
     /// <summary>
-    /// Output rows of an in-place 2D filter that reads <c>reach</c> rows above and below: row y is written to the plane
-    /// once row y + reach is filtered, when no later row reads its unfiltered values.
+    /// Runs an in-place 2D filter that reads <c>reach</c> rows above and below, in row bands of up to
+    /// <c>parallelism</c> workers. Each output row goes to a band buffer and reaches the plane only when no row still
+    /// to be filtered reads its unfiltered values: inside a band once the row <c>reach</c> below is filtered; the
+    /// first and last <c>reach</c> rows of every band (which neighbouring bands read) after all bands have finished.
+    /// Every output is therefore a function of the unfiltered planes, whatever the number of bands.
     /// </summary>
-    private readonly struct DelayedRows(JxlPlane plane, int reach)
+    private sealed class BandedRows
     {
-        private readonly float[] buffer = new float[(reach + 1) * plane.Width];
+        private const int MinBandRows = 64;
+        private readonly JxlPlane plane;
+        private readonly int reach;
+        private readonly int start;
+        private readonly int end;
+        private readonly float[] ring;
+        private readonly float[] head;
 
-        public Span<float> Row(int y) => buffer.AsSpan(y % (reach + 1) * plane.Width, plane.Width);
-
-        public void Done(int y)
+        private BandedRows(JxlPlane plane, int reach, int start, int end)
         {
-            if (y >= reach)
+            (this.plane, this.reach, this.start, this.end) = (plane, reach, start, end);
+            ring = new float[(reach + 1) * plane.Width];
+            head = new float[reach * plane.Width];
+        }
+
+        /// <summary>Filters every row y of <paramref name="planes"/> (all of one height) with <paramref name="row"/>.</summary>
+        public static void Run(JxlPlane[] planes, int reach, int parallelism, CancellationToken cancellationToken, Action<int, BandedRows[]> row)
+        {
+            int height = planes[0].Height;
+            int bands = JxlParallel.Bands(height, Math.Max(MinBandRows, 2 * reach + 1), parallelism);
+            var done = new BandedRows[bands][];
+            JxlParallel.For(bands, parallelism, cancellationToken, band =>
             {
-                Row(y - reach).CopyTo(plane.Row(y - reach));
+                int start = JxlParallel.BandStart(height, bands, band);
+                int end = JxlParallel.BandStart(height, bands, band + 1);
+                BandedRows[] rows = [.. planes.Select(plane => new BandedRows(plane, reach, start, end))];
+                for (int y = start; y < end; y++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    row(y, rows);
+                    foreach (BandedRows output in rows) output.Done(y);
+                }
+
+                done[band] = rows;
+            });
+            foreach (BandedRows[] rows in done)
+            {
+                foreach (BandedRows output in rows) output.Finish();
             }
         }
 
-        public void Finish()
+        /// <summary>The output buffer of row <paramref name="y"/>.</summary>
+        public Span<float> Row(int y) => ring.AsSpan(y % (reach + 1) * plane.Width, plane.Width);
+
+        private void Done(int y)
         {
-            for (int y = Math.Max(plane.Height - reach, 0); y < plane.Height; y++)
+            int row = y - reach;
+            if (row < start) return;
+            if (row < start + reach) Row(row).CopyTo(head.AsSpan((row - start) * plane.Width, plane.Width));
+            else Row(row).CopyTo(plane.Row(row));
+        }
+
+        // The rows kept back: the first reach rows of the band and the rows not yet written at its end.
+        private void Finish()
+        {
+            for (int row = start; row < end; row++)
             {
-                Row(y).CopyTo(plane.Row(y));
+                if (row + reach >= end) Row(row).CopyTo(plane.Row(row));
+                else if (row < start + reach) head.AsSpan((row - start) * plane.Width, plane.Width).CopyTo(plane.Row(row));
             }
         }
     }
 
     /// <summary>Edge-preserving filter stage 0: 5x5 plus-shaped kernel with 3x3 plus-shaped SADs.</summary>
-    public static JxlPlane[] Epf0(JxlPlane[] planes, JxlLoopFilter filter, float[] sigma, int xBlocks, CancellationToken cancellationToken = default)
+    public static JxlPlane[] Epf0(JxlPlane[] planes, JxlLoopFilter filter, float[] sigma, int xBlocks, CancellationToken cancellationToken = default,
+        int parallelism = JxlParallel.Sequential)
     {
         float sm = (float)(filter.Pass0SigmaScale * 1.65);
-        return Epf(planes, 3, sm, filter, sigma, xBlocks, new Epf0Kernel(filter.ChannelScale), cancellationToken);
+        return Epf(planes, 3, sm, filter, sigma, xBlocks, new Epf0Kernel(filter.ChannelScale), cancellationToken, parallelism);
     }
 
     /// <summary>Edge-preserving filter stage 1: 3x3 plus-shaped kernel with 3x3 plus-shaped SADs.</summary>
-    public static JxlPlane[] Epf1(JxlPlane[] planes, JxlLoopFilter filter, float[] sigma, int xBlocks, CancellationToken cancellationToken = default) =>
-        Epf(planes, 2, 1.65f, filter, sigma, xBlocks, new Epf1Kernel(filter.ChannelScale), cancellationToken);
+    public static JxlPlane[] Epf1(JxlPlane[] planes, JxlLoopFilter filter, float[] sigma, int xBlocks, CancellationToken cancellationToken = default,
+        int parallelism = JxlParallel.Sequential) =>
+        Epf(planes, 2, 1.65f, filter, sigma, xBlocks, new Epf1Kernel(filter.ChannelScale), cancellationToken, parallelism);
 
     /// <summary>Edge-preserving filter stage 2: 3x3 plus-shaped kernel with one-pixel SADs.</summary>
-    public static JxlPlane[] Epf2(JxlPlane[] planes, JxlLoopFilter filter, float[] sigma, int xBlocks, CancellationToken cancellationToken = default)
+    public static JxlPlane[] Epf2(JxlPlane[] planes, JxlLoopFilter filter, float[] sigma, int xBlocks, CancellationToken cancellationToken = default,
+        int parallelism = JxlParallel.Sequential)
     {
         float sm = (float)(filter.Pass2SigmaScale * 1.65);
-        return Epf(planes, 1, sm, filter, sigma, xBlocks, new Epf2Kernel(filter.ChannelScale), cancellationToken);
+        return Epf(planes, 1, sm, filter, sigma, xBlocks, new Epf2Kernel(filter.ChannelScale), cancellationToken, parallelism);
     }
 
     private static readonly (int Row, int Column)[] Epf0Offsets =
@@ -340,7 +383,7 @@ internal static partial class JxlRenderPipeline
     // Runs one EPF stage in place: blocks whose sigma is below the threshold are kept, the rest filtered pixel by pixel.
     // Returns the planes, which are copies when the inputs had different layouts.
     private static JxlPlane[] Epf<TKernel>(JxlPlane[] planes, int border, float sm, JxlLoopFilter filter, float[] sigma, int xBlocks,
-        TKernel kernel, CancellationToken cancellationToken) where TKernel : struct, IEpfKernel
+        TKernel kernel, CancellationToken cancellationToken, int parallelism) where TKernel : struct, IEpfKernel
     {
         // The kernels address the three planes with one index: they need one layout.
         if (planes.Any(plane => plane.Stride != planes[0].Stride))
@@ -361,19 +404,17 @@ internal static partial class JxlRenderPipeline
         }
 
         (float[] src0, float[] src1, float[] src2) = (planes[0].Data, planes[1].Data, planes[2].Data);
-        (DelayedRows rows0, DelayedRows rows1, DelayedRows rows2) =
-            (new DelayedRows(planes[0], border), new DelayedRows(planes[1], border), new DelayedRows(planes[2], border));
         int width = planes[0].Width;
         int stride = planes[0].Stride;
-        for (int y = 0; y < planes[0].Height; y++)
+        JxlPlane first = planes[0];
+        BandedRows.Run(planes, border, parallelism, cancellationToken, (y, rows) =>
         {
-            cancellationToken.ThrowIfCancellationRequested();
             bool borderRow = y % 8 == 0 || y % 8 == 7;
             int sigmaRow = y / 8 * xBlocks;
-            int rowIn = planes[0].Offset(0, y);
-            Span<float> dst0 = rows0.Row(y);
-            Span<float> dst1 = rows1.Row(y);
-            Span<float> dst2 = rows2.Row(y);
+            int rowIn = first.Offset(0, y);
+            Span<float> dst0 = rows[0].Row(y);
+            Span<float> dst1 = rows[1].Row(y);
+            Span<float> dst2 = rows[2].Row(y);
             for (int x0 = 0; x0 < width; x0 += 8)
             {
                 int count = Math.Min(8, width - x0);
@@ -401,15 +442,7 @@ internal static partial class JxlRenderPipeline
                     dst2[x0 + k] = rb * inverse;
                 }
             }
-
-            rows0.Done(y);
-            rows1.Done(y);
-            rows2.Done(y);
-        }
-
-        rows0.Finish();
-        rows1.Finish();
-        rows2.Finish();
+        });
         return planes;
     }
 
@@ -417,7 +450,8 @@ internal static partial class JxlRenderPipeline
     /// 2×, 4× or 8× upsampling with 5x5 kernels, clamped to the range of the 5x5 neighbourhood; the result is
     /// cropped to <paramref name="width"/>×<paramref name="height"/>.
     /// </summary>
-    public static JxlPlane Upsample(JxlPlane input, int shift, IReadOnlyList<float> weights, int width, int height, CancellationToken cancellationToken = default)
+    public static JxlPlane Upsample(JxlPlane input, int shift, IReadOnlyList<float> weights, int width, int height, CancellationToken cancellationToken = default,
+        int parallelism = JxlParallel.Sequential)
     {
         int n = 1 << shift;
         int h = n / 2;
@@ -453,8 +487,11 @@ internal static partial class JxlRenderPipeline
         float[] src = input.Data;
         float[] dst = output.Data;
         int stride = input.Stride;
+        // Every output row depends only on the mirrored input: row bands are independent.
+        JxlParallel.ForBands(input.Height, 16, parallelism, cancellationToken, (start, end) =>
+        {
         Span<float> values = stackalloc float[25];
-        for (int y = 0; y < input.Height; y++)
+        for (int y = start; y < end; y++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             for (int x = 0; x < input.Width; x++)
@@ -495,6 +532,7 @@ internal static partial class JxlRenderPipeline
                 }
             }
         }
+        });
 
         return output;
     }

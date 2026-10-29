@@ -1,6 +1,7 @@
 using PictureSharp.Formats.Jxl.Codestream.Buffers;
 using PictureSharp.Formats.Jxl.Codestream.Model;
 using PictureSharp.Formats.Jxl.Codestream.Modular;
+using PictureSharp.Formats.Jxl.Codestream.Numerics;
 using static PictureSharp.Formats.Jxl.Codestream.Numerics.JxlIntMath;
 
 namespace PictureSharp.Formats.Jxl.Codestream.Encoding;
@@ -41,8 +42,13 @@ internal static class JxlModularTreeEncoder
     /// not run the predictor again; a channel is left out when its errors cannot reproduce the predictions.
     /// </param>
     /// <param name="buffers">Owns recorded error buffers when provided.</param>
+    /// <param name="parallelism">
+    /// The maximum degree of parallelism of the channel scans (1 = single-threaded, -1 = automatic). Every channel starts
+    /// at the state of the sampling sequence its sequential scan would have, and its samples are added to the learner
+    /// in channel order, so the tree does not depend on it.
+    /// </param>
     public static List<JxlTreeNode> Learn(List<(int Id, List<JxlChannel> Channels)> streams, CancellationToken cancellationToken,
-        Dictionary<JxlChannel, int[]>? errors = null, JxlBufferScope? buffers = null)
+        Dictionary<JxlChannel, int[]>? errors = null, JxlBufferScope? buffers = null, int parallelism = JxlParallel.Sequential)
     {
         long total = streams.Sum(stream => stream.Channels.Sum(channel => (long)channel.Width * channel.Height));
         int[] properties = streams.Count < MinStreamsForStreamProperty ? FewStreamProperties : ManyStreamProperties;
@@ -50,21 +56,65 @@ internal static class JxlModularTreeEncoder
         System.Diagnostics.Debug.Assert(!properties.Contains(JxlMaProperty.WMinusPreviousGradient));
         using var learner = new JxlTreeLearner(properties, Predictors, MaxPropertyValues);
         double fraction = Math.Min(SampleFraction, MaxSamples / (double)Math.Max(total, 1));
-        var visitor = new SampleVisitor(learner, (uint)(fraction * uint.MaxValue));
+        uint threshold = (uint)(fraction * uint.MaxValue);
+        // Empty channels are not scanned and do not advance the sampling sequence.
+        var scans = new List<(int Id, int Index, JxlChannel Channel, uint State)>();
+        uint state = SampleVisitor.InitialState;
         foreach ((int id, List<JxlChannel> channels) in streams)
         {
             for (int c = 0; c < channels.Count; c++)
             {
-                int[]? channelErrors = errors is null || channels[c].IsEmpty ? null : buffers is null ? new int[channels[c].Width * channels[c].Height] : buffers.Rent<int>(channels[c].Width * channels[c].Height, clear: false);
-                if (Scan(channels[c], c, id, ref visitor, cancellationToken, channelErrors) && channelErrors is not null)
+                if (channels[c].IsEmpty) continue;
+                scans.Add((id, c, channels[c], state));
+                state = SampleVisitor.Advance(state, (long)channels[c].Width * channels[c].Height);
+            }
+        }
+
+        if (!JxlParallel.IsParallel(parallelism, scans.Count))
+        {
+            var visitor = new SampleVisitor(learner, threshold, SampleVisitor.InitialState);
+            foreach ((int id, int c, JxlChannel channel, _) in scans)
+            {
+                int[]? channelErrors = NewErrors(channel, errors, buffers);
+                if (Scan(channel, c, id, ref visitor, cancellationToken, channelErrors) && channelErrors is not null)
                 {
-                    errors![channels[c]] = channelErrors;
+                    errors![channel] = channelErrors;
                 }
             }
+
+            return learner.Learn(NodeThreshold, cancellationToken);
+        }
+
+        // Each channel collects its own samples from its own position of the sequence.
+        var batches = new JxlTreeLearner?[scans.Count];
+        var recorded = new int[]?[scans.Count];
+        try
+        {
+            JxlParallel.For(scans.Count, parallelism, cancellationToken, i =>
+            {
+                (int id, int c, JxlChannel channel, uint start) = scans[i];
+                var batch = batches[i] = new JxlTreeLearner(properties, Predictors, MaxPropertyValues);
+                var visitor = new SampleVisitor(batch, threshold, start);
+                int[]? channelErrors = NewErrors(channel, errors, buffers);
+                if (Scan(channel, c, id, ref visitor, cancellationToken, channelErrors)) recorded[i] = channelErrors;
+            });
+            for (int i = 0; i < scans.Count; i++)
+            {
+                learner.Append(batches[i]!);
+                batches[i]!.Dispose();
+                if (recorded[i] is { } channelErrors) errors![scans[i].Channel] = channelErrors;
+            }
+        }
+        finally
+        {
+            foreach (JxlTreeLearner? batch in batches) batch?.Dispose();
         }
 
         return learner.Learn(NodeThreshold, cancellationToken);
     }
+
+    private static int[]? NewErrors(JxlChannel channel, Dictionary<JxlChannel, int[]>? errors, JxlBufferScope? buffers) =>
+        errors is null ? null : buffers is null ? new int[channel.Width * channel.Height] : buffers.Rent<int>(channel.Width * channel.Height, clear: false);
 
     /// <summary>The tree's tokens in breadth-first order (TokenizeTree) and the leaf (context) index of every node.</summary>
     public static (JxlTokens Tokens, int[] LeafOf) Tokenize(List<JxlTreeNode> tree, JxlBufferScope? buffers = null)
@@ -101,11 +151,14 @@ internal static class JxlModularTreeEncoder
     /// <summary>The residual tokens of every stream, each in the context of its pixel's leaf.</summary>
     /// <remarks><paramref name="errors"/> are the weighted errors <see cref="Learn"/> recorded, if any.</remarks>
     public static List<JxlTokens> TokenizeStreams(List<(int Id, List<JxlChannel> Channels)> streams, List<JxlTreeNode> tree, int[] leafOf,
-        CancellationToken cancellationToken, Dictionary<JxlChannel, int[]>? errors = null, JxlBufferScope? buffers = null)
+        CancellationToken cancellationToken, Dictionary<JxlChannel, int[]>? errors = null, JxlBufferScope? buffers = null,
+        int parallelism = JxlParallel.Sequential)
     {
-        var tokens = new List<JxlTokens>();
-        foreach ((int id, List<JxlChannel> channels) in streams)
+        // Streams are tokenized on their own and kept in stream order.
+        var tokens = new JxlTokens[streams.Count];
+        JxlParallel.For(streams.Count, parallelism, cancellationToken, s =>
         {
+            (int id, List<JxlChannel> channels) = streams[s];
             var visitor = new TokenVisitor(tree, leafOf, new JxlTokens(buffers));
             for (int c = 0; c < channels.Count; c++)
             {
@@ -120,10 +173,10 @@ internal static class JxlModularTreeEncoder
                 }
             }
 
-            tokens.Add(visitor.Tokens);
-        }
+            tokens[s] = visitor.Tokens;
+        });
 
-        return tokens;
+        return [.. tokens];
     }
 
     private interface IPixelVisitor
@@ -244,18 +297,51 @@ internal static class JxlModularTreeEncoder
         }
     }
 
-    private struct SampleVisitor(JxlTreeLearner learner, uint threshold) : IPixelVisitor
+    private struct SampleVisitor(JxlTreeLearner learner, uint threshold, uint state) : IPixelVisitor
     {
+        public const uint InitialState = 0x9E3779B9;
         private readonly long[] residuals = new long[2];
-        private uint state = 0x9E3779B9;
+        private uint state = state;
 
         public bool Wants()
         {
             // xorshift32: a fixed sequence, so the output does not depend on anything but the image.
+            state = Next(state);
+            return state <= threshold;
+        }
+
+        private static uint Next(uint state)
+        {
             state ^= state << 13;
             state ^= state >> 17;
             state ^= state << 5;
-            return state <= threshold;
+            return state;
+        }
+
+        /// <summary>
+        /// The state after <paramref name="steps"/> steps from <paramref name="state"/>. xorshift32 is linear over GF(2):
+        /// one step is a 32×32 bit matrix (column i is the step of bit i), raised to the power by squaring.
+        /// </summary>
+        public static uint Advance(uint state, long steps)
+        {
+            Span<uint> step = stackalloc uint[32];
+            Span<uint> square = stackalloc uint[32];
+            for (int i = 0; i < 32; i++) step[i] = Next(1u << i);
+            for (; steps > 0; steps >>= 1)
+            {
+                if ((steps & 1) != 0) state = Apply(step, state);
+                for (int i = 0; i < 32; i++) square[i] = Apply(step, step[i]);
+                square.CopyTo(step);
+            }
+
+            return state;
+        }
+
+        private static uint Apply(ReadOnlySpan<uint> matrix, uint value)
+        {
+            uint result = 0;
+            for (; value != 0; value &= value - 1) result ^= matrix[System.Numerics.BitOperations.TrailingZeroCount(value)];
+            return result;
         }
 
         public readonly void Visit(ReadOnlySpan<int> properties, int pixel, long weighted, long gradient, JxlNeighbours neighbours)

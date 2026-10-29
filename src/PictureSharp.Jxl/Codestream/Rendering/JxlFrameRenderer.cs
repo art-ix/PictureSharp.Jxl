@@ -1,13 +1,18 @@
 using PictureSharp.Formats.Jxl.Codestream.Buffers;
 using PictureSharp.Formats.Jxl.Codestream.Color;
 using PictureSharp.Formats.Jxl.Codestream.Model;
+using PictureSharp.Formats.Jxl.Codestream.Numerics;
 using static PictureSharp.Formats.Jxl.Codestream.Numerics.JxlIntMath;
 
 namespace PictureSharp.Formats.Jxl.Codestream.Rendering;
 
-/// <summary>Ordered libjxl PreparePipeline stages (v0.12.0, BSD-3-Clause), independent of entropy decoding.</summary>
+/// <summary>
+/// Ordered libjxl PreparePipeline stages (v0.12.0, BSD-3-Clause), independent of entropy decoding. Filters, upsampling
+/// and colour output run in row bands of up to <paramref name="parallelism"/> threads with identical results.
+/// </summary>
 internal sealed class JxlFrameRenderer(JxlFrameHeader frame, JxlHeaders headers, JxlPatch[] patches,
-    JxlReferenceFrames references, float[]? epfSigma, CancellationToken cancellationToken, JxlColorTarget? colorTarget = null)
+    JxlReferenceFrames references, float[]? epfSigma, CancellationToken cancellationToken, JxlColorTarget? colorTarget = null,
+    int parallelism = JxlParallel.Sequential)
 {
     private JxlImageMetadata Metadata => headers.Metadata;
 
@@ -44,7 +49,7 @@ internal sealed class JxlFrameRenderer(JxlFrameHeader frame, JxlHeaders headers,
 
         if (colorTransform && color.Length == 3)
         {
-            new JxlColorOutput(Metadata, headers.TransformData, frame.ColorTransform, colorTarget).Apply(color, cancellationToken);
+            new JxlColorOutput(Metadata, headers.TransformData, frame.ColorTransform, colorTarget).Apply(color, cancellationToken, parallelism);
         }
 
         return color;
@@ -82,7 +87,7 @@ internal sealed class JxlFrameRenderer(JxlFrameHeader frame, JxlHeaders headers,
         JxlLoopFilter filter = frame.LoopFilter;
         if (filter.Gaborish)
         {
-            JxlRenderPipeline.Gaborish(color, filter, cancellationToken);
+            JxlRenderPipeline.Gaborish(color, filter, cancellationToken, parallelism);
         }
 
         if (filter.EpfIterations == 0)
@@ -94,13 +99,13 @@ internal sealed class JxlFrameRenderer(JxlFrameHeader frame, JxlHeaders headers,
         float[] sigma = epfSigma ?? ModularSigma(filter, xBlocks * (int)frame.YSizeBlocks);
         if (filter.EpfIterations >= 3)
         {
-            color = JxlRenderPipeline.Epf0(color, filter, sigma, xBlocks, cancellationToken);
+            color = JxlRenderPipeline.Epf0(color, filter, sigma, xBlocks, cancellationToken, parallelism);
         }
 
-        color = JxlRenderPipeline.Epf1(color, filter, sigma, xBlocks, cancellationToken);
+        color = JxlRenderPipeline.Epf1(color, filter, sigma, xBlocks, cancellationToken, parallelism);
         if (filter.EpfIterations >= 2)
         {
-            color = JxlRenderPipeline.Epf2(color, filter, sigma, xBlocks, cancellationToken);
+            color = JxlRenderPipeline.Epf2(color, filter, sigma, xBlocks, cancellationToken, parallelism);
         }
 
         return color;
@@ -140,7 +145,8 @@ internal sealed class JxlFrameRenderer(JxlFrameHeader frame, JxlHeaders headers,
     private JxlPlane Upsample(JxlPlane plane, uint factor, int width, int height)
     {
         int shift = CeilLog2(factor);
-        return JxlRenderPipeline.Upsample(plane, shift, headers.TransformData.UpsamplingWeights(shift), width, height, cancellationToken);
+        return JxlRenderPipeline.Upsample(plane, shift, headers.TransformData.UpsamplingWeights(shift), width, height, cancellationToken,
+            parallelism);
     }
 
 }

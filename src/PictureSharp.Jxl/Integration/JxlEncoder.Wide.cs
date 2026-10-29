@@ -1,31 +1,37 @@
 using PictureSharp.Formats.Jxl.Codestream.Buffers;
 using PictureSharp.Formats.Jxl.Codestream.Color;
 using PictureSharp.Formats.Jxl.Codestream.Encoding.Lossy;
+using PictureSharp.Formats.Jxl.Codestream.Numerics;
 
 namespace PictureSharp.Formats.Jxl.Integration;
 
 internal sealed partial class JxlEncoder
 {
     // The XYB planes of the pixels; gray pixels have equal channels.
-    private static JxlImage3F ToXyb(ReadOnlySpan<Rgba64> pixels, int width, int height, JxlXybInput input, CancellationToken cancellationToken, JxlBufferScope? buffers = null)
+    private static JxlImage3F ToXyb(ReadOnlyMemory<Rgba64> pixels, int width, int height, JxlXybInput input, CancellationToken cancellationToken,
+        JxlBufferScope? buffers, int parallelism)
     {
         var xyb = new JxlImage3F(width, height, buffers);
-        for (int y = 0; y < height; y++)
+        // Every pixel is converted on its own: row bands are independent.
+        JxlParallel.ForBands(height, 16, parallelism, cancellationToken, (start, end) =>
         {
-            if ((y & 0xF) == 0) cancellationToken.ThrowIfCancellationRequested();
-            Span<float> r = xyb.Row(0, y);
-            Span<float> g = xyb.Row(1, y);
-            Span<float> b = xyb.Row(2, y);
-            ReadOnlySpan<Rgba64> row = pixels.Slice(y * width, width);
-            for (int x = 0; x < width; x++)
+            for (int y = start; y < end; y++)
             {
-                r[x] = row[x].R;
-                g[x] = row[x].G;
-                b[x] = row[x].B;
-            }
+                if ((y & 0xF) == 0) cancellationToken.ThrowIfCancellationRequested();
+                Span<float> r = xyb.Row(0, y);
+                Span<float> g = xyb.Row(1, y);
+                Span<float> b = xyb.Row(2, y);
+                ReadOnlySpan<Rgba64> row = pixels.Span.Slice(y * width, width);
+                for (int x = 0; x < width; x++)
+                {
+                    r[x] = row[x].R;
+                    g[x] = row[x].G;
+                    b[x] = row[x].B;
+                }
 
-            input.Convert(r, g, b);
-        }
+                input.Convert(r, g, b);
+            }
+        });
 
         return xyb;
     }

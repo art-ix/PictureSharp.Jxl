@@ -1,6 +1,7 @@
 using PictureSharp.Formats.Jxl.Codestream.Buffers;
 using PictureSharp.Formats.Jxl.Codestream.Model;
 using PictureSharp.Formats.Jxl.Codestream.Modular;
+using PictureSharp.Formats.Jxl.Codestream.Numerics;
 using PictureSharp.Formats.Jxl.Codestream.VarDct;
 using static PictureSharp.Formats.Jxl.Codestream.Numerics.JxlIntMath;
 
@@ -54,12 +55,9 @@ internal static class JxlVarDctEncoder
         }, settings, xyb.Buffers);
 
         JxlAqMaps maps = ChooseParameters(frame, image, cancellationToken);
-        var quantizer = new JxlCoefficientQuantizer(frame, image);
-        for (int group = 0; group < header.Groups; group++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            quantizer.ComputeGroup(group);
-        }
+        // Each group writes only its own coefficients, quantization and DC; quantizers hold per-worker scratch.
+        JxlParallel.ForWorkers((int)header.Groups, settings.Parallelism, cancellationToken, () => new JxlCoefficientQuantizer(frame, image),
+            (quantizer, group) => quantizer.ComputeGroup(group));
 
         using var streams = new JxlModularStreamSet();
         float[][] dequantizedDc = [new float[frame.Dc[0].Length], new float[frame.Dc[0].Length], new float[frame.Dc[0].Length]];
@@ -86,7 +84,7 @@ internal static class JxlVarDctEncoder
 
         if (alpha is not null) AddAlpha(streams, header, alpha, frameWidth, frameHeight, settings.Resampling);
         streams.Build([0, JxlFrameHeader.VarDctDcStream(0), header.ModularDcStream(0), header.AcMetadataStream(0), header.QuantTableStream(0),
-            header.ModularAcStream(0, 0), header.ModularAcStream(0, header.Groups)], cancellationToken);
+            header.ModularAcStream(0, 0), header.ModularAcStream(0, header.Groups)], cancellationToken, settings.Parallelism);
 
         WritePrepared(writer, frame, metadata, streams, alpha is not null, patches, cancellationToken);
     }
@@ -97,13 +95,11 @@ internal static class JxlVarDctEncoder
         JxlFrameHeader header = frame.Header;
         (int[] orders, uint codedOrders) = JxlCoefficientOrders.Compute(frame);
         using var tokenBuffers = new JxlBufferScope();
-        var acTokens = new List<JxlTokens>();
-        for (int group = 0; group < header.Groups; group++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            acTokens.Add(JxlAcTokenizer.Tokenize(frame, group, orders, tokenBuffers));
-        }
-
+        // The token streams are kept in group order: histograms and sections see them as before.
+        var groupTokens = new JxlTokens[header.Groups];
+        JxlParallel.For(groupTokens.Length, frame.Settings.Parallelism, cancellationToken,
+            group => groupTokens[group] = JxlAcTokenizer.Tokenize(frame, group, orders, tokenBuffers));
+        List<JxlTokens> acTokens = [.. groupTokens];
         JxlEntropyEncoder acCode = JxlEntropyEncoder.Build(frame.BlockContexts.AcContexts, acTokens, cancellationToken);
         WriteSections(writer, frame, metadata, streams, alpha, patches, orders, codedOrders, acCode, acTokens, cancellationToken);
     }
@@ -117,7 +113,7 @@ internal static class JxlVarDctEncoder
         JxlAqMaps maps;
         if (settings.AdaptiveQuantization)
         {
-            maps = JxlAdaptiveQuantization.Compute(settings.Gaborish ? distance : distance * 0.62f, image, cancellationToken);
+            maps = JxlAdaptiveQuantization.Compute(settings.Gaborish ? distance : distance * 0.62f, image, cancellationToken, settings.Parallelism);
             frame.Quantizer.ComputeGlobalScaleAndQuant(settings.InitialQuantDc, 0.39f / distance, 0);
         }
         else
@@ -126,24 +122,20 @@ internal static class JxlVarDctEncoder
             frame.Quantizer.ComputeGlobalScaleAndQuant(settings.InitialQuantDc, 0.79f / distance, 0);
         }
 
-        if (settings.Gaborish) JxlGaborish.Inverse(image, cancellationToken);
-        var chroma = new JxlChromaFromLumaSearch(image, frame.Matrices);
-        if (settings.InitialChromaFromLuma) ChromaFromLuma(frame, chroma, null, cancellationToken);
+        if (settings.Gaborish) JxlGaborish.Inverse(image, cancellationToken, settings.Parallelism);
+        if (settings.InitialChromaFromLuma) ChromaFromLuma(frame, image, null, cancellationToken);
         if (settings.SearchAcStrategy)
         {
-            var search = new JxlAcStrategySearch(image, maps.QuantField, maps.Mask1X1, frame.Matrices, frame.Strategies, distance, settings.SpeedTier);
-            for (int ty = 0; ty < frame.YTiles; ty++)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                for (int tx = 0; tx < frame.XTiles; tx++)
+            // A tile reads and writes only its own varblocks; searches hold per-worker scratch.
+            JxlParallel.ForWorkers(frame.YTiles * frame.XTiles, settings.Parallelism, cancellationToken,
+                () => new JxlAcStrategySearch(image, maps.QuantField, maps.Mask1X1, frame.Matrices, frame.Strategies, distance, settings.SpeedTier),
+                (search, tile) =>
                 {
-                    int bx = tx * JxlLossyFrame.TileBlocks;
-                    int by = ty * JxlLossyFrame.TileBlocks;
-                    int tile = ty * frame.XTiles + tx;
+                    int bx = tile % frame.XTiles * JxlLossyFrame.TileBlocks;
+                    int by = tile / frame.XTiles * JxlLossyFrame.TileBlocks;
                     search.ProcessTile(bx, by, Math.Min(JxlLossyFrame.TileBlocks, frame.XBlocks - bx), Math.Min(JxlLossyFrame.TileBlocks, frame.YBlocks - by),
                         JxlLossyFrame.YToXRatio(frame.YToX[tile]), JxlLossyFrame.YToBRatio(frame.YToB[tile]));
-                }
-            }
+                });
         }
         else
         {
@@ -152,24 +144,24 @@ internal static class JxlVarDctEncoder
 
         JxlAdaptiveQuantization.AdjustQuantField(frame.Strategies, frame.XBlocks, frame.YBlocks, distance, maps.QuantField);
         for (int i = 0; i < blocks; i++) frame.QuantField[i] = frame.Quantizer.Quantize(maps.QuantField[i]);
-        if (settings.ChromaFromLuma) ChromaFromLuma(frame, chroma, frame.Strategies, cancellationToken);
+        if (settings.ChromaFromLuma) ChromaFromLuma(frame, image, frame.Strategies, cancellationToken);
         frame.BlockContexts = JxlAcTokenizer.BlockEntropyModel(frame);
         return maps;
     }
 
-    private static void ChromaFromLuma(JxlLossyFrame frame, JxlChromaFromLumaSearch search, JxlVarblock[]? strategies, CancellationToken cancellationToken)
+    // Each tile's factors depend only on its own pixels and varblocks; searches hold per-worker scratch.
+    private static void ChromaFromLuma(JxlLossyFrame frame, JxlImage3F image, JxlVarblock[]? strategies, CancellationToken cancellationToken)
     {
         bool fast = strategies is not null && frame.Settings.FastChromaFromLuma;
-        for (int ty = 0; ty < frame.YTiles; ty++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            for (int tx = 0; tx < frame.XTiles; tx++)
+        JxlParallel.ForWorkers(frame.YTiles * frame.XTiles, frame.Settings.Parallelism, cancellationToken,
+            () => new JxlChromaFromLumaSearch(image, frame.Matrices),
+            (search, tile) =>
             {
-                (sbyte yToX, sbyte yToB) = search.ComputeTile(tx, ty, strategies, strategies is null ? null : frame.QuantField, frame.Quantizer.Scale, fast);
-                frame.YToX[ty * frame.XTiles + tx] = yToX;
-                frame.YToB[ty * frame.XTiles + tx] = yToB;
-            }
-        }
+                (sbyte yToX, sbyte yToB) = search.ComputeTile(tile % frame.XTiles, tile / frame.XTiles, strategies,
+                    strategies is null ? null : frame.QuantField, frame.Quantizer.Scale, fast);
+                frame.YToX[tile] = yToX;
+                frame.YToB[tile] = yToB;
+            });
     }
 
     // SimplifyInvisible: fully transparent pixels become a smear of their left, upper-right and visible neighbours,
@@ -518,14 +510,16 @@ internal static class JxlVarDctEncoder
         JxlCoefficientOrders.Write(hfGlobal, orders, codedOrders);
         acCode.WriteHeader(hfGlobal);
         sections.Add(hfGlobal);
-        for (int group = 0; group < header.Groups; group++)
+        // Every group section is coded on its own; they are appended in group order.
+        var groupSections = new JxlBitWriter[header.Groups];
+        JxlParallel.For(groupSections.Length, frame.Settings.Parallelism, cancellationToken, group =>
         {
             var section = new JxlBitWriter(writer.Buffers);
-            cancellationToken.ThrowIfCancellationRequested();
             acCode.WriteStream(section, acTokens[group], cancellationToken);
             streams.WriteStream(section, header.ModularAcStream(0, group));
-            sections.Add(section);
-        }
+            groupSections[group] = section;
+        });
+        sections.AddRange(groupSections);
 
         JxlHeaderWriter.Frame(writer, header, metadata);
         if (header.TocEntries == 1)

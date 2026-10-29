@@ -67,7 +67,13 @@ on an AVX2 CPU, VarDCT decoding is 2.8–3.8× and lossy encoding 1.4–2.6× fa
 applications get the AVX2/FMA kernels only when published with `-p:IlcInstructionSet=x86-64-v3` (or `native`).
 See the [release notes](docs/releases/release-0.8.0.md) and [speed measurements](docs/benchmarks/speed.md#simd-080).
 
-**Status:** early development (0.8.0). Not for production use yet; the API may change. CI runs on Linux, including a Native AOT build.
+Version 0.8.1 decodes and encodes independent groups, tiles and row bands in parallel, with byte-identical output at
+any thread count: `DecoderOptions.MaxDegreeOfParallelism` (PictureSharp core), `JxlEncoderOptions` and
+`JxlTranscoderOptions.MaxDegreeOfParallelism` (default -1, all cores; 1 = single-threaded). On 16 logical CPUs
+lossless decoding is 5–8×, VarDCT decoding 1.9–3.2× and lossy encoding 3.1–4.6× faster than on one thread. See the
+[release notes](docs/releases/release-0.8.1.md) and [speed measurements](docs/benchmarks/speed.md#group-parallelism-081).
+
+**Status:** early development (0.8.1). Not for production use yet; the API may change. CI runs on Linux, including a Native AOT build.
 
 Guides: [decoding](docs/decoding.md) · [encoding](docs/encoding.md) · [JPEG transcoding](docs/transcoding.md) · [metadata](docs/metadata.md) ·
 [architecture](docs/architecture.md) · [release notes](docs/releases)

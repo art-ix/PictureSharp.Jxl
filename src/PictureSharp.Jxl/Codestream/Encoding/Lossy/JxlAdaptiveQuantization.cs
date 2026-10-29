@@ -37,7 +37,7 @@ internal static class JxlAdaptiveQuantization
     }
 
     /// <summary>InitialQuantField of <paramref name="xyb"/> (whole 8×8 blocks) at <paramref name="distance"/>.</summary>
-    public static JxlAqMaps Compute(float distance, JxlImage3F xyb, CancellationToken cancellationToken)
+    public static JxlAqMaps Compute(float distance, JxlImage3F xyb, CancellationToken cancellationToken, int parallelism = JxlParallel.Sequential)
     {
         float scale = AcQuant / distance;
         int width = xyb.Width;
@@ -48,7 +48,10 @@ internal static class JxlAdaptiveQuantization
 
         // 1x1 Laplacian of intensity, as masking per pixel.
         float[] mask1X1 = new float[width * height];
-        for (int y = 0; y < height; y++)
+        // Rows, 4-row quads and block rows below are independent: each band writes only its own outputs.
+        JxlParallel.ForBands(height, 16, parallelism, cancellationToken, (start, end) =>
+        {
+        for (int y = start; y < end; y++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             int row = y * width;
@@ -63,14 +66,18 @@ internal static class JxlAdaptiveQuantization
                 mask1X1[row + x] = 1.0f / (diff + 0.01f);
             }
         }
+        });
 
         // Squared, limited differences averaged over 4×4 pixels.
         int preWidth = width / 4;
         int preHeight = height / 4;
         float[] preErosion = new float[preWidth * preHeight];
-        float[] rowSum = new float[width];
         const float limit = 0.2f;
-        for (int y = 0; y < height; y++)
+        // Rows past the last whole quad add to no output.
+        JxlParallel.ForBands(preHeight, 4, parallelism, cancellationToken, (start, end) =>
+        {
+        float[] rowSum = new float[width];
+        for (int y = 4 * start; y < 4 * end; y++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             int row = y * width;
@@ -96,6 +103,7 @@ internal static class JxlAdaptiveQuantization
                 }
             }
         }
+        });
 
         float[] aq = FuzzyErosion(distance, preErosion, preWidth, preHeight, xBlocks, yBlocks);
         float[] mask = new float[aq.Length];
@@ -104,8 +112,8 @@ internal static class JxlAdaptiveQuantization
             mask[i] = 1.0f / (aq[i] + 0.001f);
         }
 
-        PerBlockModulations(distance, xyb, scale, aq, xBlocks, yBlocks, cancellationToken);
-        return new JxlAqMaps(aq, mask, Blur1X1Masking(mask1X1, width, height, cancellationToken));
+        PerBlockModulations(distance, xyb, scale, aq, xBlocks, yBlocks, cancellationToken, parallelism);
+        return new JxlAqMaps(aq, mask, Blur1X1Masking(mask1X1, width, height, cancellationToken, parallelism));
     }
 
     /// <summary>
@@ -254,7 +262,7 @@ internal static class JxlAdaptiveQuantization
     }
 
     private static void PerBlockModulations(float distance, JxlImage3F xyb, float scale, float[] aq, int xBlocks, int yBlocks,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken, int parallelism)
     {
         float baseLevel = 0.48f * scale;
         const float dampenRampStart = 2.0f;
@@ -264,7 +272,9 @@ internal static class JxlAdaptiveQuantization
             : 1.0f;
         float mul = scale * dampen;
         float add = (1.0f - dampen) * baseLevel;
-        for (int by = 0; by < yBlocks; by++)
+        JxlParallel.ForBands(yBlocks, 2, parallelism, cancellationToken, (start, end) =>
+        {
+        for (int by = start; by < end; by++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             for (int bx = 0; bx < xBlocks; bx++)
@@ -277,6 +287,7 @@ internal static class JxlAdaptiveQuantization
                 aq[index] = JxlFastMath.FastPow2f(value * 1.442695041f) * mul + add;
             }
         }
+        });
     }
 
     private static float ComputeMask(float value)
@@ -363,12 +374,12 @@ internal static class JxlAdaptiveQuantization
     }
 
     // The 5×5 symmetric blur of the per-pixel masking (Blur1x1Masking).
-    private static float[] Blur1X1Masking(float[] mask, int width, int height, CancellationToken cancellationToken)
+    private static float[] Blur1X1Masking(float[] mask, int width, int height, CancellationToken cancellationToken, int parallelism)
     {
         ReadOnlySpan<float> k = [0.364911248f, 0.05f, 0.1688888021f, 0.221069183f, 0.306563504f];
         double sum = Math.Max(1e-5, 1.0 + 4 * (k[0] + k[1] + k[2] + k[4] + 2 * k[3]));
         float normalize = (float)(1.0 / sum);
         var weights = new JxlSymmetric5Weights(normalize, normalize * k[0], normalize * k[2], normalize * k[1], normalize * k[4], normalize * k[3]);
-        return JxlConvolution.Symmetric5(mask, width, height, weights, cancellationToken);
+        return JxlConvolution.Symmetric5(mask, width, height, weights, cancellationToken, parallelism: parallelism);
     }
 }

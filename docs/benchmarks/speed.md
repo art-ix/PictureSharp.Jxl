@@ -1,4 +1,4 @@
-# Speed measurements — 0.7.3–0.8.0
+# Speed measurements — 0.7.3–0.8.1
 
 Measured on 2026-10-27, Linux x64, Intel Core i5-12500H, .NET 10, one thread (`DOTNET_PROCESSOR_COUNT=1`).
 libjxl 0.12.0 (`4128790`) times are its own `--num_reps=3` geomean with `--num_threads=1`, PNG I/O excluded, AVX2 enabled.
@@ -413,7 +413,7 @@ The package consumer passes under JIT, default AOT (AVX2=False, SSE4.1=True, FMA
 Not measured for the release: AOT speed and SSE4.1-only speed (measured afterwards, see the next section), scalar-only
 speed, CPUs without AVX2, ARM64. Rejected in the last pass: merging EPF copies of consecutive unfiltered blocks (no gain ≥ 2%).
 
-## SIMD after 0.8.0 (unreleased)
+## SIMD after 0.8.0 (released in 0.8.1)
 
 Measured on 2026-10-29 with the same machine, runtime and method as above (paired alternating processes, CPU 0,
 2 rounds × 5 warm calls, borderline results rechecked with 4 rounds). [Raw data](../measurements/simd-after-0.8.0.json).
@@ -481,3 +481,45 @@ on that path (Modular decoding and integer output); whole-program code layout is
 Remaining profile leaders:
 encode e7 ordered entropy sums (~16%), CfL derivatives (~6%); e3 exact XYB cube root (~17%) and tokenization;
 decode entropy reading (~13%) and EPF (~11%), which are sequential or already vectorized.
+
+## Group parallelism (0.8.1)
+
+`MaxDegreeOfParallelism` (default -1) parallelizes independent groups, tiles, streams and row bands; output is
+byte-identical at every degree (all-efforts golden, 1433 results, identical at 1 and 16 threads). Measured
+2026-10-29 with `scripts/measure-parallel.py` on an Intel Core i5-12500H (4 P-cores with SMT + 8 E-cores, 16
+logical CPUs), Linux, .NET 10.0.12, tiered compilation off, no concurrent load: the released 0.8.0 package and the
+0.8.1 sources at 1 thread pinned to CPU 0, the sources at -1 pinned to CPUs 0–15; 2 rounds × 5 warm calls in rotated
+order (12 MP encodes: 3 calls). The 1-thread column includes the SIMD kernels added after 0.8.0. libjxl 0.12.0 is
+timed by cjxl/djxl themselves (`--num_threads=1` on CPU 0, `16` on CPUs 0–15, PNG I/O excluded).
+[Raw data](../measurements/parallel-0.8.1.json).
+
+| Case | 0.8.0 (ms) | 1 thread (ms) | 16 threads (ms) | Speed-up vs 1 thread | libjxl 1 / 16 threads (ms) | Peak RSS 1 → 16 threads (MiB) |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| decode/photo1-d1-e7 | 20.4 | 19.7 | 10.6 | 1.86× | 16.3 / 5.2 | 132 → 189 |
+| decode/photo1-d0-e7 | 265 | 269 | 37.5 | 7.16× | 141 / 18.4 | 91 → 143 |
+| decode/screen-d1-e7 | 36.0 | 36.6 | 15.7 | 2.33× | 27.7 / 10.3 | 137 → 255 |
+| decode/screen-d0-e7 | 99.7 | 102 | 20.4 | 5.00× | 60.4 / 10.2 | 133 → 244 |
+| decode/photo12-d1-e7 | 252 | 247 | 78.2 | 3.16× | 213 / 50.0 | 518 → 515 |
+| decode/photo12-d0-e7 | 3286 | 3266 | 418 | 7.82× | 1716 / 199 | 561 → 376 |
+| decode16/photo12-16-d1-e7 | 260 | 258 | 81.1 | 3.18× | 225 / 48.5 | 589 → 846 |
+| decode/IMG_0160-jpeg | 232 | 230 | 86.7 | 2.65× | 196 / 38.0 | 896 → 1238 |
+| tojpeg/IMG_0160-jpeg | 389 | 391 | 250 | 1.57× | 169 / 75.8 | 296 → 251 |
+| encode/photo1-d1-e3 | 51.6 | 46.5 | 27.6 | 1.68× | 24.3 / 12.2 | 224 → 490 |
+| encode/photo1-d1-e7 | 549 | 450 | 122 | 3.68× | 213 / 53.1 | 218 → 562 |
+| encode/photo1-d0-e7 | 814 | 799 | 480 | 1.66× | 640 / 96.2 | 389 → 664 |
+| encode/screen-d1-e7 | 971 | 812 | 264 | 3.07× | 376 / 98.8 | 788 → 752 |
+| encode/screen-d0-e7 | 474 | 478 | 365 | 1.31× | 272 / 43.9 | 291 → 591 |
+| encode/photo12-d1-e7 | 6568 | 5406 | 1184 | 4.57× | 2404 / 561 | 1442 → 1564 |
+| encode/photo12-d0-e7 | 4569 | 4569 | 1153 | 3.96× | 8503 / 1104 | 2492 → 1717 |
+
+- Lossless (Modular) decode scales 5–8×; VarDCT decode 1.9–3.2× (LF global, DC smoothing, EPF sigma, mirroring
+  and container work stay sequential); lossy encode e7 3.1–4.6×. Lossless encode gains 1.3–1.7× at 1 MP and 4×
+  at 12 MP: MA-tree splitting (`FindSplit`), palette/RCT choice and histograms remain sequential by design.
+- `photo1`/`screen` are 1280×800 and 1600×1000; the only 12 MP input is the photo. `IMG_0160` is a private 12 MP
+  JPEG recompression (pixel decode and `tojpeg` reconstruction).
+- 1 thread vs the 8f4d64b sources (SIMD after 0.8.0, single-threaded; paired, 4 rounds, CPU 0): lossless decode
+  photo −1.5%, screen +3.0% then +0.26% on a 6-round recheck, lossy decode −1.8%, lossless encode −0.2%: no
+  measurable cost of the parallel structure at degree 1.
+- Peak RSS grows with the worker count where workers hold group coefficients, search scratch or band buffers, and
+  falls in some 12 MP cases (not investigated; 0.8.2 profiles memory with threading). `ReservePixels` budgets are
+  unchanged and charged before workers start.
