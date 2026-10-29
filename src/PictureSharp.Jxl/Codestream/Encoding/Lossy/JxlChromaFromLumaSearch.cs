@@ -7,7 +7,7 @@ namespace PictureSharp.Formats.Jxl.Codestream.Encoding.Lossy;
 /// cheapest quantized coefficients. Ported from libjxl v0.12.0 lib/jxl/enc_chroma_from_luma.cc (BSD-3-Clause); the DC
 /// factors stay at their defaults, as libjxl leaves them.
 /// </summary>
-internal sealed class JxlChromaFromLumaSearch(JxlImage3F image, JxlQuantWeights matrices)
+internal sealed partial class JxlChromaFromLumaSearch(JxlImage3F image, JxlQuantWeights matrices)
 {
     /// <summary>The denominator of the coded factors (kDefaultColorFactor).</summary>
     public const int ColorFactor = 84;
@@ -90,7 +90,7 @@ internal sealed class JxlChromaFromLumaSearch(JxlImage3F image, JxlQuantWeights 
         if (count == 0) return 0;
         const float invColorFactor = 1.0f / ColorFactor;
         // The residual at factor x is a x + b; a and b do not depend on x and are computed once.
-        for (int i = 0; i < count; i++)
+        for (int i = PrepareSlopesAvx2(m.AsSpan(0, count), s.AsSpan(0, count), slope, offset, baseCorrelation); i < count; i++)
         {
             slope[i] = invColorFactor * m[i];
             offset[i] = baseCorrelation * m[i] - s[i];
@@ -143,7 +143,7 @@ internal sealed class JxlChromaFromLumaSearch(JxlImage3F image, JxlQuantWeights 
         float sum = 0;
         float sumPlus = 0;
         float sumMinus = 0;
-        for (int i = 0; i < slopes.Length; i++)
+        for (int i = DerivativesAvx2(slopes, offsets, x, xPlus, xMinus, ref sum, ref sumPlus, ref sumMinus); i < slopes.Length; i++)
         {
             float a = slopes[i];
             float b = offsets[i];

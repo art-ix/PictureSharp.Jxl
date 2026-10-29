@@ -62,11 +62,12 @@ when reading the result too. See [what changed in 0.7.8](https://github.com/art-
 Pixels match djxl (libjxl 0.12.0): lossless images exactly, lossy ones within 1 of 255 in a few samples. Files this
 package writes decode with djxl the same way.
 
-Version 0.7.10 reduces warm allocations by 50–89% across the measured 8-bit and 16-bit encode/decode cases,
-including 12 MP, with byte-identical results to 0.7.9. See the [release notes](docs/releases/release-0.7.10.md)
-and [speed and memory measurements](docs/benchmarks/speed.md); pooled memory retention affects peak RSS separately.
+Version 0.8.0 adds SIMD kernels (AVX2 with FMA, SSE4.1, scalar fallback) with byte-identical results to 0.7.10:
+on an AVX2 CPU, VarDCT decoding is 2.8–3.8× and lossy encoding 1.4–2.6× faster, single-threaded. Native AOT
+applications get the AVX2/FMA kernels only when published with `-p:IlcInstructionSet=x86-64-v3` (or `native`).
+See the [release notes](docs/releases/release-0.8.0.md) and [speed measurements](docs/benchmarks/speed.md#simd-080).
 
-**Status:** early development (0.7.10). Not for production use yet; the API may change. CI runs on Linux, including a Native AOT build.
+**Status:** early development (0.8.0). Not for production use yet; the API may change. CI runs on Linux, including a Native AOT build.
 
 Guides: [decoding](docs/decoding.md) · [encoding](docs/encoding.md) · [JPEG transcoding](docs/transcoding.md) · [metadata](docs/metadata.md) ·
 [architecture](docs/architecture.md) · [release notes](docs/releases)

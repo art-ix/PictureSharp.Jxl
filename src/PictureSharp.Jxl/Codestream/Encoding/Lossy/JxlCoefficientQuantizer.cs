@@ -8,7 +8,7 @@ namespace PictureSharp.Formats.Jxl.Codestream.Encoding.Lossy;
 /// quantization value raised where high frequencies would be lost (AdjustQuantBlockAC), and its dequantized value
 /// predicts X and B through chroma from luma. Ported from libjxl v0.12.0 lib/jxl/enc_group.cc (BSD-3-Clause).
 /// </summary>
-internal sealed class JxlCoefficientQuantizer
+internal sealed partial class JxlCoefficientQuantizer
 {
     private const int MaxCoefficients = JxlAcStrategy.BlockSize << 10;
 
@@ -162,7 +162,9 @@ internal sealed class JxlCoefficientQuantizer
         {
             int yFix = y >= ys * 4 ? 2 : 0;
             int offset = y * columns;
-            for (int x = 0; x < columns; x++)
+            int done = QuantizeRowSimd(weights.Slice(offset, columns), input.Slice(offset, columns), output.Slice(offset, columns),
+                quantV, thresholds[yFix], thresholds[yFix + 1]);
+            for (int x = done; x < columns; x++)
             {
                 float threshold = thresholds[yFix + (x >= columns / 2 ? 1 : 0)];
                 float value = weights[offset + x] * quantV * input[offset + x];

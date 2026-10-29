@@ -1,0 +1,2549 @@
+{
+  "date": "2026-10-29",
+  "cpu": "Intel Core i5-12500H",
+  "affinity": "0",
+  "runtime": "10.0.12",
+  "tieredCompilation": false,
+  "mode": "native",
+  "rounds": 2,
+  "runs": 3,
+  "builds": {
+    "before": {
+      "dll": "artifacts/simd-0.8.0/baseline-extended/build/bin/PictureSharp.Jxl.Speed/release/PictureSharp.Jxl.Speed.dll",
+      "jxlSha256": "8c4e779f6bbc58a6ec3079223abe76dad41f02835d63568f58e11cfa56d72470"
+    },
+    "after": {
+      "dll": "artifacts/simd-0.8.0/variants/all/build/bin/PictureSharp.Jxl.Speed/release/PictureSharp.Jxl.Speed.dll",
+      "jxlSha256": "7b9f17f8f73e4764f152843debd49a24bef96c74a918ed1e98aad2ec81295d98"
+    }
+  },
+  "measurements": [
+    {
+      "id": "decode/tiny-1x1",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 100.0361,
+      "coldAllocatedBytes": 30128,
+      "warmups": 50,
+      "medianMs": 0.0178,
+      "minMs": 0.0101,
+      "allocatedBytes": 14112,
+      "gen0PerRun": 0,
+      "gen2PerRun": 0,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 47.8046875
+    },
+    {
+      "id": "decode/tiny-1x1",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 100.0634,
+      "coldAllocatedBytes": 30128,
+      "warmups": 50,
+      "medianMs": 0.0101,
+      "minMs": 0.01,
+      "allocatedBytes": 14112,
+      "gen0PerRun": 0,
+      "gen2PerRun": 0,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 47.80078125
+    },
+    {
+      "id": "decode/tiny-1x1",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 100.2354,
+      "coldAllocatedBytes": 30128,
+      "warmups": 50,
+      "medianMs": 0.0095,
+      "minMs": 0.0094,
+      "allocatedBytes": 14112,
+      "gen0PerRun": 0,
+      "gen2PerRun": 0,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 48.046875
+    },
+    {
+      "id": "decode/tiny-1x1",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 102.2766,
+      "coldAllocatedBytes": 30128,
+      "warmups": 50,
+      "medianMs": 0.011,
+      "minMs": 0.0083,
+      "allocatedBytes": 14112,
+      "gen0PerRun": 0,
+      "gen2PerRun": 0,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 47.8046875
+    },
+    {
+      "id": "decode/small-64x64",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 121.4839,
+      "coldAllocatedBytes": 221848,
+      "warmups": 50,
+      "medianMs": 0.674,
+      "minMs": 0.672,
+      "allocatedBytes": 95488,
+      "gen0PerRun": 0,
+      "gen2PerRun": 0,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 52.1015625
+    },
+    {
+      "id": "decode/small-64x64",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 122.226,
+      "coldAllocatedBytes": 221848,
+      "warmups": 50,
+      "medianMs": 0.6272,
+      "minMs": 0.6221,
+      "allocatedBytes": 95488,
+      "gen0PerRun": 0,
+      "gen2PerRun": 0,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 52.0625
+    },
+    {
+      "id": "decode/small-64x64",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 126.4485,
+      "coldAllocatedBytes": 221848,
+      "warmups": 50,
+      "medianMs": 0.6412,
+      "minMs": 0.6217,
+      "allocatedBytes": 95488,
+      "gen0PerRun": 0,
+      "gen2PerRun": 0,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 52.1875
+    },
+    {
+      "id": "decode/small-64x64",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 123.2258,
+      "coldAllocatedBytes": 221848,
+      "warmups": 50,
+      "medianMs": 0.6707,
+      "minMs": 0.6207,
+      "allocatedBytes": 95488,
+      "gen0PerRun": 0,
+      "gen2PerRun": 0,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 51.96875
+    },
+    {
+      "id": "decode/lossy-e1",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 160.7039,
+      "coldAllocatedBytes": 271624,
+      "warmups": 50,
+      "medianMs": 0.2735,
+      "minMs": 0.2694,
+      "allocatedBytes": 87328,
+      "gen0PerRun": 0,
+      "gen2PerRun": 0,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 51.93359375
+    },
+    {
+      "id": "decode/lossy-e1",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 171.1816,
+      "coldAllocatedBytes": 288032,
+      "warmups": 50,
+      "medianMs": 0.141,
+      "minMs": 0.1356,
+      "allocatedBytes": 87328,
+      "gen0PerRun": 0,
+      "gen2PerRun": 0,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 52.19140625
+    },
+    {
+      "id": "decode/lossy-e1",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 167.9837,
+      "coldAllocatedBytes": 288032,
+      "warmups": 50,
+      "medianMs": 0.1337,
+      "minMs": 0.1324,
+      "allocatedBytes": 87328,
+      "gen0PerRun": 0,
+      "gen2PerRun": 0,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 52.26171875
+    },
+    {
+      "id": "decode/lossy-e1",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 156.6964,
+      "coldAllocatedBytes": 271624,
+      "warmups": 50,
+      "medianMs": 0.2712,
+      "minMs": 0.2688,
+      "allocatedBytes": 87328,
+      "gen0PerRun": 0,
+      "gen2PerRun": 0,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 52.16796875
+    },
+    {
+      "id": "decode/photo1-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 249.8953,
+      "coldAllocatedBytes": 24309720,
+      "warmups": 33,
+      "medianMs": 62.0477,
+      "minMs": 61.1865,
+      "allocatedBytes": 5852344,
+      "gen0PerRun": 0.3333333333333333,
+      "gen2PerRun": 0,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 133.828125
+    },
+    {
+      "id": "decode/photo1-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 237.6385,
+      "coldAllocatedBytes": 24326128,
+      "warmups": 50,
+      "medianMs": 20.8717,
+      "minMs": 20.6355,
+      "allocatedBytes": 5852344,
+      "gen0PerRun": 0.3333333333333333,
+      "gen2PerRun": 0,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 131.39453125
+    },
+    {
+      "id": "decode/photo1-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 239.5135,
+      "coldAllocatedBytes": 24326128,
+      "warmups": 50,
+      "medianMs": 20.4764,
+      "minMs": 19.6793,
+      "allocatedBytes": 5852344,
+      "gen0PerRun": 0.3333333333333333,
+      "gen2PerRun": 0,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 131.46875
+    },
+    {
+      "id": "decode/photo1-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 249.5961,
+      "coldAllocatedBytes": 24309720,
+      "warmups": 34,
+      "medianMs": 62.2774,
+      "minMs": 61.6975,
+      "allocatedBytes": 5852344,
+      "gen0PerRun": 0.3333333333333333,
+      "gen2PerRun": 0,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 134.10546875
+    },
+    {
+      "id": "decode/photo1-d3-e3",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 250.9514,
+      "coldAllocatedBytes": 19284712,
+      "warmups": 29,
+      "medianMs": 84.448,
+      "minMs": 74.5,
+      "allocatedBytes": 5175240,
+      "gen0PerRun": 0.3333333333333333,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 102.68359375
+    },
+    {
+      "id": "decode/photo1-d3-e3",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 212.9179,
+      "coldAllocatedBytes": 19301120,
+      "warmups": 50,
+      "medianMs": 24.4211,
+      "minMs": 24.1537,
+      "allocatedBytes": 5175240,
+      "gen0PerRun": 0.6666666666666666,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 102.84765625
+    },
+    {
+      "id": "decode/photo1-d3-e3",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 205.1144,
+      "coldAllocatedBytes": 19301120,
+      "warmups": 50,
+      "medianMs": 17.0206,
+      "minMs": 16.963,
+      "allocatedBytes": 5175240,
+      "gen0PerRun": 0.6666666666666666,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 103.02734375
+    },
+    {
+      "id": "decode/photo1-d3-e3",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 260.2084,
+      "coldAllocatedBytes": 19284712,
+      "warmups": 29,
+      "medianMs": 72.0039,
+      "minMs": 71.6627,
+      "allocatedBytes": 5175240,
+      "gen0PerRun": 0.3333333333333333,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 102.71875
+    },
+    {
+      "id": "decode/screen-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 305.9433,
+      "coldAllocatedBytes": 39901560,
+      "warmups": 18,
+      "medianMs": 116.6987,
+      "minMs": 115.7936,
+      "allocatedBytes": 8566464,
+      "gen0PerRun": 0.3333333333333333,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 129.76953125
+    },
+    {
+      "id": "decode/screen-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 245.7933,
+      "coldAllocatedBytes": 39917968,
+      "warmups": 50,
+      "medianMs": 34.8823,
+      "minMs": 33.5526,
+      "allocatedBytes": 8566464,
+      "gen0PerRun": 0.6666666666666666,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 139.03125
+    },
+    {
+      "id": "decode/screen-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 245.1607,
+      "coldAllocatedBytes": 39917968,
+      "warmups": 50,
+      "medianMs": 35.1184,
+      "minMs": 34.6967,
+      "allocatedBytes": 8566464,
+      "gen0PerRun": 0.6666666666666666,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 138.89453125
+    },
+    {
+      "id": "decode/screen-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 301.3024,
+      "coldAllocatedBytes": 39901560,
+      "warmups": 18,
+      "medianMs": 114.771,
+      "minMs": 114.4411,
+      "allocatedBytes": 8566464,
+      "gen0PerRun": 0.3333333333333333,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 129.8203125
+    },
+    {
+      "id": "decode/photo12-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 981.1647,
+      "coldAllocatedBytes": 267351824,
+      "warmups": 4,
+      "medianMs": 751.9552,
+      "minMs": 747.1648,
+      "allocatedBytes": 58723072,
+      "gen0PerRun": 0.3333333333333333,
+      "gen2PerRun": 0,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 467.0078125
+    },
+    {
+      "id": "decode/photo12-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 523.2885,
+      "coldAllocatedBytes": 267368232,
+      "warmups": 9,
+      "medianMs": 249.3039,
+      "minMs": 246.9536,
+      "allocatedBytes": 58724640,
+      "gen0PerRun": 0.6666666666666666,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 549.890625
+    },
+    {
+      "id": "decode/photo12-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 518.6039,
+      "coldAllocatedBytes": 267368232,
+      "warmups": 9,
+      "medianMs": 252.2069,
+      "minMs": 251.5786,
+      "allocatedBytes": 58724640,
+      "gen0PerRun": 0.6666666666666666,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 549.8203125
+    },
+    {
+      "id": "decode/photo12-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 958.8071,
+      "coldAllocatedBytes": 267351824,
+      "warmups": 4,
+      "medianMs": 731.432,
+      "minMs": 721.1581,
+      "allocatedBytes": 58723072,
+      "gen0PerRun": 0.3333333333333333,
+      "gen2PerRun": 0,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 467.0078125
+    },
+    {
+      "id": "decode-srgb/photo12-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 961.7915,
+      "coldAllocatedBytes": 267352336,
+      "warmups": 4,
+      "medianMs": 734.5197,
+      "minMs": 732.8372,
+      "allocatedBytes": 58723408,
+      "gen0PerRun": 0.3333333333333333,
+      "gen2PerRun": 0,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 467.140625
+    },
+    {
+      "id": "decode-srgb/photo12-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 522.8691,
+      "coldAllocatedBytes": 267368744,
+      "warmups": 9,
+      "medianMs": 261.8347,
+      "minMs": 261.2399,
+      "allocatedBytes": 58724976,
+      "gen0PerRun": 0.6666666666666666,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 549.75
+    },
+    {
+      "id": "decode-srgb/photo12-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 512.0202,
+      "coldAllocatedBytes": 267368744,
+      "warmups": 9,
+      "medianMs": 255.8258,
+      "minMs": 254.1817,
+      "allocatedBytes": 58724976,
+      "gen0PerRun": 0.6666666666666666,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 549.74609375
+    },
+    {
+      "id": "decode-srgb/photo12-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 965.2213,
+      "coldAllocatedBytes": 267352336,
+      "warmups": 4,
+      "medianMs": 735.51,
+      "minMs": 727.7599,
+      "allocatedBytes": 58723408,
+      "gen0PerRun": 0.3333333333333333,
+      "gen2PerRun": 0,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 467.08984375
+    },
+    {
+      "id": "decode16/photo1-16-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 245.8084,
+      "coldAllocatedBytes": 28421296,
+      "warmups": 34,
+      "medianMs": 60.502,
+      "minMs": 60.4465,
+      "allocatedBytes": 9963976,
+      "gen0PerRun": 0,
+      "gen2PerRun": 0,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 173.7421875
+    },
+    {
+      "id": "decode16/photo1-16-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 228.8319,
+      "coldAllocatedBytes": 28421296,
+      "warmups": 50,
+      "medianMs": 21.5057,
+      "minMs": 20.5718,
+      "allocatedBytes": 9966176,
+      "gen0PerRun": 1,
+      "gen2PerRun": 0.6666666666666666,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 170.3515625
+    },
+    {
+      "id": "decode16/photo1-16-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 229.1322,
+      "coldAllocatedBytes": 28421296,
+      "warmups": 50,
+      "medianMs": 21.3213,
+      "minMs": 20.7689,
+      "allocatedBytes": 9969368,
+      "gen0PerRun": 1,
+      "gen2PerRun": 0.6666666666666666,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 170.40625
+    },
+    {
+      "id": "decode16/photo1-16-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 247.4984,
+      "coldAllocatedBytes": 28421296,
+      "warmups": 33,
+      "medianMs": 62.5646,
+      "minMs": 60.8564,
+      "allocatedBytes": 9963976,
+      "gen0PerRun": 0.3333333333333333,
+      "gen2PerRun": 0,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 173.6875
+    },
+    {
+      "id": "decode16/screen-16-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 298.8622,
+      "coldAllocatedBytes": 46301896,
+      "warmups": 19,
+      "medianMs": 113.2957,
+      "minMs": 111.5627,
+      "allocatedBytes": 14966776,
+      "gen0PerRun": 0.3333333333333333,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 161.1875
+    },
+    {
+      "id": "decode16/screen-16-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 250.0026,
+      "coldAllocatedBytes": 46301896,
+      "warmups": 50,
+      "medianMs": 35.7214,
+      "minMs": 35.5268,
+      "allocatedBytes": 14966776,
+      "gen0PerRun": 0.6666666666666666,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 154.43359375
+    },
+    {
+      "id": "decode16/screen-16-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 245.9288,
+      "coldAllocatedBytes": 46301896,
+      "warmups": 50,
+      "medianMs": 37.6341,
+      "minMs": 34.261,
+      "allocatedBytes": 14966776,
+      "gen0PerRun": 0.6666666666666666,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 161.61328125
+    },
+    {
+      "id": "decode16/screen-16-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 295.7001,
+      "coldAllocatedBytes": 46301896,
+      "warmups": 19,
+      "medianMs": 110.5962,
+      "minMs": 110.0847,
+      "allocatedBytes": 14966776,
+      "gen0PerRun": 0.3333333333333333,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 161.31640625
+    },
+    {
+      "id": "decode16/photo12-16-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 944.7667,
+      "coldAllocatedBytes": 316097936,
+      "warmups": 4,
+      "medianMs": 704.3936,
+      "minMs": 704.3445,
+      "allocatedBytes": 107473608,
+      "gen0PerRun": 1,
+      "gen2PerRun": 0.6666666666666666,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 586.75
+    },
+    {
+      "id": "decode16/photo12-16-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 515.1663,
+      "coldAllocatedBytes": 316097936,
+      "warmups": 9,
+      "medianMs": 256.8092,
+      "minMs": 255.9386,
+      "allocatedBytes": 107469968,
+      "gen0PerRun": 0.6666666666666666,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 589.3359375
+    },
+    {
+      "id": "decode16/photo12-16-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 514.3923,
+      "coldAllocatedBytes": 316097936,
+      "warmups": 9,
+      "medianMs": 256.1863,
+      "minMs": 256.024,
+      "allocatedBytes": 107469968,
+      "gen0PerRun": 0.6666666666666666,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 589.078125
+    },
+    {
+      "id": "decode16/photo12-16-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 935.98,
+      "coldAllocatedBytes": 316097936,
+      "warmups": 4,
+      "medianMs": 707.46,
+      "minMs": 706.1266,
+      "allocatedBytes": 107473744,
+      "gen0PerRun": 1,
+      "gen2PerRun": 0.6666666666666666,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 586.671875
+    },
+    {
+      "id": "decode/photo1-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 408.3355,
+      "coldAllocatedBytes": 25515288,
+      "warmups": 9,
+      "medianMs": 264.1509,
+      "minMs": 264.0649,
+      "allocatedBytes": 11167040,
+      "gen0PerRun": 1.3333333333333333,
+      "gen2PerRun": 0.6666666666666666,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 90.8984375
+    },
+    {
+      "id": "decode/photo1-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 413.1846,
+      "coldAllocatedBytes": 25515288,
+      "warmups": 9,
+      "medianMs": 264.6528,
+      "minMs": 263.2068,
+      "allocatedBytes": 11167040,
+      "gen0PerRun": 1.3333333333333333,
+      "gen2PerRun": 0.6666666666666666,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 90.890625
+    },
+    {
+      "id": "decode/photo1-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 414.5436,
+      "coldAllocatedBytes": 25515288,
+      "warmups": 9,
+      "medianMs": 265.4207,
+      "minMs": 264.2676,
+      "allocatedBytes": 11167040,
+      "gen0PerRun": 1.3333333333333333,
+      "gen2PerRun": 0.6666666666666666,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 90.8203125
+    },
+    {
+      "id": "decode/photo1-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 411.4643,
+      "coldAllocatedBytes": 25515288,
+      "warmups": 9,
+      "medianMs": 265.7272,
+      "minMs": 265.1765,
+      "allocatedBytes": 11167040,
+      "gen0PerRun": 1.3333333333333333,
+      "gen2PerRun": 0.6666666666666666,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 90.87109375
+    },
+    {
+      "id": "decode/screen-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 233.4039,
+      "coldAllocatedBytes": 42073304,
+      "warmups": 22,
+      "medianMs": 100.3883,
+      "minMs": 98.6957,
+      "allocatedBytes": 15527064,
+      "gen0PerRun": 1,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 132.05078125
+    },
+    {
+      "id": "decode/screen-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 228.6671,
+      "coldAllocatedBytes": 42079496,
+      "warmups": 22,
+      "medianMs": 98.2872,
+      "minMs": 97.972,
+      "allocatedBytes": 15527064,
+      "gen0PerRun": 1,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 132.0859375
+    },
+    {
+      "id": "decode/screen-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 232.7968,
+      "coldAllocatedBytes": 42079496,
+      "warmups": 22,
+      "medianMs": 98.7664,
+      "minMs": 98.7536,
+      "allocatedBytes": 15527064,
+      "gen0PerRun": 1,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 132.07421875
+    },
+    {
+      "id": "decode/screen-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 233.488,
+      "coldAllocatedBytes": 42079496,
+      "warmups": 22,
+      "medianMs": 98.647,
+      "minMs": 98.4017,
+      "allocatedBytes": 15527064,
+      "gen0PerRun": 1,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 132.05859375
+    },
+    {
+      "id": "decode/photo12-d0-e1",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 741.5723,
+      "coldAllocatedBytes": 256222128,
+      "warmups": 5,
+      "medianMs": 588.171,
+      "minMs": 585.5098,
+      "allocatedBytes": 49895776,
+      "gen0PerRun": 0,
+      "gen2PerRun": 0,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 584.08984375
+    },
+    {
+      "id": "decode/photo12-d0-e1",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 738.8106,
+      "coldAllocatedBytes": 256222128,
+      "warmups": 5,
+      "medianMs": 586.9221,
+      "minMs": 586.1363,
+      "allocatedBytes": 49895776,
+      "gen0PerRun": 0,
+      "gen2PerRun": 0,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 584.1171875
+    },
+    {
+      "id": "decode/photo12-d0-e1",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 737.616,
+      "coldAllocatedBytes": 256222128,
+      "warmups": 5,
+      "medianMs": 589.1336,
+      "minMs": 585.0257,
+      "allocatedBytes": 49895776,
+      "gen0PerRun": 0,
+      "gen2PerRun": 0,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 584.18359375
+    },
+    {
+      "id": "decode/photo12-d0-e1",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 734.5293,
+      "coldAllocatedBytes": 256222128,
+      "warmups": 5,
+      "medianMs": 587.6576,
+      "minMs": 586.7543,
+      "allocatedBytes": 49895776,
+      "gen0PerRun": 0,
+      "gen2PerRun": 0,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 584.18359375
+    },
+    {
+      "id": "decode16/photo1-16-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 481.5019,
+      "coldAllocatedBytes": 47921480,
+      "warmups": 7,
+      "medianMs": 353.2178,
+      "minMs": 352.3678,
+      "allocatedBytes": 30184976,
+      "gen0PerRun": 2,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 116.8515625
+    },
+    {
+      "id": "decode16/photo1-16-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 478.2295,
+      "coldAllocatedBytes": 47921480,
+      "warmups": 7,
+      "medianMs": 353.5467,
+      "minMs": 351.6266,
+      "allocatedBytes": 30184976,
+      "gen0PerRun": 2,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 116.7734375
+    },
+    {
+      "id": "decode16/photo1-16-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 482.1817,
+      "coldAllocatedBytes": 47921480,
+      "warmups": 7,
+      "medianMs": 352.6625,
+      "minMs": 351.9451,
+      "allocatedBytes": 30184976,
+      "gen0PerRun": 2,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 116.84375
+    },
+    {
+      "id": "decode16/photo1-16-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 481.6688,
+      "coldAllocatedBytes": 47921480,
+      "warmups": 7,
+      "medianMs": 352.7545,
+      "minMs": 352.226,
+      "allocatedBytes": 30184976,
+      "gen0PerRun": 2,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 116.9921875
+    },
+    {
+      "id": "decode/IMG_0160-jpeg",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 673.3146,
+      "coldAllocatedBytes": 351050128,
+      "warmups": 6,
+      "medianMs": 428.1279,
+      "minMs": 426.968,
+      "allocatedBytes": 243551504,
+      "gen0PerRun": 5.333333333333333,
+      "gen2PerRun": 0.6666666666666666,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 884.30078125
+    },
+    {
+      "id": "decode/IMG_0160-jpeg",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 464.1886,
+      "coldAllocatedBytes": 351066536,
+      "warmups": 10,
+      "medianMs": 224.8294,
+      "minMs": 222.066,
+      "allocatedBytes": 243551504,
+      "gen0PerRun": 5.333333333333333,
+      "gen2PerRun": 0.6666666666666666,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 895.39453125
+    },
+    {
+      "id": "decode/IMG_0160-jpeg",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 466.2065,
+      "coldAllocatedBytes": 351060344,
+      "warmups": 10,
+      "medianMs": 225.9685,
+      "minMs": 224.0987,
+      "allocatedBytes": 243551504,
+      "gen0PerRun": 5.333333333333333,
+      "gen2PerRun": 0.6666666666666666,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 891.8515625
+    },
+    {
+      "id": "decode/IMG_0160-jpeg",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 0,
+      "coldMs": 667.0602,
+      "coldAllocatedBytes": 351050128,
+      "warmups": 6,
+      "medianMs": 428.3502,
+      "minMs": 426.5003,
+      "allocatedBytes": 243551504,
+      "gen0PerRun": 5.333333333333333,
+      "gen2PerRun": 0.6666666666666666,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 884.234375
+    },
+    {
+      "id": "tojpeg/IMG_0160-jpeg",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 4346850,
+      "coldMs": 563.2872,
+      "coldAllocatedBytes": 119177024,
+      "warmups": 7,
+      "medianMs": 388.5064,
+      "minMs": 384.9766,
+      "allocatedBytes": 112355552,
+      "gen0PerRun": 5.666666666666667,
+      "gen2PerRun": 1,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 293.1328125
+    },
+    {
+      "id": "tojpeg/IMG_0160-jpeg",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 4346850,
+      "coldMs": 569.4821,
+      "coldAllocatedBytes": 119177024,
+      "warmups": 7,
+      "medianMs": 390.3286,
+      "minMs": 386.6351,
+      "allocatedBytes": 112356088,
+      "gen0PerRun": 5.333333333333333,
+      "gen2PerRun": 0.6666666666666666,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 291.74609375
+    },
+    {
+      "id": "tojpeg/IMG_0160-jpeg",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 4346850,
+      "coldMs": 570.5585,
+      "coldAllocatedBytes": 119177024,
+      "warmups": 7,
+      "medianMs": 387.3761,
+      "minMs": 385.169,
+      "allocatedBytes": 112356392,
+      "gen0PerRun": 5.666666666666667,
+      "gen2PerRun": 1,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 295.48046875
+    },
+    {
+      "id": "tojpeg/IMG_0160-jpeg",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 4346850,
+      "coldMs": 569.5442,
+      "coldAllocatedBytes": 119177024,
+      "warmups": 7,
+      "medianMs": 387.6865,
+      "minMs": 385.0144,
+      "allocatedBytes": 112356432,
+      "gen0PerRun": 6,
+      "gen2PerRun": 1.3333333333333333,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 293.25390625
+    },
+    {
+      "id": "encode/photo1-d1-e1",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 81955,
+      "coldMs": 271.6921,
+      "coldAllocatedBytes": 69263160,
+      "warmups": 28,
+      "medianMs": 72.5183,
+      "minMs": 71.5217,
+      "allocatedBytes": 22914688,
+      "gen0PerRun": 1,
+      "gen2PerRun": 0,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 203.1328125
+    },
+    {
+      "id": "encode/photo1-d1-e1",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 81955,
+      "coldMs": 258.3151,
+      "coldAllocatedBytes": 69261440,
+      "warmups": 40,
+      "medianMs": 51.7342,
+      "minMs": 50.3082,
+      "allocatedBytes": 22914688,
+      "gen0PerRun": 1,
+      "gen2PerRun": 0,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 203.078125
+    },
+    {
+      "id": "encode/photo1-d1-e1",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 81955,
+      "coldMs": 253.2462,
+      "coldAllocatedBytes": 69263160,
+      "warmups": 41,
+      "medianMs": 51.6279,
+      "minMs": 51.4936,
+      "allocatedBytes": 22914688,
+      "gen0PerRun": 1.3333333333333333,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 203.1484375
+    },
+    {
+      "id": "encode/photo1-d1-e1",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 81955,
+      "coldMs": 275.9531,
+      "coldAllocatedBytes": 69261368,
+      "warmups": 28,
+      "medianMs": 75.0628,
+      "minMs": 72.3098,
+      "allocatedBytes": 22914688,
+      "gen0PerRun": 1,
+      "gen2PerRun": 0,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 202.9765625
+    },
+    {
+      "id": "encode/photo1-d1-e3",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 81955,
+      "coldMs": 273.4934,
+      "coldAllocatedBytes": 69254376,
+      "warmups": 29,
+      "medianMs": 72.5409,
+      "minMs": 71.4157,
+      "allocatedBytes": 22914688,
+      "gen0PerRun": 1,
+      "gen2PerRun": 0,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 203.03515625
+    },
+    {
+      "id": "encode/photo1-d1-e3",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 81955,
+      "coldMs": 256.6319,
+      "coldAllocatedBytes": 69264600,
+      "warmups": 41,
+      "medianMs": 51.9423,
+      "minMs": 51.9158,
+      "allocatedBytes": 22914688,
+      "gen0PerRun": 1.3333333333333333,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 203.3203125
+    },
+    {
+      "id": "encode/photo1-d1-e3",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 81955,
+      "coldMs": 259.9224,
+      "coldAllocatedBytes": 69267464,
+      "warmups": 41,
+      "medianMs": 52.6967,
+      "minMs": 51.4341,
+      "allocatedBytes": 22914688,
+      "gen0PerRun": 1.3333333333333333,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 203.2734375
+    },
+    {
+      "id": "encode/photo1-d1-e3",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 81955,
+      "coldMs": 271.9318,
+      "coldAllocatedBytes": 69262824,
+      "warmups": 28,
+      "medianMs": 73.7978,
+      "minMs": 71.9949,
+      "allocatedBytes": 22914688,
+      "gen0PerRun": 1,
+      "gen2PerRun": 0,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 203.03125
+    },
+    {
+      "id": "encode/photo1-d1-e5",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 93605,
+      "coldMs": 953.3886,
+      "coldAllocatedBytes": 76747024,
+      "warmups": 4,
+      "medianMs": 711.4232,
+      "minMs": 709.5044,
+      "allocatedBytes": 28928672,
+      "gen0PerRun": 1,
+      "gen2PerRun": 0,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 171.21875
+    },
+    {
+      "id": "encode/photo1-d1-e5",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 93605,
+      "coldMs": 562.5328,
+      "coldAllocatedBytes": 77039912,
+      "warmups": 8,
+      "medianMs": 296.2031,
+      "minMs": 291.1861,
+      "allocatedBytes": 29221632,
+      "gen0PerRun": 1,
+      "gen2PerRun": 0,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 187.69140625
+    },
+    {
+      "id": "encode/photo1-d1-e5",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 93605,
+      "coldMs": 563.0681,
+      "coldAllocatedBytes": 77059560,
+      "warmups": 8,
+      "medianMs": 295.1119,
+      "minMs": 294.7417,
+      "allocatedBytes": 29221632,
+      "gen0PerRun": 1,
+      "gen2PerRun": 0,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 187.390625
+    },
+    {
+      "id": "encode/photo1-d1-e5",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 93605,
+      "coldMs": 952.0769,
+      "coldAllocatedBytes": 76753280,
+      "warmups": 4,
+      "medianMs": 711.1991,
+      "minMs": 707.2544,
+      "allocatedBytes": 28928672,
+      "gen0PerRun": 1.3333333333333333,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 166.2578125
+    },
+    {
+      "id": "encode/photo1-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 95013,
+      "coldMs": 1709.1083,
+      "coldAllocatedBytes": 91641512,
+      "warmups": 3,
+      "medianMs": 1385.5027,
+      "minMs": 1382.3872,
+      "allocatedBytes": 31185648,
+      "gen0PerRun": 1.6666666666666667,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 167.15234375
+    },
+    {
+      "id": "encode/photo1-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 95013,
+      "coldMs": 858.6431,
+      "coldAllocatedBytes": 91946056,
+      "warmups": 5,
+      "medianMs": 543.572,
+      "minMs": 538.2124,
+      "allocatedBytes": 31478608,
+      "gen0PerRun": 1,
+      "gen2PerRun": 0,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 187.95703125
+    },
+    {
+      "id": "encode/photo1-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 95013,
+      "coldMs": 861.2975,
+      "coldAllocatedBytes": 91946056,
+      "warmups": 5,
+      "medianMs": 543.1946,
+      "minMs": 541.5051,
+      "allocatedBytes": 31478608,
+      "gen0PerRun": 1,
+      "gen2PerRun": 0,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 187.85546875
+    },
+    {
+      "id": "encode/photo1-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 95013,
+      "coldMs": 1667.3633,
+      "coldAllocatedBytes": 91647704,
+      "warmups": 3,
+      "medianMs": 1391.3124,
+      "minMs": 1387.7257,
+      "allocatedBytes": 31185648,
+      "gen0PerRun": 1.6666666666666667,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 167.0703125
+    },
+    {
+      "id": "encode/screen-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 55357,
+      "coldMs": 2754.2596,
+      "coldAllocatedBytes": 256166960,
+      "warmups": 2,
+      "medianMs": 2376.8404,
+      "minMs": 2372.1312,
+      "allocatedBytes": 146308728,
+      "gen0PerRun": 2,
+      "gen2PerRun": 0,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 551.06640625
+    },
+    {
+      "id": "encode/screen-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 55357,
+      "coldMs": 1309.2489,
+      "coldAllocatedBytes": 256454016,
+      "warmups": 4,
+      "medianMs": 957.903,
+      "minMs": 951.4667,
+      "allocatedBytes": 146601688,
+      "gen0PerRun": 2.3333333333333335,
+      "gen2PerRun": 0,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 748.95703125
+    },
+    {
+      "id": "encode/screen-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 55357,
+      "coldMs": 1315.831,
+      "coldAllocatedBytes": 256460736,
+      "warmups": 4,
+      "medianMs": 951.5388,
+      "minMs": 948.0973,
+      "allocatedBytes": 146601688,
+      "gen0PerRun": 2.3333333333333335,
+      "gen2PerRun": 0,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 748.92578125
+    },
+    {
+      "id": "encode/screen-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 55357,
+      "coldMs": 2689.5018,
+      "coldAllocatedBytes": 256158800,
+      "warmups": 2,
+      "medianMs": 2378.3952,
+      "minMs": 2374.088,
+      "allocatedBytes": 146308728,
+      "gen0PerRun": 2,
+      "gen2PerRun": 0,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 551.20703125
+    },
+    {
+      "id": "encode16/photo1-16-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 94928,
+      "coldMs": 1686.3279,
+      "coldAllocatedBytes": 91831848,
+      "warmups": 3,
+      "medianMs": 1423.9819,
+      "minMs": 1420.675,
+      "allocatedBytes": 31363360,
+      "gen0PerRun": 1.6666666666666667,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 189.1875
+    },
+    {
+      "id": "encode16/photo1-16-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 94928,
+      "coldMs": 843.6969,
+      "coldAllocatedBytes": 92119600,
+      "warmups": 5,
+      "medianMs": 550.0775,
+      "minMs": 548.1979,
+      "allocatedBytes": 31656320,
+      "gen0PerRun": 1.3333333333333333,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 189.32421875
+    },
+    {
+      "id": "encode16/photo1-16-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 94928,
+      "coldMs": 860.0247,
+      "coldAllocatedBytes": 92125744,
+      "warmups": 5,
+      "medianMs": 561.5158,
+      "minMs": 561.0939,
+      "allocatedBytes": 31656320,
+      "gen0PerRun": 1.3333333333333333,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 189.37890625
+    },
+    {
+      "id": "encode16/photo1-16-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 94928,
+      "coldMs": 1681.8094,
+      "coldAllocatedBytes": 91831848,
+      "warmups": 3,
+      "medianMs": 1441.0955,
+      "minMs": 1426.3656,
+      "allocatedBytes": 31363360,
+      "gen0PerRun": 1.6666666666666667,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 191.71484375
+    },
+    {
+      "id": "encode16/screen-16-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 55359,
+      "coldMs": 2727.8812,
+      "coldAllocatedBytes": 256422792,
+      "warmups": 2,
+      "medianMs": 2387.1488,
+      "minMs": 2373.6238,
+      "allocatedBytes": 146573184,
+      "gen0PerRun": 3,
+      "gen2PerRun": 1,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 452.6640625
+    },
+    {
+      "id": "encode16/screen-16-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 55359,
+      "coldMs": 1326.1279,
+      "coldAllocatedBytes": 256716800,
+      "warmups": 4,
+      "medianMs": 930.0316,
+      "minMs": 926.5876,
+      "allocatedBytes": 146872688,
+      "gen0PerRun": 3,
+      "gen2PerRun": 0.6666666666666666,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 490.46484375
+    },
+    {
+      "id": "encode16/screen-16-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 55359,
+      "coldMs": 1311.5614,
+      "coldAllocatedBytes": 256716800,
+      "warmups": 4,
+      "medianMs": 935.0598,
+      "minMs": 927.214,
+      "allocatedBytes": 146874040,
+      "gen0PerRun": 3.3333333333333335,
+      "gen2PerRun": 1,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 461.91796875
+    },
+    {
+      "id": "encode16/screen-16-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 55359,
+      "coldMs": 2710.7134,
+      "coldAllocatedBytes": 256410456,
+      "warmups": 2,
+      "medianMs": 2393.169,
+      "minMs": 2382.0506,
+      "allocatedBytes": 146573184,
+      "gen0PerRun": 3,
+      "gen2PerRun": 1,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 461.5
+    },
+    {
+      "id": "encode/photo12-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 1483500,
+      "coldMs": 17586.7074,
+      "coldAllocatedBytes": 1066156128,
+      "warmups": 2,
+      "medianMs": 17213.1346,
+      "minMs": 17109.9718,
+      "allocatedBytes": 385925560,
+      "gen0PerRun": 3,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 1668.35546875
+    },
+    {
+      "id": "encode/photo12-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 1483500,
+      "coldMs": 7014.8011,
+      "coldAllocatedBytes": 1066452080,
+      "warmups": 2,
+      "medianMs": 6596.4676,
+      "minMs": 6559.9453,
+      "allocatedBytes": 386218520,
+      "gen0PerRun": 3.3333333333333335,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 1448.6484375
+    },
+    {
+      "id": "encode/photo12-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 1483500,
+      "coldMs": 7074.2161,
+      "coldAllocatedBytes": 1066458272,
+      "warmups": 2,
+      "medianMs": 6587.178,
+      "minMs": 6561.6731,
+      "allocatedBytes": 386218520,
+      "gen0PerRun": 3.3333333333333335,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 1449.83984375
+    },
+    {
+      "id": "encode/photo12-d1-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 1483500,
+      "coldMs": 17572.4789,
+      "coldAllocatedBytes": 1066156128,
+      "warmups": 2,
+      "medianMs": 17200.7331,
+      "minMs": 17019.3459,
+      "allocatedBytes": 385925560,
+      "gen0PerRun": 3,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 1668.50390625
+    },
+    {
+      "id": "encode/photo1-d0-e1",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 785105,
+      "coldMs": 972.8797,
+      "coldAllocatedBytes": 162567672,
+      "warmups": 4,
+      "medianMs": 797.9556,
+      "minMs": 795.9465,
+      "allocatedBytes": 60306896,
+      "gen0PerRun": 1.6666666666666667,
+      "gen2PerRun": 0.6666666666666666,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 383.08984375
+    },
+    {
+      "id": "encode/photo1-d0-e1",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 785105,
+      "coldMs": 959.9277,
+      "coldAllocatedBytes": 162568128,
+      "warmups": 4,
+      "medianMs": 805.3943,
+      "minMs": 788.6981,
+      "allocatedBytes": 60308032,
+      "gen0PerRun": 1.6666666666666667,
+      "gen2PerRun": 0.6666666666666666,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 383.01171875
+    },
+    {
+      "id": "encode/photo1-d0-e1",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 785105,
+      "coldMs": 974.4915,
+      "coldAllocatedBytes": 162567672,
+      "warmups": 4,
+      "medianMs": 829.7366,
+      "minMs": 815.7903,
+      "allocatedBytes": 60307240,
+      "gen0PerRun": 1.6666666666666667,
+      "gen2PerRun": 0.6666666666666666,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 383.0390625
+    },
+    {
+      "id": "encode/photo1-d0-e1",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 785105,
+      "coldMs": 974.2006,
+      "coldAllocatedBytes": 162567672,
+      "warmups": 4,
+      "medianMs": 799.4387,
+      "minMs": 782.6629,
+      "allocatedBytes": 60306576,
+      "gen0PerRun": 1.6666666666666667,
+      "gen2PerRun": 0.6666666666666666,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 383.07421875
+    },
+    {
+      "id": "encode/photo1-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 785105,
+      "coldMs": 980.3252,
+      "coldAllocatedBytes": 162561936,
+      "warmups": 4,
+      "medianMs": 792.6043,
+      "minMs": 790.3862,
+      "allocatedBytes": 60307008,
+      "gen0PerRun": 1.6666666666666667,
+      "gen2PerRun": 0.6666666666666666,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 383.078125
+    },
+    {
+      "id": "encode/photo1-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 785105,
+      "coldMs": 969.5257,
+      "coldAllocatedBytes": 162567672,
+      "warmups": 4,
+      "medianMs": 805.5974,
+      "minMs": 804.6532,
+      "allocatedBytes": 60308032,
+      "gen0PerRun": 1.6666666666666667,
+      "gen2PerRun": 0.6666666666666666,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 383.2265625
+    },
+    {
+      "id": "encode/photo1-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 785105,
+      "coldMs": 977.6153,
+      "coldAllocatedBytes": 162567672,
+      "warmups": 4,
+      "medianMs": 804.4873,
+      "minMs": 799.635,
+      "allocatedBytes": 60307240,
+      "gen0PerRun": 1.6666666666666667,
+      "gen2PerRun": 0.6666666666666666,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 383.0625
+    },
+    {
+      "id": "encode/photo1-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 785105,
+      "coldMs": 974.3398,
+      "coldAllocatedBytes": 162561936,
+      "warmups": 4,
+      "medianMs": 802.7621,
+      "minMs": 798.3494,
+      "allocatedBytes": 60307240,
+      "gen0PerRun": 1.6666666666666667,
+      "gen2PerRun": 0.6666666666666666,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 383.2109375
+    },
+    {
+      "id": "encode/screen-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 108866,
+      "coldMs": 625.0428,
+      "coldAllocatedBytes": 136574192,
+      "warmups": 6,
+      "medianMs": 464.0232,
+      "minMs": 463.0637,
+      "allocatedBytes": 55505288,
+      "gen0PerRun": 2,
+      "gen2PerRun": 0.6666666666666666,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 270.609375
+    },
+    {
+      "id": "encode/screen-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 108866,
+      "coldMs": 622.8198,
+      "coldAllocatedBytes": 136572088,
+      "warmups": 6,
+      "medianMs": 472.8488,
+      "minMs": 461.7978,
+      "allocatedBytes": 55502624,
+      "gen0PerRun": 1.6666666666666667,
+      "gen2PerRun": 0.3333333333333333,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 283.57421875
+    },
+    {
+      "id": "encode/screen-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 108866,
+      "coldMs": 644.0737,
+      "coldAllocatedBytes": 136566224,
+      "warmups": 6,
+      "medianMs": 488.6363,
+      "minMs": 479.2044,
+      "allocatedBytes": 55505288,
+      "gen0PerRun": 2,
+      "gen2PerRun": 0.6666666666666666,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 278.109375
+    },
+    {
+      "id": "encode/screen-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 108866,
+      "coldMs": 661.914,
+      "coldAllocatedBytes": 136578560,
+      "warmups": 6,
+      "medianMs": 485.5817,
+      "minMs": 478.9307,
+      "allocatedBytes": 55505288,
+      "gen0PerRun": 2,
+      "gen2PerRun": 0.6666666666666666,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 269.625
+    },
+    {
+      "id": "encode16/photo1-16-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 2651786,
+      "coldMs": 1296.8737,
+      "coldAllocatedBytes": 177483192,
+      "warmups": 3,
+      "medianMs": 1071.633,
+      "minMs": 1069.0496,
+      "allocatedBytes": 72655000,
+      "gen0PerRun": 1.3333333333333333,
+      "gen2PerRun": 0,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 509.47265625
+    },
+    {
+      "id": "encode16/photo1-16-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 2651786,
+      "coldMs": 1238.8952,
+      "coldAllocatedBytes": 177483648,
+      "warmups": 3,
+      "medianMs": 1078.6514,
+      "minMs": 1070.5369,
+      "allocatedBytes": 72655000,
+      "gen0PerRun": 1.3333333333333333,
+      "gen2PerRun": 0,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 512.296875
+    },
+    {
+      "id": "encode16/photo1-16-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 2651786,
+      "coldMs": 1233.2771,
+      "coldAllocatedBytes": 177477024,
+      "warmups": 3,
+      "medianMs": 1112.7328,
+      "minMs": 1075.9676,
+      "allocatedBytes": 72655000,
+      "gen0PerRun": 1.3333333333333333,
+      "gen2PerRun": 0,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 509.37109375
+    },
+    {
+      "id": "encode16/photo1-16-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 2651786,
+      "coldMs": 1263.7744,
+      "coldAllocatedBytes": 177483392,
+      "warmups": 3,
+      "medianMs": 1080.0228,
+      "minMs": 1079.7821,
+      "allocatedBytes": 72655000,
+      "gen0PerRun": 1.3333333333333333,
+      "gen2PerRun": 0,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 509.14453125
+    }
+  ],
+  "summary": [
+    {
+      "case": "decode/tiny-1x1",
+      "beforeMs": 0.0144,
+      "afterMs": 0.0098,
+      "changePercent": -31.944444444444443
+    },
+    {
+      "case": "decode/small-64x64",
+      "beforeMs": 0.67235,
+      "afterMs": 0.6342,
+      "changePercent": -5.6741280583029745
+    },
+    {
+      "case": "decode/lossy-e1",
+      "beforeMs": 0.27235,
+      "afterMs": 0.13735,
+      "changePercent": -49.568569854966036
+    },
+    {
+      "case": "decode/photo1-d1-e7",
+      "beforeMs": 62.162549999999996,
+      "afterMs": 20.67405,
+      "changePercent": -66.74195315346618
+    },
+    {
+      "case": "decode/photo1-d3-e3",
+      "beforeMs": 78.22595,
+      "afterMs": 20.72085,
+      "changePercent": -73.51153932934021
+    },
+    {
+      "case": "decode/screen-d1-e7",
+      "beforeMs": 115.73485,
+      "afterMs": 35.00035,
+      "changePercent": -69.7581584112305
+    },
+    {
+      "case": "decode/photo12-d1-e7",
+      "beforeMs": 741.6936000000001,
+      "afterMs": 250.7554,
+      "changePercent": -66.19151088805404
+    },
+    {
+      "case": "decode-srgb/photo12-d1-e7",
+      "beforeMs": 735.01485,
+      "afterMs": 258.83025,
+      "changePercent": -64.78571147236005
+    },
+    {
+      "case": "decode16/photo1-16-d1-e7",
+      "beforeMs": 61.5333,
+      "afterMs": 21.4135,
+      "changePercent": -65.20014366204964
+    },
+    {
+      "case": "decode16/screen-16-d1-e7",
+      "beforeMs": 111.94595,
+      "afterMs": 36.67775,
+      "changePercent": -67.23619746851045
+    },
+    {
+      "case": "decode16/photo12-16-d1-e7",
+      "beforeMs": 705.9268,
+      "afterMs": 256.49775,
+      "changePercent": -63.665106637118754
+    },
+    {
+      "case": "decode/photo1-d0-e7",
+      "beforeMs": 264.93904999999995,
+      "afterMs": 265.03675,
+      "changePercent": 0.03687640610172682
+    },
+    {
+      "case": "decode/screen-d0-e7",
+      "beforeMs": 99.51765,
+      "afterMs": 98.52680000000001,
+      "changePercent": -0.9956525299783414
+    },
+    {
+      "case": "decode/photo12-d0-e1",
+      "beforeMs": 587.9143,
+      "afterMs": 588.02785,
+      "changePercent": 0.019314039478190992
+    },
+    {
+      "case": "decode16/photo1-16-d0-e7",
+      "beforeMs": 352.98615,
+      "afterMs": 353.1046,
+      "changePercent": 0.033556557389013975
+    },
+    {
+      "case": "decode/IMG_0160-jpeg",
+      "beforeMs": 428.23905,
+      "afterMs": 225.39895,
+      "changePercent": -47.366091438882094
+    },
+    {
+      "case": "tojpeg/IMG_0160-jpeg",
+      "beforeMs": 388.09645,
+      "afterMs": 388.85235,
+      "changePercent": 0.19477117092929763
+    },
+    {
+      "case": "encode/photo1-d1-e1",
+      "beforeMs": 73.79055,
+      "afterMs": 51.68105,
+      "changePercent": -29.962508749426586
+    },
+    {
+      "case": "encode/photo1-d1-e3",
+      "beforeMs": 73.16935,
+      "afterMs": 52.319500000000005,
+      "changePercent": -28.49533308687311
+    },
+    {
+      "case": "encode/photo1-d1-e5",
+      "beforeMs": 711.31115,
+      "afterMs": 295.6575,
+      "changePercent": -58.434856532194104
+    },
+    {
+      "case": "encode/photo1-d1-e7",
+      "beforeMs": 1388.40755,
+      "afterMs": 543.3833,
+      "changePercent": -60.86283886888976
+    },
+    {
+      "case": "encode/screen-d1-e7",
+      "beforeMs": 2377.6178,
+      "afterMs": 954.7209,
+      "changePercent": -59.845484837806985
+    },
+    {
+      "case": "encode16/photo1-16-d1-e7",
+      "beforeMs": 1432.5387,
+      "afterMs": 555.79665,
+      "changePercent": -61.201980093103245
+    },
+    {
+      "case": "encode16/screen-16-d1-e7",
+      "beforeMs": 2390.1589,
+      "afterMs": 932.5457,
+      "changePercent": -60.983945460697186
+    },
+    {
+      "case": "encode/photo12-d1-e7",
+      "beforeMs": 17206.93385,
+      "afterMs": 6591.8228,
+      "changePercent": -61.69089241893029
+    },
+    {
+      "case": "encode/photo1-d0-e1",
+      "beforeMs": 798.69715,
+      "afterMs": 817.56545,
+      "changePercent": 2.3623847912816576
+    },
+    {
+      "case": "encode/photo1-d0-e7",
+      "beforeMs": 797.6831999999999,
+      "afterMs": 805.0423499999999,
+      "changePercent": 0.9225654996871002
+    },
+    {
+      "case": "encode/screen-d0-e7",
+      "beforeMs": 474.80245,
+      "afterMs": 480.74255,
+      "changePercent": 1.2510676808849652
+    },
+    {
+      "case": "encode16/photo1-16-d0-e7",
+      "beforeMs": 1075.8279,
+      "afterMs": 1095.6921,
+      "changePercent": 1.8464105643662965
+    }
+  ],
+  "inputs": {
+    "decode/tiny-1x1": "5fb1551371837bba42db7dfc717bef035effd411da212d3ca602a1fe2df5f3b9",
+    "decode/small-64x64": "f3287bb07d85fef7b864b7f6ebe775ff53a9a24b299647533913e632165a43d7",
+    "decode/lossy-e1": "b53d015c64cf2443133b08bb32f0adc4b58c468a578a6e785baef632dad2630e",
+    "decode/photo1-d1-e7": "08e3fae5153645be1d6413813578f1a540eb8668e85ab5812b99ca8ad5bf88ae",
+    "decode/photo1-d3-e3": "1588c1259ea2975251e772ea7b98cf8c5acd90d8c740664c44f50f2e24afebfb",
+    "decode/screen-d1-e7": "0bab25642824b762986eea853c8f96d752fee133e6cfa5466f59ad6af355e137",
+    "decode/photo12-d1-e7": "5b57e772900a7a65035eb7ac2593243df4230c0d7df16733d0d246c65b9bbef9",
+    "decode-srgb/photo12-d1-e7": "5b57e772900a7a65035eb7ac2593243df4230c0d7df16733d0d246c65b9bbef9",
+    "decode16/photo1-16-d1-e7": "a2aa2dcd92b945d12835d2de051dfdd5ca7cbafccc3ae7e684c6620ce750fe2f",
+    "decode16/screen-16-d1-e7": "b4d72ed58f1dfb1e2a5358838fffba35f56b957c097c6c98ad2f38c3b215cbda",
+    "decode16/photo12-16-d1-e7": "7d70cef00f1c356534a745fdde01eb8493df986651e51dfa3d93fbc54f7a3908",
+    "decode/photo1-d0-e7": "04ac0507754f205e77afdba5645da082031276871091514567814edad863dd96",
+    "decode/screen-d0-e7": "d6d14c45ecea4e76314087095d4dafd758bab7e4c280c2f71e301f11081264a4",
+    "decode/photo12-d0-e1": "0457f379e453f6ce37bd61b6a672431faeb8dd16a4bb2126811462c303ca6e0a",
+    "decode16/photo1-16-d0-e7": "b56f8fd278bef823412738f2d31bb728aff6e8bd2700ffb8980a48ffb1b83ca2",
+    "decode/IMG_0160-jpeg": "77d5b4a4bd48f279b238b36a94b54ba3f764745b8521b9c5bed52268fc2a611c",
+    "tojpeg/IMG_0160-jpeg": "77d5b4a4bd48f279b238b36a94b54ba3f764745b8521b9c5bed52268fc2a611c",
+    "encode/photo1-d1-e1": "2a206c3d52f1a0203332c0ce01bb74ae8bbf6d8b02766bf29a18bd7f55abd871",
+    "encode/photo1-d1-e3": "2a206c3d52f1a0203332c0ce01bb74ae8bbf6d8b02766bf29a18bd7f55abd871",
+    "encode/photo1-d1-e5": "2a206c3d52f1a0203332c0ce01bb74ae8bbf6d8b02766bf29a18bd7f55abd871",
+    "encode/photo1-d1-e7": "2a206c3d52f1a0203332c0ce01bb74ae8bbf6d8b02766bf29a18bd7f55abd871",
+    "encode/screen-d1-e7": "110e1a2c2d9a9896150908202d9878d926631129bfdff7410dd0017038e2ca7e",
+    "encode16/photo1-16-d1-e7": "7ab17a82e089a44687f6da713740b8266a7744fdc0bc16ba363e4e477516d204",
+    "encode16/screen-16-d1-e7": "5fe54981c26d57c75ee756edd99d72ffeb1bf75cc6747e91e0a64d93626b4ba9",
+    "encode/photo12-d1-e7": "5408cccb413c4cf6a0596209b3e0d5675c1e7165c5418d58fb2b39c39d6dd55b",
+    "encode/photo1-d0-e1": "2a206c3d52f1a0203332c0ce01bb74ae8bbf6d8b02766bf29a18bd7f55abd871",
+    "encode/photo1-d0-e7": "2a206c3d52f1a0203332c0ce01bb74ae8bbf6d8b02766bf29a18bd7f55abd871",
+    "encode/screen-d0-e7": "110e1a2c2d9a9896150908202d9878d926631129bfdff7410dd0017038e2ca7e",
+    "encode16/photo1-16-d0-e7": "7ab17a82e089a44687f6da713740b8266a7744fdc0bc16ba363e4e477516d204"
+  }
+}

@@ -11,7 +11,7 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/art-ix/picturesharp.jxl</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageReleaseNotes>0.7.10: 50.3-89.1% fewer warm allocated bytes across 20 measured 8-bit/16-bit encode/decode cases, including 12 MP. Scoped pooled buffers, direct section writes to output streams, integer-channel lossless output, specialized 16-bit loops, active-range tree histograms and direct sRGB transfer. Encoded bytes, decoded pixels, metadata edits and JPEG reconstruction remain identical to 0.7.9. No API changes. Peak RSS is measured separately; see docs/releases/release-0.7.10.md and docs/benchmarks/speed.md.</PackageReleaseNotes>
+    <PackageReleaseNotes>0.8.0: SIMD (AVX2 with FMA, SSE4.1, scalar fallback) for DCT/IDCT, colour conversion, Gaborish/EPF, dequantization, pixel output and the lossy encoder. On an AVX2 CPU under JIT, single-threaded: VarDCT decode 2.8-3.8x, lossy encode 1.4x (effort 1-3) and 2.4-2.6x (effort 5-7) faster than 0.7.10; Modular and JPEG reconstruction unchanged. Encoded bytes, decoded pixels, metadata edits and JPEG reconstruction remain identical to 0.7.10. No API changes. Native AOT uses AVX2/FMA only when published with IlcInstructionSet=x86-64-v3 or native; see docs/releases/release-0.8.0.md and docs/benchmarks/speed.md.</PackageReleaseNotes>
   </PropertyGroup>
   <ItemGroup><PackageReference Include="PictureSharp" Version="$(PictureSharpVersion)" /></ItemGroup>
   <ItemGroup>

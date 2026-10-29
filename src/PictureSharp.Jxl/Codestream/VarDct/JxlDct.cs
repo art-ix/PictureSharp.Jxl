@@ -9,7 +9,7 @@ namespace PictureSharp.Formats.Jxl.Codestream.VarDct;
 /// lib/jxl/dct-inl.h, lib/jxl/dec_transforms-inl.h, lib/jxl/enc_transforms-inl.h and lib/jxl/transpose-inl.h
 /// (BSD-3-Clause), with the same operation order and fused multiply-adds.
 /// </summary>
-internal static class JxlDct
+internal static partial class JxlDct
 {
     internal const float Sqrt2 = 1.41421356237f;
 
@@ -285,6 +285,7 @@ internal static class JxlDct
 
     private static void ForwardDct2X2(ReadOnlySpan<float> pixels, int stride, Span<float> coefficients)
     {
+        if (ForwardDct2X2Sse41(pixels, stride, coefficients)) return;
         Span<float> block = stackalloc float[64];
         for (int y = 0; y < 8; y++)
         {
@@ -339,7 +340,7 @@ internal static class JxlDct
         // AFVDCT4x4: the transpose of the inverse basis.
         ReadOnlySpan<float> basis = JxlDctTables.AfvBasis;
         Span<float> coeff = stackalloc float[16];
-        for (int i = 0; i < 16; i++)
+        for (int i = AfvBasisAvx2(block, AfvBasisTransposed, coeff); i < 16; i++)
         {
             float sum = 0;
             for (int j = 0; j < 16; j++)
@@ -411,6 +412,7 @@ internal static class JxlDct
     /// </summary>
     private static void ScaledIdct(int rows, int columns, Span<float> from, Span<float> to, int toStride, Span<float> scratch)
     {
+        if (rows == 8 && columns == 8 && ScaledIdct8x8Avx2(from, to, toStride)) return;
         Span<float> block = scratch[..(rows * columns)];
         Span<float> tmp = scratch[(rows * columns)..];
         if (rows < columns)
@@ -431,6 +433,7 @@ internal static class JxlDct
     /// <summary>The scaled rows×columns DCT (ComputeScaledDCT) of a matrix read with <paramref name="fromStride"/>.</summary>
     private static void ScaledDct(int rows, int columns, ReadOnlySpan<float> from, int fromStride, Span<float> to, Span<float> scratch)
     {
+        if (rows == 8 && columns == 8 && ScaledDct8x8Avx2(from, fromStride, to)) return;
         Span<float> block = scratch[..(rows * columns)];
         Span<float> tmp = scratch[(rows * columns)..];
         if (rows < columns)
@@ -451,6 +454,7 @@ internal static class JxlDct
     /// <summary>to(c, r) = from(r, c) for a rows×columns matrix.</summary>
     private static void Transpose(int rows, int columns, ReadOnlySpan<float> from, int fromStride, Span<float> to, int toStride)
     {
+        if (TransposeSimd(rows, columns, from, fromStride, to, toStride)) return;
         for (int r = 0; r < rows; r++)
         {
             for (int c = 0; c < columns; c++)
@@ -465,14 +469,15 @@ internal static class JxlDct
     /// (<paramref name="fromStride"/> = <paramref name="count"/>) and destroyed: the columns are transformed in place,
     /// all at once row by row, then copied to <paramref name="to"/>.
     /// </summary>
-    private static void Idct1D(int n, int count, Span<float> from, int fromStride, Span<float> to, int toStride, Span<float> scratch)
+    internal static void Idct1D(int n, int count, Span<float> from, int fromStride, Span<float> to, int toStride, Span<float> scratch)
     {
         System.Diagnostics.Debug.Assert(fromStride == count);
         Span<float> data = from[..(n * count)];
         if (n == 8)
         {
             // The leaf kernel writes straight to the destination rows instead of in place and a copy.
-            for (int c = 0; c < count; c++)
+            int done = TransformColumnsSimd(8, count, from, fromStride, to, toStride, true, 1.0f);
+            for (int c = done; c < count; c++)
             {
                 Idct8(data, c, count, to, c, toStride);
             }
@@ -480,6 +485,7 @@ internal static class JxlDct
             return;
         }
 
+        if (n == 16 && IdctColumns16Avx2(count, data, to, toStride, scratch)) return;
         IdctColumns(n, count, data, scratch);
         for (int i = 0; i < n; i++)
         {
@@ -491,7 +497,7 @@ internal static class JxlDct
     /// The n-point DCT down each of <paramref name="count"/> columns, scaled by 1/n (DCT1DWrapper); <paramref name="to"/>
     /// is contiguous (<paramref name="toStride"/> = <paramref name="count"/>) and must not overlap <paramref name="from"/>.
     /// </summary>
-    private static void Dct1D(int n, int count, ReadOnlySpan<float> from, int fromStride, Span<float> to, int toStride, Span<float> scratch)
+    internal static void Dct1D(int n, int count, ReadOnlySpan<float> from, int fromStride, Span<float> to, int toStride, Span<float> scratch)
     {
         System.Diagnostics.Debug.Assert(toStride == count);
         Span<float> data = to[..(n * count)];
@@ -499,7 +505,8 @@ internal static class JxlDct
         if (n == 8)
         {
             // The leaf kernel reads the source rows and stores scaled results, without the copy and scaling passes.
-            for (int c = 0; c < count; c++)
+            int done = TransformColumnsSimd(8, count, from, fromStride, data, toStride, false, scale);
+            for (int c = done; c < count; c++)
             {
                 Dct8(from, c, fromStride, data, c, count, scale);
             }
@@ -507,13 +514,14 @@ internal static class JxlDct
             return;
         }
 
+        if (n == 16 && DctColumns16Avx2(count, from, fromStride, data, true, scale, scratch)) return;
         for (int i = 0; i < n; i++)
         {
             from.Slice(i * fromStride, count).CopyTo(data[(i * count)..]);
         }
 
         DctColumns(n, count, data, scratch);
-        for (int i = 0; i < data.Length; i++)
+        for (int i = ScaleRowAvx2(data, scale); i < data.Length; i++)
         {
             data[i] = scale * data[i];
         }
@@ -522,8 +530,9 @@ internal static class JxlDct
     // IDCT1DImpl on every column of the n×count matrix at once (row i holds element i of each column): even/odd
     // split, recursive halves, then the butterflies, each column with the same operations in the same order as a
     // single-column transform. Sizes 4 and 8 (the leaves of every larger size) are unrolled per column.
-    private static void IdctColumns(int n, int count, Span<float> data, Span<float> scratch)
+    internal static void IdctColumns(int n, int count, Span<float> data, Span<float> scratch)
     {
+        int done = TransformColumnsSimd(n, count, data, count, data, count, true, 1.0f);
         switch (n)
         {
             case 1:
@@ -531,7 +540,7 @@ internal static class JxlDct
             case 2:
                 Span<float> row0 = data[..count];
                 Span<float> row1 = data.Slice(count, count);
-                for (int c = 0; c < count; c++)
+                for (int c = done; c < count; c++)
                 {
                     (float a, float b) = (row0[c], row1[c]);
                     row0[c] = a + b;
@@ -540,7 +549,7 @@ internal static class JxlDct
 
                 return;
             case 4:
-                for (int c = 0; c < count; c++)
+                for (int c = done; c < count; c++)
                 {
                     Idct4(data[c], data[count + c], data[2 * count + c], data[3 * count + c],
                         out data[c], out data[count + c], out data[2 * count + c], out data[3 * count + c]);
@@ -548,7 +557,7 @@ internal static class JxlDct
 
                 return;
             case 8:
-                for (int c = 0; c < count; c++)
+                for (int c = done; c < count; c++)
                 {
                     Idct8(data, c, count);
                 }
@@ -556,6 +565,7 @@ internal static class JxlDct
                 return;
         }
 
+        if (n == 16 && IdctColumns16Avx2(count, data, data, count, scratch)) return;
         int half = n / 2;
         int halfSize = half * count;
         Span<float> even = scratch[..halfSize];
@@ -572,14 +582,14 @@ internal static class JxlDct
         {
             Span<float> row = odd.Slice(i * count, count);
             ReadOnlySpan<float> previous = odd.Slice((i - 1) * count, count);
-            for (int c = 0; c < count; c++)
+            for (int c = AddRowAvx2(row, previous); c < count; c++)
             {
                 row[c] += previous[c];
             }
         }
 
         Span<float> first = odd[..count];
-        for (int c = 0; c < count; c++)
+        for (int c = ScaleRowAvx2(first, Sqrt2); c < count; c++)
         {
             first[c] *= Sqrt2;
         }
@@ -593,7 +603,7 @@ internal static class JxlDct
             ReadOnlySpan<float> oddRow = odd.Slice(i * count, count);
             Span<float> top = data.Slice(i * count, count);
             Span<float> bottom = data.Slice((n - i - 1) * count, count);
-            for (int c = 0; c < count; c++)
+            for (int c = MergeRowsAvx2(evenRow, oddRow, top, bottom, multiplier); c < count; c++)
             {
                 top[c] = JxlFastMath.Fma(multiplier, oddRow[c], evenRow[c]);
                 bottom[c] = JxlFastMath.Fma(-multiplier, oddRow[c], evenRow[c]);
@@ -639,8 +649,9 @@ internal static class JxlDct
     }
 
     // DCT1DImpl on every column of the n×count matrix at once, in place; see IdctColumns.
-    private static void DctColumns(int n, int count, Span<float> data, Span<float> scratch)
+    internal static void DctColumns(int n, int count, Span<float> data, Span<float> scratch)
     {
+        int done = TransformColumnsSimd(n, count, data, count, data, count, false, 1.0f);
         switch (n)
         {
             case 1:
@@ -648,7 +659,7 @@ internal static class JxlDct
             case 2:
                 Span<float> row0 = data[..count];
                 Span<float> row1 = data.Slice(count, count);
-                for (int c = 0; c < count; c++)
+                for (int c = done; c < count; c++)
                 {
                     (float a, float b) = (row0[c], row1[c]);
                     row0[c] = a + b;
@@ -657,7 +668,7 @@ internal static class JxlDct
 
                 return;
             case 4:
-                for (int c = 0; c < count; c++)
+                for (int c = done; c < count; c++)
                 {
                     Dct4(data[c], data[count + c], data[2 * count + c], data[3 * count + c],
                         out data[c], out data[count + c], out data[2 * count + c], out data[3 * count + c]);
@@ -665,7 +676,7 @@ internal static class JxlDct
 
                 return;
             case 8:
-                for (int c = 0; c < count; c++)
+                for (int c = done; c < count; c++)
                 {
                     Dct8(data, c, count);
                 }
@@ -673,6 +684,7 @@ internal static class JxlDct
                 return;
         }
 
+        if (n == 16 && DctColumns16Avx2(count, data, count, data, false, 1.0f, scratch)) return;
         int half = n / 2;
         int halfSize = half * count;
         Span<float> even = scratch[..halfSize];
@@ -686,7 +698,7 @@ internal static class JxlDct
             ReadOnlySpan<float> bottom = data.Slice((n - 1 - i) * count, count);
             Span<float> evenRow = even.Slice(i * count, count);
             Span<float> oddRow = odd.Slice(i * count, count);
-            for (int c = 0; c < count; c++)
+            for (int c = SplitRowsAvx2(top, bottom, evenRow, oddRow, multiplier); c < count; c++)
             {
                 evenRow[c] = top[c] + bottom[c];
                 oddRow[c] = (top[c] - bottom[c]) * multiplier;
@@ -697,7 +709,7 @@ internal static class JxlDct
         DctColumns(half, count, odd, rest);
         Span<float> first = odd[..count];
         ReadOnlySpan<float> second = odd.Slice(count, count);
-        for (int c = 0; c < count; c++)
+        for (int c = CombineFirstAvx2(first, second); c < count; c++)
         {
             first[c] = JxlFastMath.Fma(first[c], Sqrt2, second[c]);
         }
@@ -706,7 +718,7 @@ internal static class JxlDct
         {
             Span<float> row = odd.Slice(i * count, count);
             ReadOnlySpan<float> next = odd.Slice((i + 1) * count, count);
-            for (int c = 0; c < count; c++)
+            for (int c = AddRowAvx2(row, next); c < count; c++)
             {
                 row[c] += next[c];
             }
@@ -846,6 +858,7 @@ internal static class JxlDct
 
     private static void Dct2X2(ReadOnlySpan<float> coefficients, Span<float> pixels, int stride)
     {
+        if (Dct2X2Sse41(coefficients, pixels, stride)) return;
         Span<float> block = stackalloc float[64];
         coefficients[..64].CopyTo(block);
         Idct2TopBlock(2, block);
@@ -900,7 +913,7 @@ internal static class JxlDct
 
         Span<float> block = stackalloc float[32];
         ReadOnlySpan<float> basis = JxlDctTables.AfvBasis;
-        for (int i = 0; i < 16; i++)
+        for (int i = AfvBasisAvx2(coeff, basis, block); i < 16; i++)
         {
             float pixel = 0;
             for (int j = 0; j < 16; j++)
@@ -944,6 +957,7 @@ internal static class JxlDct
     private static void Gather(ReadOnlySpan<float> coefficients, int start, int rowStep, int columnStep, int rows, int columns, float dc,
         Span<float> block)
     {
+        if (rowStep == 16 && rows == 4 && GatherAvx2(coefficients, start, columnStep, columns, dc, block)) return;
         block[0] = dc;
         for (int iy = 0; iy < rows; iy++)
         {

@@ -5,7 +5,7 @@ using PictureSharp.Formats.Jxl.Codestream.Color;
 namespace PictureSharp.Formats.Jxl.Integration;
 
 /// <summary>Copies rendered planes to the PictureSharp-owned straight-alpha pixel buffer.</summary>
-internal static class JxlPixelWriter
+internal static partial class JxlPixelWriter
 {
     public static Image Write(JxlDecodedImage decoded, CancellationToken cancellationToken)
     {
@@ -82,20 +82,21 @@ internal static class JxlPixelWriter
         ? new Image(width, height, PixelType.Rgba64)
         : new Image(width, height, PixelType.Rgba64, new Rgba64(0, 0, 0, ushort.MaxValue));
 
-    private static void WriteWideRow(ReadOnlySpan<float> r, ReadOnlySpan<float> g, ReadOnlySpan<float> b,
+    internal static void WriteWideRow(ReadOnlySpan<float> r, ReadOnlySpan<float> g, ReadOnlySpan<float> b,
         ReadOnlySpan<float> a, Span<Rgba64> row, bool gray)
     {
+        int done = WriteWideRowSimd(r, g, b, a, row, gray);
         if (gray)
         {
             if (a.IsEmpty)
-                for (int x = 0; x < row.Length; x++) { ushort v = ToUInt16(r[x]); row[x] = new(v, v, v, 65535); }
+                for (int x = done; x < row.Length; x++) { ushort v = ToUInt16(r[x]); row[x] = new(v, v, v, 65535); }
             else
-                for (int x = 0; x < row.Length; x++) { ushort v = ToUInt16(r[x]); row[x] = new(v, v, v, ToUInt16(a[x])); }
+                for (int x = done; x < row.Length; x++) { ushort v = ToUInt16(r[x]); row[x] = new(v, v, v, ToUInt16(a[x])); }
         }
         else if (a.IsEmpty)
-            for (int x = 0; x < row.Length; x++) row[x] = new(ToUInt16(r[x]), ToUInt16(g[x]), ToUInt16(b[x]), 65535);
+            for (int x = done; x < row.Length; x++) row[x] = new(ToUInt16(r[x]), ToUInt16(g[x]), ToUInt16(b[x]), 65535);
         else
-            for (int x = 0; x < row.Length; x++) row[x] = new(ToUInt16(r[x]), ToUInt16(g[x]), ToUInt16(b[x]), ToUInt16(a[x]));
+            for (int x = done; x < row.Length; x++) row[x] = new(ToUInt16(r[x]), ToUInt16(g[x]), ToUInt16(b[x]), ToUInt16(a[x]));
     }
 
     // Preserve the old two-step floating-point conversion without storing intermediate planes or rows.
@@ -164,18 +165,18 @@ internal static class JxlPixelWriter
     private static ushort ToUInt16(float value) => (ushort)Math.Clamp(MathF.Floor((value * 65535.0f) + 0.5f), 0, 65535);
 
     // Without alpha the row has no alpha samples and every pixel is opaque.
-    private static void WriteGrayRow(ReadOnlySpan<float> v, ReadOnlySpan<float> a, Span<Rgba32> row, int y)
+    internal static void WriteGrayRow(ReadOnlySpan<float> v, ReadOnlySpan<float> a, Span<Rgba32> row, int y)
     {
         ReadOnlySpan<float> dither = JxlDither.Row(y, 0);
         ReadOnlySpan<float> ditherAlpha = JxlDither.Row(y, 1);
-        for (int x = 0; x < row.Length; x++)
+        for (int x = WriteNarrowRowSimd(v, v, v, a, row, true, y); x < row.Length; x++)
         {
             byte value = JxlDither.ToByte(v[x], dither[JxlDither.Column(x, 0)]);
             row[x] = new Rgba32(value, value, value, a.IsEmpty ? (byte)255 : JxlDither.ToByte(a[x], ditherAlpha[JxlDither.Column(x, 1)]));
         }
     }
 
-    private static void WriteColorRow(ReadOnlySpan<float> r, ReadOnlySpan<float> g, ReadOnlySpan<float> b, ReadOnlySpan<float> a,
+    internal static void WriteColorRow(ReadOnlySpan<float> r, ReadOnlySpan<float> g, ReadOnlySpan<float> b, ReadOnlySpan<float> a,
         Span<Rgba32> row, int y)
     {
         ReadOnlySpan<float> ditherR = JxlDither.Row(y, 0);
@@ -185,7 +186,7 @@ internal static class JxlPixelWriter
         r = r[..row.Length];
         g = g[..row.Length];
         b = b[..row.Length];
-        for (int x = 0; x < row.Length; x++)
+        for (int x = WriteNarrowRowSimd(r, g, b, a, row, false, y); x < row.Length; x++)
         {
             row[x] = new Rgba32(JxlDither.ToByte(r[x], ditherR[JxlDither.Column(x, 0)]), JxlDither.ToByte(g[x], ditherG[JxlDither.Column(x, 1)]),
                 JxlDither.ToByte(b[x], ditherB[JxlDither.Column(x, 2)]), a.IsEmpty ? (byte)255 : JxlDither.ToByte(a[x], ditherA[JxlDither.Column(x, 3)]));

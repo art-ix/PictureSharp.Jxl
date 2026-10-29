@@ -1,4 +1,4 @@
-# Speed measurements — 0.7.3–0.7.10 (scalar)
+# Speed measurements — 0.7.3–0.8.0
 
 Measured on 2026-10-27, Linux x64, Intel Core i5-12500H, .NET 10, one thread (`DOTNET_PROCESSOR_COUNT=1`).
 libjxl 0.12.0 (`4128790`) times are its own `--num_reps=3` geomean with `--num_threads=1`, PNG I/O excluded, AVX2 enabled.
@@ -343,3 +343,72 @@ establish a timing guarantee for every image, effort or machine.
 Additional single-pair, five-operation screen controls: lossless 8-bit 479.3→463.5 ms,
 lossless 16-bit 755.1→750.6 ms, lossy 8-bit 2369.5→2343.6 ms and lossy 16-bit
 2382.7→2372.7 ms. These are regression spot checks, not evidence for sub-2% speed claims.
+
+## SIMD (0.8.0)
+
+Measured on 2026-10-29 against the original 0.7.10 package build (commit 6cd7f9b, same speed harness), Intel Core
+i5-12500H (AVX2, SSE4.1, FMA), Linux x64, SDK 10.0.401 / runtime 10.0.12, pinned to CPU 0,
+`DOTNET_TieredCompilation=0`, two alternating rounds of 3 warm calls per process, nothing else building or tracing.
+Median of the process medians; allocations are per warm call, RSS is the process peak. See the
+[raw data](../measurements/simd-0.8.0-final.json). Output is unchanged: the 1433-result all-efforts golden set
+(decode, ToSrgb, 8/16-bit, metadata edits, JPEG reconstruction, encodes at efforts 1–9) is identical to 0.7.10.
+
+| Case | 0.7.10 (ms) | 0.8.0 (ms) | Speed-up | Allocated (MiB/op) | Peak RSS (MiB) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| `decode/tiny-1x1` | 0.014 | 0.010 | 1.47× | 0.0 → 0.0 | 48 → 48 |
+| `decode/small-64x64` | 0.67 | 0.63 | 1.06× | 0.1 → 0.1 | 52 → 52 |
+| `decode/lossy-e1` | 0.27 | 0.14 | 1.98× | 0.1 → 0.1 | 52 → 52 |
+| `decode/photo1-d1-e7` | 62.2 | 20.7 | 3.01× | 5.6 → 5.6 | 134 → 131 |
+| `decode/photo1-d3-e3` | 78.2 | 20.7 | 3.78× | 4.9 → 4.9 | 103 → 103 |
+| `decode/screen-d1-e7` | 115.7 | 35.0 | 3.31× | 8.2 → 8.2 | 130 → 139 |
+| `decode/photo12-d1-e7` | 741.7 | 250.8 | 2.96× | 56.0 → 56.0 | 467 → 550 |
+| `decode-srgb/photo12-d1-e7` | 735.0 | 258.8 | 2.84× | 56.0 → 56.0 | 467 → 550 |
+| `decode16/photo1-16-d1-e7` | 61.5 | 21.4 | 2.87× | 9.5 → 9.5 | 174 → 170 |
+| `decode16/screen-16-d1-e7` | 111.9 | 36.7 | 3.05× | 14.3 → 14.3 | 161 → 162 |
+| `decode16/photo12-16-d1-e7` | 705.9 | 256.5 | 2.75× | 102.5 → 102.5 | 587 → 589 |
+| `decode/IMG_0160-jpeg` (12 MP JPEG transcode, private) | 428.2 | 225.4 | 1.90× | 232.3 → 232.3 | 884 → 895 |
+| `encode/photo1-d1-e1` | 73.8 | 51.7 | 1.43× | 21.9 → 21.9 | 203 → 203 |
+| `encode/photo1-d1-e3` | 73.2 | 52.3 | 1.40× | 21.9 → 21.9 | 203 → 203 |
+| `encode/photo1-d1-e5` | 711.3 | 295.7 | 2.41× | 27.6 → 27.9 | 171 → 188 |
+| `encode/photo1-d1-e7` | 1388.4 | 543.4 | 2.56× | 29.7 → 30.0 | 167 → 188 |
+| `encode/screen-d1-e7` | 2377.6 | 954.7 | 2.49× | 139.5 → 139.8 | 551 → 749 |
+| `encode16/photo1-16-d1-e7` | 1432.5 | 555.8 | 2.58× | 29.9 → 30.2 | 192 → 189 |
+| `encode16/screen-16-d1-e7` | 2390.2 | 932.5 | 2.56× | 139.8 → 140.1 | 462 → 490 |
+| `encode/photo12-d1-e7` | 17206.9 | 6591.8 | 2.61× | 368.0 → 368.3 | 1669 → 1450 |
+
+Controls without SIMD paths (Modular decode and encode, JPEG reconstruction) are unchanged:
+
+| Case | 0.7.10 (ms) | 0.8.0 (ms) | Change |
+| --- | ---: | ---: | ---: |
+| `decode/photo1-d0-e7` | 264.9 | 265.0 | +0.04% |
+| `decode/screen-d0-e7` | 99.5 | 98.5 | −1.00% |
+| `decode/photo12-d0-e1` | 587.9 | 588.0 | +0.02% |
+| `decode16/photo1-16-d0-e7` | 353.0 | 353.1 | +0.03% |
+| `tojpeg/IMG_0160-jpeg` | 388.1 | 388.9 | +0.19% |
+| `encode/photo1-d0-e7` | 797.7 | 805.0 | +0.92% |
+| `encode/photo1-d0-e1` | 798.7 → recheck 809.1 | 817.6 → recheck 810.1 | +2.36% → +0.13% |
+| `encode/screen-d0-e7` | 474.8 → recheck 475.2 | 480.7 → recheck 471.2 | +1.25% → −0.84% |
+| `encode16/photo1-16-d0-e7` | 1075.8 → recheck 1095.0 | 1095.7 → recheck 1084.1 | +1.85% → −0.99% |
+
+The three lossless encodes above 1% were rechecked with four rounds of five calls
+([recheck data](../measurements/simd-0.8.0-lossless-recheck.json)) and are within ±1%.
+
+The kernels (AVX2 + FMA where the scalar code fuses, non-fused AVX2/SSE4.1 otherwise; scalar fallback):
+DCT/IDCT columns (2/4/8/16-point leaves, 8×8 fully in registers, AVX/SSE transposes, recursive row steps,
+AFV basis, coefficient gather, 2×2 Haar), XYB/YCbCr output colour (sRGB and linear transfer), Gaborish and EPF0/1/2
+(EPF1 with sliding SAD windows), dequantization, Rgba32/Rgba64 pixel writing (SSE4.1 path too), and in the encoder XYB
+input with an exact vector CORE-MATH cbrt, AC strategy entropy terms (six ordered sums), chroma-from-luma slopes and
+derivatives, and AC quantization. Every change was kept only after a paired variant run showed at least 2% on its
+target case; raw data per change is under ignored `artifacts/simd-0.8.0/`.
+
+Extra scratch: the AC strategy search keeps 6 floats per transform coefficient (96 KiB at 64×64), the XYB input
+24 stack floats per row; the output writer has one fixed 16 KiB dither table. Warm allocations rise by ≤ 0.3 MiB/op.
+Peak RSS is not a controlled quantity (GC scheduling and ArrayPool retention): several cases are higher, the
+largest `encode/screen-d1-e7` (+198 MiB) and the 12 MP VarDCT decodes (+83 MiB), while the 12 MP encode is lower.
+Native AOT: with the default linux-x64 instruction set (x86-64-v2) `Avx2.IsSupported` and `Fma.IsSupported` are
+compile-time false, so an AOT application runs only the SSE4.1 kernels (pixel output, quantization) and the scalar
+DCT/colour/filter/encoder code; the numbers above are JIT numbers. Publishing with
+`-p:IlcInstructionSet=x86-64-v3` (or `native`) enables the AVX2/FMA kernels, and the binary then requires such a CPU.
+The package consumer passes under JIT, default AOT (AVX2=False, SSE4.1=True, FMA=False) and x86-64-v3 AOT (all True).
+Not measured: AOT speed, SSE4.1-only and scalar-only speed (the masked runs are correctness evidence only), CPUs without
+AVX2, ARM64. Rejected in the last pass: merging EPF copies of consecutive unfiltered blocks (no gain ≥ 2%).

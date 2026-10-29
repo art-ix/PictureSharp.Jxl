@@ -9,7 +9,7 @@
   <ItemGroup>
     <!-- The parsers are self-contained; compiling them into the tests checks the internal header model without
          InternalsVisibleTo on the plugin. -->
-    <Compile Include="../../src/PictureSharp.Jxl/JxlDescriptor.cs;../../src/PictureSharp.Jxl/Container/**/*.cs;../../src/PictureSharp.Jxl/Codestream/**/*.cs"
+    <Compile Include="../../src/PictureSharp.Jxl/Integration/JxlPixelWriter*.cs;../../src/PictureSharp.Jxl/JxlDescriptor.cs;../../src/PictureSharp.Jxl/Container/**/*.cs;../../src/PictureSharp.Jxl/Codestream/**/*.cs"
              Link="Parsers/%(RecursiveDir)%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

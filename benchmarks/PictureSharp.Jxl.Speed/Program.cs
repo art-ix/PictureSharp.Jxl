@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime.Intrinsics.X86;
 using System.Text.Json;
 using PictureSharp;
 using PictureSharp.Formats.Jxl;
@@ -83,6 +84,11 @@ internal sealed record SpeedCase(string Id, string Input, string Reference, Func
     public static IEnumerable<SpeedCase> All(string root)
     {
         ImageConfiguration.Default = ImageConfiguration.Default.ToBuilder().AddFormat(new JxlFormat()).Build();
+        foreach (string name in new[] { "tiny-1x1", "small-64x64", "lossy-e1" })
+        {
+            string tiny = Path.Combine(root, "tests/assets/corpus", name + ".jxl");
+            if (File.Exists(tiny)) yield return new($"decode/{name}", tiny, "djxl {in} {out}.png", Decode(new DecoderOptions()));
+        }
         string inputs = Path.Combine(root, "artifacts/speed-inputs");
         if (Directory.Exists(inputs))
         {
@@ -183,6 +189,7 @@ internal sealed record SpeedCase(string Id, string Input, string Reference, Func
         return new
         {
             id = Id,
+            hardware = new { avx2 = Avx2.IsSupported, sse41 = Sse41.IsSupported, fma = Fma.IsSupported },
             bytes = result.Length,
             coldMs,
             coldAllocatedBytes,

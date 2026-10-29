@@ -10,7 +10,7 @@ namespace PictureSharp.Formats.Jxl.Codestream.Numerics;
 /// MIT; see THIRD-PARTY-NOTICES.txt). Unlike <see cref="MathF.Cbrt"/>, whose result depends on the platform's C
 /// library, it gives the same result everywhere; checked exhaustively on all positive floats.
 /// </summary>
-internal static class JxlCbrt
+internal static partial class JxlCbrt
 {
     // 2^(k/3) for k = 0, 1, 2 (CORE-MATH: escale).
     private static ReadOnlySpan<double> EScale => [1.0, 1.2599210498948732, 1.5874010519681996];

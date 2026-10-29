@@ -103,7 +103,7 @@ foreach (string file in Files("artifacts/speed-inputs", "crop-*.png"))
     sources.Add((Path.GetRelativePath(root, file), Image.Load(file)));
 }
 
-int[] efforts = [1, 2, 3, 5, 7, 9];
+int[] efforts = [1, 2, 3, 4, 5, 6, 7, 8, 9];
 float[] distances = [0, 0.5f, 1, 3, 10];
 foreach ((string name, Image image) in sources)
 {

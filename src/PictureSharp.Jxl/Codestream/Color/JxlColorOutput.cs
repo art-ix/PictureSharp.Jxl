@@ -16,7 +16,7 @@ namespace PictureSharp.Formats.Jxl.Codestream.Color;
 /// that for matrix/TRC and gray profiles (<see cref="JxlIccTarget"/>) and otherwise renders sRGB. On request
 /// (<see cref="JxlColorTarget.Srgb"/>) every XYB image is rendered as sRGB, as libjxl does for an sRGB output encoding.
 /// </remarks>
-internal sealed class JxlColorOutput
+internal sealed partial class JxlColorOutput
 {
     private static ReadOnlySpan<float> SrgbP => [(float)-5.135152395e-04, (float)5.287254571e-03, (float)3.903842876e-01, (float)1.474205315e+00, (float)7.352629620e-01];
     private static ReadOnlySpan<float> SrgbQ => [(float)1.004519624e-02, (float)3.036675394e-01, (float)1.340816930e+00, (float)9.258482155e-01, (float)2.424867759e-02];
@@ -129,14 +129,14 @@ internal sealed class JxlColorOutput
             Span<float> r2 = planes[2].Row(y)[..r0.Length];
             if (transform == JxlColorTransform.YCbCr)
             {
-                for (int x = 0; x < r0.Length; x++)
+                for (int x = YCbCrToRgbAvx2(r0, r1, r2); x < r0.Length; x++)
                 {
                     YCbCrToRgb(ref r0[x], ref r1[x], ref r2[x]);
                 }
             }
             else if (curves is null && transfer == JxlTransferFunction.Srgb)
             {
-                for (int x = 0; x < r0.Length; x++)
+                for (int x = ApplyXybAvx2(r0, r1, r2, true); x < r0.Length; x++)
                 {
                     XybToLinear(ref r0[x], ref r1[x], ref r2[x]);
                     r0[x] = SrgbFromLinear(r0[x]);
@@ -146,7 +146,8 @@ internal sealed class JxlColorOutput
             }
             else
             {
-                for (int x = 0; x < r0.Length; x++)
+                int done = curves is null && transfer == JxlTransferFunction.Linear ? ApplyXybAvx2(r0, r1, r2, false) : 0;
+                for (int x = done; x < r0.Length; x++)
                 {
                     XybToRgb(ref r0[x], ref r1[x], ref r2[x]);
                 }

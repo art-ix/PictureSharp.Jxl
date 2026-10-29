@@ -10,7 +10,7 @@ namespace PictureSharp.Formats.Jxl.Codestream.Color;
 /// LinearRGBToXYB) and lib/jxl/cms/opsin_params.h (BSD-3-Clause); libjxl converts other spaces with a colour management
 /// system, this class handles enumerated encodings and matrix/TRC or gray ICC profiles.
 /// </summary>
-internal sealed class JxlXybInput
+internal sealed partial class JxlXybInput
 {
     private const float M00 = 0.30f;
     private const float M02 = 0.078f;
@@ -82,7 +82,7 @@ internal sealed class JxlXybInput
         float[] lg = linear[linear.Length == 3 ? 1 : 0];
         float[] lb = linear[^1];
         float[] m = absorbance;
-        for (int i = 0; i < x.Length; i++)
+        for (int i = ConvertAvx2(x, y, b); i < x.Length; i++)
         {
             float red = lr[(int)x[i]];
             float green = lg[(int)y[i]];

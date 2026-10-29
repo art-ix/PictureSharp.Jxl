@@ -105,6 +105,14 @@ its ICC profile via `JxlIccTarget`) or sRGB for `ToSrgb`.
   corresponding payload allocations. Streams are buffered; the limits are not a bound on all temporary memory.
 - **Animation:** extend session composition and map frames, durations and looping; until then it throws.
 - **Performance:** benchmark before pooling, SIMD or parallel groups; keep scalar results unchanged.
+- **SIMD (0.8.0):** vector kernels live in sibling `*.Simd.cs` files of the same partial type. The scalar caller
+  invokes a dispatch helper per row/block that returns the processed count or declines (unsupported ISA, short
+  input, layout); scalar tails stay. Kernels whose scalar code uses `MathF.FusedMultiplyAdd` require AVX2 + FMA;
+  non-fused kernels (pixel output, quantization) also have SSE4.1 paths. Reduction order, rounding and clamping are
+  those of 0.7.10; test-only frozen scalar copies under `tests/.../ScalarBaseline` and `scripts/verify-simd.sh`
+  (native, SSE4.1-only, scalar) check bit identity. See the [SIMD design](design/0.8.0-simd.md).
+  Native AOT compiles `IsSupported` against its instruction-set baseline (x86-64-v2 by default: SSE4.1 kernels
+  only); applications opt into AVX2/FMA with `IlcInstructionSet`.
 
 ## Tests and release
 

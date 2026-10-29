@@ -1,0 +1,2325 @@
+{
+  "date": "2026-10-29",
+  "version": "0.7.10",
+  "commit": "6cd7f9bb3c85e47c6204c825e230b85165141cc5",
+  "cpu": "Intel Core i5-12500H",
+  "architecture": "linux-x64",
+  "sdk": "10.0.401",
+  "runtime": "Microsoft.NETCore.App 10.0.12",
+  "dotnetTrace": "10.0.750501",
+  "affinity": "CPU 0",
+  "environment": {
+    "DOTNET_TieredCompilation": "0"
+  },
+  "codecThreads": 1,
+  "profile": "dotnet-sampled-thread-time,dotnet-common",
+  "scope": "Busiest thread across full process including startup, input preparation, cold call, warmup and measured iterations. Percentages are sampled attribution, not isolated warm benchmark timings. Inlining changes attribution. Inclusive rows overlap and must not be added.",
+  "commandTemplate": "taskset -c 0 env DOTNET_TieredCompilation=0 dotnet-trace collect --profile dotnet-sampled-thread-time,dotnet-common --format Speedscope -o <trace>.nettrace -- dotnet <Release-speed-harness.dll> case <root> <case> <runs>",
+  "extraction": "python3 scripts/speedscope-top.py <trace>.speedscope.json 20",
+  "cases": [
+    {
+      "id": "decode/photo1-d1-e7",
+      "runs": 50,
+      "input": "photo1-d1-e7.jxl",
+      "inputSha256": "08e3fae5153645be1d6413813578f1a540eb8668e85ab5812b99ca8ad5bf88ae",
+      "localTrace": "artifacts/traces/simd-plan-0.7.10/decode_photo1-d1-e7.speedscope.json",
+      "traceSha256": "693f8b82cf76c7b7c6e677fc12e7be1e5c2b34976b29e5916c5434be4abb872d",
+      "topExclusive": [
+        {
+          "method": "Codestream.Rendering.JxlRenderPipeline.Epf",
+          "exclusivePercent": 17.8,
+          "inclusivePercent": 18.6
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.IdctColumns",
+          "exclusivePercent": 13.9,
+          "inclusivePercent": 17.8
+        },
+        {
+          "method": "Codestream.Color.JxlColorOutput.Apply",
+          "exclusivePercent": 13.1,
+          "inclusivePercent": 14.1
+        },
+        {
+          "method": "Integration.JxlPixelWriter.WriteColorRow",
+          "exclusivePercent": 7.2,
+          "inclusivePercent": 7.2
+        },
+        {
+          "method": "Codestream.VarDct.JxlVarDctFrame.Dequantize",
+          "exclusivePercent": 7.1,
+          "inclusivePercent": 7.7
+        },
+        {
+          "method": "Codestream.Rendering.JxlRenderPipeline.Gaborish",
+          "exclusivePercent": 4.5,
+          "inclusivePercent": 4.8
+        },
+        {
+          "method": "Codestream.Entropy.JxlSymbolReader.ReadClustered",
+          "exclusivePercent": 4.5,
+          "inclusivePercent": 4.6
+        },
+        {
+          "method": "System.SpanHelpers.Memmove",
+          "exclusivePercent": 4.0,
+          "inclusivePercent": 4.0
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.ScaledIdct",
+          "exclusivePercent": 3.6,
+          "inclusivePercent": 24.0
+        },
+        {
+          "method": "Integration.JxlPixelWriter.Write",
+          "exclusivePercent": 3.1,
+          "inclusivePercent": 11.2
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Idct8",
+          "exclusivePercent": 2.4,
+          "inclusivePercent": 2.4
+        },
+        {
+          "method": "Codestream.Modular.JxlMaTree.DecodeWithLookup",
+          "exclusivePercent": 2.1,
+          "inclusivePercent": 4.1
+        },
+        {
+          "method": "Codestream.VarDct.JxlVarDctFrame.DecodePass",
+          "exclusivePercent": 1.6,
+          "inclusivePercent": 5.9
+        },
+        {
+          "method": "System.Buffer.ZeroMemoryInternal",
+          "exclusivePercent": 1.4,
+          "inclusivePercent": 1.4
+        },
+        {
+          "method": "Codestream.Color.JxlColorOutput.XybToRgb",
+          "exclusivePercent": 1.1,
+          "inclusivePercent": 1.1
+        },
+        {
+          "method": "Codestream.Modular.JxlWeightedPredictor.Predict",
+          "exclusivePercent": 0.9,
+          "inclusivePercent": 1.0
+        },
+        {
+          "method": "System.SpanHelpers.Fill",
+          "exclusivePercent": 0.8,
+          "inclusivePercent": 0.8
+        },
+        {
+          "method": "System.Buffer.MemmoveInternal",
+          "exclusivePercent": 0.7,
+          "inclusivePercent": 0.7
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Idct1D",
+          "exclusivePercent": 0.7,
+          "inclusivePercent": 20.6
+        },
+        {
+          "method": "Codestream.VarDct.JxlVarDctFrame.RenderGroup",
+          "exclusivePercent": 0.7,
+          "inclusivePercent": 33.4
+        }
+      ],
+      "topInclusive": [
+        {
+          "method": "Integration.JxlDecoder.Decode",
+          "inclusivePercent": 98.4
+        },
+        {
+          "method": "Codestream.Frames.JxlDecodeSession.Decode",
+          "inclusivePercent": 86.9
+        },
+        {
+          "method": "Codestream.Frames.JxlFrameSectionReader.DecodeSections",
+          "inclusivePercent": 47.6
+        },
+        {
+          "method": "Codestream.Frames.JxlFrameDecoder.Finish",
+          "inclusivePercent": 37.9
+        },
+        {
+          "method": "Codestream.Frames.JxlFrameDecoder.Render",
+          "inclusivePercent": 37.9
+        },
+        {
+          "method": "Codestream.Rendering.JxlFrameRenderer.Render",
+          "inclusivePercent": 37.7
+        },
+        {
+          "method": "Codestream.VarDct.JxlVarDctFrame.RenderGroup",
+          "inclusivePercent": 33.4
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.TransformToPixels",
+          "inclusivePercent": 24.0
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.ScaledIdct",
+          "inclusivePercent": 24.0
+        },
+        {
+          "method": "Codestream.Rendering.JxlFrameRenderer.Restore",
+          "inclusivePercent": 23.5
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Idct1D",
+          "inclusivePercent": 20.6
+        },
+        {
+          "method": "Codestream.Rendering.JxlRenderPipeline.Epf",
+          "inclusivePercent": 18.6
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.IdctColumns",
+          "inclusivePercent": 17.8
+        },
+        {
+          "method": "Codestream.Color.JxlColorOutput.Apply",
+          "inclusivePercent": 14.1
+        },
+        {
+          "method": "Integration.JxlPixelWriter.Write",
+          "inclusivePercent": 11.2
+        },
+        {
+          "method": "Codestream.VarDct.JxlVarDctFrame.Dequantize",
+          "inclusivePercent": 7.7
+        },
+        {
+          "method": "Integration.JxlPixelWriter.WriteColorRow",
+          "inclusivePercent": 7.2
+        },
+        {
+          "method": "Codestream.Modular.JxlModularStream.Decode",
+          "inclusivePercent": 6.3
+        },
+        {
+          "method": "Codestream.Frames.JxlFrameDecoder.DecodePassGroup",
+          "inclusivePercent": 5.9
+        },
+        {
+          "method": "Codestream.VarDct.JxlVarDctFrame.DecodePass",
+          "inclusivePercent": 5.9
+        }
+      ]
+    },
+    {
+      "id": "decode16/photo1-16-d1-e7",
+      "runs": 50,
+      "input": "photo1-16-d1-e7.jxl",
+      "inputSha256": "a2aa2dcd92b945d12835d2de051dfdd5ca7cbafccc3ae7e684c6620ce750fe2f",
+      "localTrace": "artifacts/traces/simd-plan-0.7.10/decode16_photo1-16-d1-e7.speedscope.json",
+      "traceSha256": "df68b42b0f0359b0d724ca45c6892d843ca4cce09e23d043ebff4545a4b9728f",
+      "topExclusive": [
+        {
+          "method": "Codestream.Rendering.JxlRenderPipeline.Epf",
+          "exclusivePercent": 18.3,
+          "inclusivePercent": 19.0
+        },
+        {
+          "method": "Codestream.Color.JxlColorOutput.Apply",
+          "exclusivePercent": 15.6,
+          "inclusivePercent": 15.6
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.IdctColumns",
+          "exclusivePercent": 14.2,
+          "inclusivePercent": 17.6
+        },
+        {
+          "method": "Codestream.VarDct.JxlVarDctFrame.Dequantize",
+          "exclusivePercent": 7.1,
+          "inclusivePercent": 7.8
+        },
+        {
+          "method": "Integration.JxlPixelWriter.WriteWideRow",
+          "exclusivePercent": 5.3,
+          "inclusivePercent": 5.3
+        },
+        {
+          "method": "Codestream.Rendering.JxlRenderPipeline.Gaborish",
+          "exclusivePercent": 5.2,
+          "inclusivePercent": 5.5
+        },
+        {
+          "method": "Codestream.Entropy.JxlSymbolReader.ReadClustered",
+          "exclusivePercent": 4.3,
+          "inclusivePercent": 4.6
+        },
+        {
+          "method": "System.SpanHelpers.Memmove",
+          "exclusivePercent": 3.8,
+          "inclusivePercent": 3.8
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.ScaledIdct",
+          "exclusivePercent": 3.7,
+          "inclusivePercent": 24.6
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Idct8",
+          "exclusivePercent": 2.2,
+          "inclusivePercent": 2.2
+        },
+        {
+          "method": "Codestream.Modular.JxlMaTree.DecodeWithLookup",
+          "exclusivePercent": 2.0,
+          "inclusivePercent": 4.6
+        },
+        {
+          "method": "Codestream.VarDct.JxlVarDctFrame.DecodePass",
+          "exclusivePercent": 1.7,
+          "inclusivePercent": 6.0
+        },
+        {
+          "method": "System.Buffer.ZeroMemoryInternal",
+          "exclusivePercent": 1.5,
+          "inclusivePercent": 1.5
+        },
+        {
+          "method": "System.SpanHelpers.Fill",
+          "exclusivePercent": 1.3,
+          "inclusivePercent": 1.3
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Idct1D",
+          "exclusivePercent": 1.1,
+          "inclusivePercent": 21.0
+        },
+        {
+          "method": "Codestream.Modular.JxlWeightedPredictor.Predict",
+          "exclusivePercent": 0.8,
+          "inclusivePercent": 1.3
+        },
+        {
+          "method": "System.Buffer.MemmoveInternal",
+          "exclusivePercent": 0.8,
+          "inclusivePercent": 0.8
+        },
+        {
+          "method": "Codestream.Modular.JxlMaTree.DecodeChannel",
+          "exclusivePercent": 0.8,
+          "inclusivePercent": 5.9
+        },
+        {
+          "method": "Codestream.Modular.JxlWeightedPredictor.Update",
+          "exclusivePercent": 0.5,
+          "inclusivePercent": 0.5
+        },
+        {
+          "method": "Codestream.VarDct.JxlVarDctFrame.RenderGroup",
+          "exclusivePercent": 0.5,
+          "inclusivePercent": 34.2
+        }
+      ],
+      "topInclusive": [
+        {
+          "method": "Integration.JxlDecoder.Decode",
+          "inclusivePercent": 98.3
+        },
+        {
+          "method": "Codestream.Frames.JxlDecodeSession.Decode",
+          "inclusivePercent": 91.3
+        },
+        {
+          "method": "Codestream.Frames.JxlFrameSectionReader.DecodeSections",
+          "inclusivePercent": 49.1
+        },
+        {
+          "method": "Codestream.Frames.JxlFrameDecoder.Finish",
+          "inclusivePercent": 40.5
+        },
+        {
+          "method": "Codestream.Frames.JxlFrameDecoder.Render",
+          "inclusivePercent": 40.5
+        },
+        {
+          "method": "Codestream.Rendering.JxlFrameRenderer.Render",
+          "inclusivePercent": 40.3
+        },
+        {
+          "method": "Codestream.VarDct.JxlVarDctFrame.RenderGroup",
+          "inclusivePercent": 34.2
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.ScaledIdct",
+          "inclusivePercent": 24.6
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.TransformToPixels",
+          "inclusivePercent": 24.6
+        },
+        {
+          "method": "Codestream.Rendering.JxlFrameRenderer.Restore",
+          "inclusivePercent": 24.6
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Idct1D",
+          "inclusivePercent": 21.0
+        },
+        {
+          "method": "Codestream.Rendering.JxlRenderPipeline.Epf",
+          "inclusivePercent": 19.0
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.IdctColumns",
+          "inclusivePercent": 17.6
+        },
+        {
+          "method": "Codestream.Color.JxlColorOutput.Apply",
+          "inclusivePercent": 15.6
+        },
+        {
+          "method": "Codestream.VarDct.JxlVarDctFrame.Dequantize",
+          "inclusivePercent": 7.8
+        },
+        {
+          "method": "Integration.JxlPixelWriter.WriteWide",
+          "inclusivePercent": 6.7
+        },
+        {
+          "method": "Codestream.Modular.JxlModularStream.Decode",
+          "inclusivePercent": 6.5
+        },
+        {
+          "method": "Codestream.Frames.JxlFrameDecoder.DecodePassGroup",
+          "inclusivePercent": 6.0
+        },
+        {
+          "method": "Codestream.VarDct.JxlVarDctFrame.DecodePass",
+          "inclusivePercent": 6.0
+        },
+        {
+          "method": "Codestream.Modular.JxlMaTree.DecodeChannel",
+          "inclusivePercent": 5.9
+        }
+      ]
+    },
+    {
+      "id": "decode/screen-d1-e7",
+      "runs": 40,
+      "input": "screen-d1-e7.jxl",
+      "inputSha256": "0bab25642824b762986eea853c8f96d752fee133e6cfa5466f59ad6af355e137",
+      "localTrace": "artifacts/traces/simd-plan-0.7.10/decode_screen-d1-e7.speedscope.json",
+      "traceSha256": "31ccba9c4612080ecf0f4e5b0115ecc259f67b01b1f414f74591a1ee06781c4a",
+      "topExclusive": [
+        {
+          "method": "Codestream.Rendering.JxlRenderPipeline.Epf",
+          "exclusivePercent": 25.9,
+          "inclusivePercent": 26.9
+        },
+        {
+          "method": "Codestream.Color.JxlColorOutput.Apply",
+          "exclusivePercent": 13.2,
+          "inclusivePercent": 13.2
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.IdctColumns",
+          "exclusivePercent": 10.9,
+          "inclusivePercent": 13.6
+        },
+        {
+          "method": "Codestream.VarDct.JxlVarDctFrame.Dequantize",
+          "exclusivePercent": 6.2,
+          "inclusivePercent": 6.6
+        },
+        {
+          "method": "Integration.JxlPixelWriter.WriteColorRow",
+          "exclusivePercent": 5.2,
+          "inclusivePercent": 5.2
+        },
+        {
+          "method": "Codestream.Entropy.JxlSymbolReader.ReadClustered",
+          "exclusivePercent": 4.6,
+          "inclusivePercent": 4.7
+        },
+        {
+          "method": "Codestream.Rendering.JxlRenderPipeline.Gaborish",
+          "exclusivePercent": 4.3,
+          "inclusivePercent": 4.5
+        },
+        {
+          "method": "System.SpanHelpers.Memmove",
+          "exclusivePercent": 4.1,
+          "inclusivePercent": 4.1
+        },
+        {
+          "method": "Integration.JxlPixelWriter.Write",
+          "exclusivePercent": 2.6,
+          "inclusivePercent": 8.7
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.ScaledIdct",
+          "exclusivePercent": 2.6,
+          "inclusivePercent": 18.3
+        },
+        {
+          "method": "Codestream.VarDct.JxlVarDctFrame.DecodePass",
+          "exclusivePercent": 2.0,
+          "inclusivePercent": 7.0
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Idct8",
+          "exclusivePercent": 1.7,
+          "inclusivePercent": 1.7
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Idct2TopBlock",
+          "exclusivePercent": 1.4,
+          "inclusivePercent": 2.1
+        },
+        {
+          "method": "Codestream.VarDct.JxlVarDctFrame.RenderGroup",
+          "exclusivePercent": 1.4,
+          "inclusivePercent": 31.0
+        },
+        {
+          "method": "System.Buffer.ZeroMemoryInternal",
+          "exclusivePercent": 1.2,
+          "inclusivePercent": 1.2
+        },
+        {
+          "method": "Codestream.Modular.JxlMaTree.DecodeWithLookup",
+          "exclusivePercent": 1.2,
+          "inclusivePercent": 2.6
+        },
+        {
+          "method": "System.Buffer.MemmoveInternal",
+          "exclusivePercent": 0.9,
+          "inclusivePercent": 0.9
+        },
+        {
+          "method": "System.SpanHelpers.Fill",
+          "exclusivePercent": 0.8,
+          "inclusivePercent": 0.8
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Idct1D",
+          "exclusivePercent": 0.8,
+          "inclusivePercent": 16.0
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Afv",
+          "exclusivePercent": 0.7,
+          "inclusivePercent": 1.2
+        }
+      ],
+      "topInclusive": [
+        {
+          "method": "Integration.JxlDecoder.Decode",
+          "inclusivePercent": 98.6
+        },
+        {
+          "method": "Codestream.Frames.JxlDecodeSession.Decode",
+          "inclusivePercent": 89.7
+        },
+        {
+          "method": "Codestream.Frames.JxlFrameDecoder.Finish",
+          "inclusivePercent": 44.7
+        },
+        {
+          "method": "Codestream.Frames.JxlFrameDecoder.Render",
+          "inclusivePercent": 44.7
+        },
+        {
+          "method": "Codestream.Rendering.JxlFrameRenderer.Render",
+          "inclusivePercent": 44.6
+        },
+        {
+          "method": "Codestream.Frames.JxlFrameSectionReader.DecodeSections",
+          "inclusivePercent": 43.7
+        },
+        {
+          "method": "Codestream.Rendering.JxlFrameRenderer.Restore",
+          "inclusivePercent": 31.4
+        },
+        {
+          "method": "Codestream.VarDct.JxlVarDctFrame.RenderGroup",
+          "inclusivePercent": 31.0
+        },
+        {
+          "method": "Codestream.Rendering.JxlRenderPipeline.Epf",
+          "inclusivePercent": 26.9
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.ScaledIdct",
+          "inclusivePercent": 18.3
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.TransformToPixels",
+          "inclusivePercent": 18.1
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Idct1D",
+          "inclusivePercent": 16.0
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.IdctColumns",
+          "inclusivePercent": 13.6
+        },
+        {
+          "method": "Codestream.Color.JxlColorOutput.Apply",
+          "inclusivePercent": 13.2
+        },
+        {
+          "method": "Integration.JxlPixelWriter.Write",
+          "inclusivePercent": 8.7
+        },
+        {
+          "method": "Codestream.Frames.JxlFrameDecoder.DecodePassGroup",
+          "inclusivePercent": 7.0
+        },
+        {
+          "method": "Codestream.VarDct.JxlVarDctFrame.DecodePass",
+          "inclusivePercent": 7.0
+        },
+        {
+          "method": "Codestream.VarDct.JxlVarDctFrame.Dequantize",
+          "inclusivePercent": 6.6
+        },
+        {
+          "method": "Integration.JxlPixelWriter.WriteColorRow",
+          "inclusivePercent": 5.2
+        },
+        {
+          "method": "Codestream.Entropy.JxlSymbolReader.ReadClustered",
+          "inclusivePercent": 4.7
+        }
+      ]
+    },
+    {
+      "id": "decode/photo1-d0-e7",
+      "runs": 20,
+      "input": "photo1-d0-e7.jxl",
+      "inputSha256": "04ac0507754f205e77afdba5645da082031276871091514567814edad863dd96",
+      "localTrace": "artifacts/traces/simd-plan-0.7.10/decode_photo1-d0-e7.speedscope.json",
+      "traceSha256": "8fce919402b93c006373aa058af4217ba4818c2c6bebb6027e181f2819e8b3ca",
+      "topExclusive": [
+        {
+          "method": "Codestream.Modular.JxlMaTree.DecodeChannel",
+          "exclusivePercent": 34.9,
+          "inclusivePercent": 91.2
+        },
+        {
+          "method": "Codestream.Modular.JxlMaTree+FilteredTree.Lookup",
+          "exclusivePercent": 21.5,
+          "inclusivePercent": 21.5
+        },
+        {
+          "method": "Codestream.Modular.JxlWeightedPredictor.Predict",
+          "exclusivePercent": 13.5,
+          "inclusivePercent": 16.1
+        },
+        {
+          "method": "Codestream.Entropy.JxlSymbolReader.ReadClustered",
+          "exclusivePercent": 8.6,
+          "inclusivePercent": 9.0
+        },
+        {
+          "method": "Codestream.Modular.JxlWeightedPredictor.Update",
+          "exclusivePercent": 8.1,
+          "inclusivePercent": 8.1
+        },
+        {
+          "method": "Codestream.Modular.JxlWeightedPredictor.ErrorWeight",
+          "exclusivePercent": 2.6,
+          "inclusivePercent": 2.6
+        },
+        {
+          "method": "Codestream.Modular.Transforms.JxlPaletteTransform.Inverse",
+          "exclusivePercent": 1.5,
+          "inclusivePercent": 1.7
+        },
+        {
+          "method": "Integration.JxlPixelWriter.WriteIntegerNarrowRow",
+          "exclusivePercent": 1.5,
+          "inclusivePercent": 1.5
+        },
+        {
+          "method": "Codestream.Modular.JxlMaTree.Predict",
+          "exclusivePercent": 0.8,
+          "inclusivePercent": 0.8
+        },
+        {
+          "method": "Integration.JxlPixelWriter.WriteInteger",
+          "exclusivePercent": 0.7,
+          "inclusivePercent": 2.5
+        },
+        {
+          "method": "System.SpanHelpers.Memmove",
+          "exclusivePercent": 0.5,
+          "inclusivePercent": 0.5
+        },
+        {
+          "method": "System.Buffer.ZeroMemoryInternal",
+          "exclusivePercent": 0.5,
+          "inclusivePercent": 0.5
+        },
+        {
+          "method": "Codestream.Modular.Transforms.JxlRctTransform.Inverse",
+          "exclusivePercent": 0.5,
+          "inclusivePercent": 0.5
+        },
+        {
+          "method": "Codestream.Entropy.JxlEntropyCode.InitAliasTable",
+          "exclusivePercent": 0.5,
+          "inclusivePercent": 0.5
+        },
+        {
+          "method": "System.Threading.Thread.<PollGC>g__PollGCWorker|67_0",
+          "exclusivePercent": 0.4,
+          "inclusivePercent": 0.4
+        },
+        {
+          "method": "System.SpanHelpers.Fill",
+          "exclusivePercent": 0.2,
+          "inclusivePercent": 0.2
+        },
+        {
+          "method": "Codestream.IO.JxlBitReader.ReadBits",
+          "exclusivePercent": 0.2,
+          "inclusivePercent": 0.4
+        },
+        {
+          "method": "Codestream.IO.JxlBitReader.Refill",
+          "exclusivePercent": 0.2,
+          "inclusivePercent": 0.2
+        },
+        {
+          "method": "System.Linq.Enumerable.<ToArray>g__EnumerableToArray|324_0",
+          "exclusivePercent": 0.1,
+          "inclusivePercent": 0.2
+        },
+        {
+          "method": "Interop+Sys.PRead",
+          "exclusivePercent": 0.1,
+          "inclusivePercent": 0.1
+        }
+      ],
+      "topInclusive": [
+        {
+          "method": "Integration.JxlDecoder.Decode",
+          "inclusivePercent": 98.8
+        },
+        {
+          "method": "Codestream.Frames.JxlDecodeSession.Decode",
+          "inclusivePercent": 96.1
+        },
+        {
+          "method": "Codestream.Frames.JxlFrameSectionReader.DecodeSections",
+          "inclusivePercent": 95.5
+        },
+        {
+          "method": "Codestream.Frames.JxlFrameDecoder.DecodePassGroup",
+          "inclusivePercent": 95.3
+        },
+        {
+          "method": "Codestream.Frames.JxlFrameDecoder.DecodeGroup",
+          "inclusivePercent": 95.3
+        },
+        {
+          "method": "Codestream.Modular.JxlModularStream.Decode",
+          "inclusivePercent": 94.5
+        },
+        {
+          "method": "Codestream.Modular.JxlMaTree.DecodeChannel",
+          "inclusivePercent": 91.2
+        },
+        {
+          "method": "Codestream.Modular.JxlMaTree+FilteredTree.Lookup",
+          "inclusivePercent": 21.5
+        },
+        {
+          "method": "Codestream.Modular.JxlWeightedPredictor.Predict",
+          "inclusivePercent": 16.1
+        },
+        {
+          "method": "Codestream.Entropy.JxlSymbolReader.ReadClustered",
+          "inclusivePercent": 9.0
+        },
+        {
+          "method": "Codestream.Modular.JxlWeightedPredictor.Update",
+          "inclusivePercent": 8.1
+        },
+        {
+          "method": "Codestream.Modular.JxlWeightedPredictor.ErrorWeight",
+          "inclusivePercent": 2.6
+        },
+        {
+          "method": "Integration.JxlPixelWriter.Write",
+          "inclusivePercent": 2.5
+        },
+        {
+          "method": "Integration.JxlPixelWriter.WriteInteger",
+          "inclusivePercent": 2.5
+        },
+        {
+          "method": "Codestream.Modular.JxlModularImage.UndoTransforms",
+          "inclusivePercent": 2.2
+        },
+        {
+          "method": "Codestream.Modular.Transforms.JxlPaletteTransform.Inverse",
+          "inclusivePercent": 1.7
+        },
+        {
+          "method": "Integration.JxlPixelWriter.WriteIntegerNarrowRow",
+          "inclusivePercent": 1.5
+        },
+        {
+          "method": "Codestream.Entropy.JxlEntropyCode.Read",
+          "inclusivePercent": 0.9
+        },
+        {
+          "method": "Codestream.Modular.JxlMaTree.Predict",
+          "inclusivePercent": 0.8
+        },
+        {
+          "method": "Codestream.Entropy.JxlEntropyCode.ReadAnsCodes",
+          "inclusivePercent": 0.7
+        }
+      ]
+    },
+    {
+      "id": "decode16/photo1-16-d0-e7",
+      "runs": 20,
+      "input": "photo1-16-d0-e7.jxl",
+      "inputSha256": "b56f8fd278bef823412738f2d31bb728aff6e8bd2700ffb8980a48ffb1b83ca2",
+      "localTrace": "artifacts/traces/simd-plan-0.7.10/decode16_photo1-16-d0-e7.speedscope.json",
+      "traceSha256": "1b66dbe24a670635ad0f0347de967eef2e4005690923477e584ec91bb7bd399e",
+      "topExclusive": [
+        {
+          "method": "Codestream.Modular.JxlMaTree+FilteredTree.Lookup",
+          "exclusivePercent": 32.7,
+          "inclusivePercent": 32.7
+        },
+        {
+          "method": "Codestream.Modular.JxlMaTree.DecodeChannel",
+          "exclusivePercent": 30.0,
+          "inclusivePercent": 93.5
+        },
+        {
+          "method": "Codestream.Modular.JxlWeightedPredictor.Predict",
+          "exclusivePercent": 11.3,
+          "inclusivePercent": 13.1
+        },
+        {
+          "method": "Codestream.Entropy.JxlSymbolReader.ReadClustered",
+          "exclusivePercent": 8.5,
+          "inclusivePercent": 9.0
+        },
+        {
+          "method": "Codestream.Modular.JxlWeightedPredictor.Update",
+          "exclusivePercent": 6.5,
+          "inclusivePercent": 6.5
+        },
+        {
+          "method": "Codestream.Modular.JxlWeightedPredictor.ErrorWeight",
+          "exclusivePercent": 1.8,
+          "inclusivePercent": 1.8
+        },
+        {
+          "method": "Integration.JxlPixelWriter.WriteIntegerWideRow",
+          "exclusivePercent": 1.4,
+          "inclusivePercent": 1.4
+        },
+        {
+          "method": "Codestream.Entropy.JxlEntropyCode.InitAliasTable",
+          "exclusivePercent": 0.9,
+          "inclusivePercent": 0.9
+        },
+        {
+          "method": "Codestream.IO.JxlBitReader.Refill",
+          "exclusivePercent": 0.7,
+          "inclusivePercent": 0.7
+        },
+        {
+          "method": "Codestream.Entropy.JxlHybridUint.Decode",
+          "exclusivePercent": 0.7,
+          "inclusivePercent": 1.2
+        },
+        {
+          "method": "System.Buffer.ZeroMemoryInternal",
+          "exclusivePercent": 0.4,
+          "inclusivePercent": 0.4
+        },
+        {
+          "method": "System.SpanHelpers.Fill",
+          "exclusivePercent": 0.4,
+          "inclusivePercent": 0.4
+        },
+        {
+          "method": "System.SpanHelpers.Memmove",
+          "exclusivePercent": 0.4,
+          "inclusivePercent": 0.4
+        },
+        {
+          "method": "Codestream.Modular.Transforms.JxlRctTransform.Inverse",
+          "exclusivePercent": 0.3,
+          "inclusivePercent": 0.3
+        },
+        {
+          "method": "Codestream.IO.JxlBitReader.ReadBits",
+          "exclusivePercent": 0.3,
+          "inclusivePercent": 1.0
+        },
+        {
+          "method": "Codestream.Modular.JxlMaTree.Predict",
+          "exclusivePercent": 0.3,
+          "inclusivePercent": 0.3
+        },
+        {
+          "method": "System.Buffer.MemmoveInternal",
+          "exclusivePercent": 0.3,
+          "inclusivePercent": 0.3
+        },
+        {
+          "method": "System.Threading.Thread.<PollGC>g__PollGCWorker|67_0",
+          "exclusivePercent": 0.2,
+          "inclusivePercent": 0.2
+        },
+        {
+          "method": "Codestream.Modular.JxlMaTree.Filter",
+          "exclusivePercent": 0.2,
+          "inclusivePercent": 0.7
+        },
+        {
+          "method": "System.Linq.Enumerable.<ToArray>g__EnumerableToArray|324_0",
+          "exclusivePercent": 0.2,
+          "inclusivePercent": 0.3
+        }
+      ],
+      "topInclusive": [
+        {
+          "method": "Integration.JxlDecoder.Decode",
+          "inclusivePercent": 99.1
+        },
+        {
+          "method": "Codestream.Frames.JxlDecodeSession.Decode",
+          "inclusivePercent": 97.0
+        },
+        {
+          "method": "Codestream.Frames.JxlFrameSectionReader.DecodeSections",
+          "inclusivePercent": 96.8
+        },
+        {
+          "method": "Codestream.Frames.JxlFrameDecoder.DecodePassGroup",
+          "inclusivePercent": 96.7
+        },
+        {
+          "method": "Codestream.Frames.JxlFrameDecoder.DecodeGroup",
+          "inclusivePercent": 96.7
+        },
+        {
+          "method": "Codestream.Modular.JxlModularStream.Decode",
+          "inclusivePercent": 96.0
+        },
+        {
+          "method": "Codestream.Modular.JxlMaTree.DecodeChannel",
+          "inclusivePercent": 93.5
+        },
+        {
+          "method": "Codestream.Modular.JxlMaTree+FilteredTree.Lookup",
+          "inclusivePercent": 32.7
+        },
+        {
+          "method": "Codestream.Modular.JxlWeightedPredictor.Predict",
+          "inclusivePercent": 13.1
+        },
+        {
+          "method": "Codestream.Entropy.JxlSymbolReader.ReadClustered",
+          "inclusivePercent": 9.0
+        },
+        {
+          "method": "Codestream.Modular.JxlWeightedPredictor.Update",
+          "inclusivePercent": 6.5
+        },
+        {
+          "method": "Integration.JxlPixelWriter.WriteWide",
+          "inclusivePercent": 1.9
+        },
+        {
+          "method": "Integration.JxlPixelWriter.WriteInteger",
+          "inclusivePercent": 1.9
+        },
+        {
+          "method": "Codestream.Modular.JxlWeightedPredictor.ErrorWeight",
+          "inclusivePercent": 1.8
+        },
+        {
+          "method": "Integration.JxlPixelWriter.WriteIntegerWideRow",
+          "inclusivePercent": 1.4
+        },
+        {
+          "method": "Codestream.Entropy.JxlEntropyCode.Read",
+          "inclusivePercent": 1.3
+        },
+        {
+          "method": "Codestream.Entropy.JxlHybridUint.Decode",
+          "inclusivePercent": 1.2
+        },
+        {
+          "method": "Codestream.Entropy.JxlEntropyCode.ReadAnsCodes",
+          "inclusivePercent": 1.2
+        },
+        {
+          "method": "Codestream.IO.JxlBitReader.ReadBits",
+          "inclusivePercent": 1.0
+        },
+        {
+          "method": "Codestream.Modular.JxlMaTree.Read",
+          "inclusivePercent": 1.0
+        }
+      ]
+    },
+    {
+      "id": "encode/photo1-d1-e7",
+      "runs": 8,
+      "input": "photo1.png",
+      "inputSha256": "2a206c3d52f1a0203332c0ce01bb74ae8bbf6d8b02766bf29a18bd7f55abd871",
+      "localTrace": "artifacts/traces/simd-plan-0.7.10/encode_photo1-d1-e7.speedscope.json",
+      "traceSha256": "67d93c2b4c8dc87f051ba002c74a68a1db6c9db09fa71e155c05529a3d2360fe",
+      "topExclusive": [
+        {
+          "method": "Codestream.Encoding.Lossy.JxlAcStrategySearch.EstimateEntropy",
+          "exclusivePercent": 14.8,
+          "inclusivePercent": 63.9
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlChromaFromLumaSearch.Derivatives",
+          "exclusivePercent": 11.1,
+          "inclusivePercent": 11.1
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.IdctColumns",
+          "exclusivePercent": 10.7,
+          "inclusivePercent": 13.3
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.DctColumns",
+          "exclusivePercent": 9.7,
+          "inclusivePercent": 11.2
+        },
+        {
+          "method": "System.SpanHelpers.Memmove",
+          "exclusivePercent": 7.0,
+          "inclusivePercent": 7.0
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Dct1D",
+          "exclusivePercent": 5.4,
+          "inclusivePercent": 19.6
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.ScaledIdct",
+          "exclusivePercent": 4.1,
+          "inclusivePercent": 20.1
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.ScaledDct",
+          "exclusivePercent": 3.8,
+          "inclusivePercent": 17.3
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.ForwardAfv",
+          "exclusivePercent": 2.5,
+          "inclusivePercent": 6.4
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Afv",
+          "exclusivePercent": 2.5,
+          "inclusivePercent": 6.4
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Idct8",
+          "exclusivePercent": 2.3,
+          "inclusivePercent": 2.3
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlConvolution.Symmetric5",
+          "exclusivePercent": 1.9,
+          "inclusivePercent": 1.9
+        },
+        {
+          "method": "Codestream.Rendering.JxlRenderPipeline.Epf",
+          "exclusivePercent": 1.8,
+          "inclusivePercent": 1.9
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Dct8",
+          "exclusivePercent": 1.7,
+          "inclusivePercent": 1.7
+        },
+        {
+          "method": "Codestream.Color.JxlXybInput.Convert",
+          "exclusivePercent": 1.6,
+          "inclusivePercent": 1.6
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Gather",
+          "exclusivePercent": 1.6,
+          "inclusivePercent": 1.6
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Idct1D",
+          "exclusivePercent": 1.6,
+          "inclusivePercent": 17.7
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlEpfSharpnessSearch.BlockErrors",
+          "exclusivePercent": 1.5,
+          "inclusivePercent": 1.5
+        },
+        {
+          "method": "Codestream.VarDct.JxlVarDctFrame.Dequantize",
+          "exclusivePercent": 1.1,
+          "inclusivePercent": 1.1
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Dct4X8",
+          "exclusivePercent": 0.8,
+          "inclusivePercent": 2.6
+        }
+      ],
+      "topInclusive": [
+        {
+          "method": "Integration.JxlEncoder.Encode",
+          "inclusivePercent": 99.1
+        },
+        {
+          "method": "Integration.JxlEncoder.EncodeTo",
+          "inclusivePercent": 99.1
+        },
+        {
+          "method": "Codestream.Encoding.JxlCodestreamWriter.WriteLossyTo",
+          "inclusivePercent": 97.0
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlVarDctEncoder.WriteFrame",
+          "inclusivePercent": 97.0
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlVarDctEncoder.ChooseParameters",
+          "inclusivePercent": 81.1
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlAcStrategySearch.ProcessTile",
+          "inclusivePercent": 64.1
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlAcStrategySearch.EstimateEntropy",
+          "inclusivePercent": 63.9
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlAcStrategySearch.FindBest8X8Transform",
+          "inclusivePercent": 32.8
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlAcStrategySearch.FindBestFirstLevelDivisionForSquare",
+          "inclusivePercent": 26.4
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.ScaledIdct",
+          "inclusivePercent": 20.1
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Dct1D",
+          "inclusivePercent": 19.6
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Idct1D",
+          "inclusivePercent": 17.7
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.ScaledDct",
+          "inclusivePercent": 17.3
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.TransformToPixels",
+          "inclusivePercent": 17.0
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.TransformFromPixels",
+          "inclusivePercent": 16.0
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlVarDctEncoder.ChromaFromLuma",
+          "inclusivePercent": 13.6
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlChromaFromLumaSearch.ComputeTile",
+          "inclusivePercent": 13.6
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.IdctColumns",
+          "inclusivePercent": 13.3
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlChromaFromLumaSearch.FindBestMultiplier",
+          "inclusivePercent": 11.3
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.DctColumns",
+          "inclusivePercent": 11.2
+        }
+      ]
+    },
+    {
+      "id": "encode16/photo1-16-d1-e7",
+      "runs": 8,
+      "input": "photo1-16.png",
+      "inputSha256": "7ab17a82e089a44687f6da713740b8266a7744fdc0bc16ba363e4e477516d204",
+      "localTrace": "artifacts/traces/simd-plan-0.7.10/encode16_photo1-16-d1-e7.speedscope.json",
+      "traceSha256": "1ef6ffbb1b0f3e71db2e4915b387c081b4a391f07ee05aec90454aa5a7eeb66f",
+      "topExclusive": [
+        {
+          "method": "Codestream.Encoding.Lossy.JxlAcStrategySearch.EstimateEntropy",
+          "exclusivePercent": 15.7,
+          "inclusivePercent": 63.5
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlChromaFromLumaSearch.Derivatives",
+          "exclusivePercent": 11.9,
+          "inclusivePercent": 11.9
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.IdctColumns",
+          "exclusivePercent": 10.2,
+          "inclusivePercent": 12.4
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.DctColumns",
+          "exclusivePercent": 10.2,
+          "inclusivePercent": 11.6
+        },
+        {
+          "method": "System.SpanHelpers.Memmove",
+          "exclusivePercent": 6.3,
+          "inclusivePercent": 6.3
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Dct1D",
+          "exclusivePercent": 4.9,
+          "inclusivePercent": 18.8
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.ScaledDct",
+          "exclusivePercent": 4.1,
+          "inclusivePercent": 17.1
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.ScaledIdct",
+          "exclusivePercent": 3.8,
+          "inclusivePercent": 19.0
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.ForwardAfv",
+          "exclusivePercent": 2.8,
+          "inclusivePercent": 6.3
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Afv",
+          "exclusivePercent": 2.3,
+          "inclusivePercent": 6.2
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Idct8",
+          "exclusivePercent": 2.2,
+          "inclusivePercent": 2.2
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlConvolution.Symmetric5",
+          "exclusivePercent": 1.9,
+          "inclusivePercent": 1.9
+        },
+        {
+          "method": "Codestream.Rendering.JxlRenderPipeline.Epf",
+          "exclusivePercent": 1.8,
+          "inclusivePercent": 2.0
+        },
+        {
+          "method": "Codestream.Color.JxlXybInput.Convert",
+          "exclusivePercent": 1.6,
+          "inclusivePercent": 1.6
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Idct1D",
+          "exclusivePercent": 1.6,
+          "inclusivePercent": 17.0
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Gather",
+          "exclusivePercent": 1.5,
+          "inclusivePercent": 1.5
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlEpfSharpnessSearch.BlockErrors",
+          "exclusivePercent": 1.3,
+          "inclusivePercent": 1.3
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Dct8",
+          "exclusivePercent": 1.3,
+          "inclusivePercent": 1.3
+        },
+        {
+          "method": "Codestream.VarDct.JxlVarDctFrame.Dequantize",
+          "exclusivePercent": 1.0,
+          "inclusivePercent": 1.0
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Dct4X8",
+          "exclusivePercent": 0.9,
+          "inclusivePercent": 2.7
+        }
+      ],
+      "topInclusive": [
+        {
+          "method": "Integration.JxlEncoder.Encode",
+          "inclusivePercent": 99.0
+        },
+        {
+          "method": "Integration.JxlEncoder.EncodeTo",
+          "inclusivePercent": 99.0
+        },
+        {
+          "method": "Codestream.Encoding.JxlCodestreamWriter.WriteLossyTo",
+          "inclusivePercent": 97.1
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlVarDctEncoder.WriteFrame",
+          "inclusivePercent": 97.0
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlVarDctEncoder.ChooseParameters",
+          "inclusivePercent": 81.6
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlAcStrategySearch.ProcessTile",
+          "inclusivePercent": 63.8
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlAcStrategySearch.EstimateEntropy",
+          "inclusivePercent": 63.5
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlAcStrategySearch.FindBest8X8Transform",
+          "inclusivePercent": 32.5
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlAcStrategySearch.FindBestFirstLevelDivisionForSquare",
+          "inclusivePercent": 26.2
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.ScaledIdct",
+          "inclusivePercent": 19.0
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Dct1D",
+          "inclusivePercent": 18.8
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.ScaledDct",
+          "inclusivePercent": 17.1
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Idct1D",
+          "inclusivePercent": 17.0
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.TransformToPixels",
+          "inclusivePercent": 16.1
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.TransformFromPixels",
+          "inclusivePercent": 15.9
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlVarDctEncoder.ChromaFromLuma",
+          "inclusivePercent": 14.5
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlChromaFromLumaSearch.ComputeTile",
+          "inclusivePercent": 14.5
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.IdctColumns",
+          "inclusivePercent": 12.4
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlChromaFromLumaSearch.FindBestMultiplier",
+          "inclusivePercent": 12.1
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlChromaFromLumaSearch.Derivatives",
+          "inclusivePercent": 11.9
+        }
+      ]
+    },
+    {
+      "id": "encode/screen-d1-e7",
+      "runs": 6,
+      "input": "screen.png",
+      "inputSha256": "110e1a2c2d9a9896150908202d9878d926631129bfdff7410dd0017038e2ca7e",
+      "localTrace": "artifacts/traces/simd-plan-0.7.10/encode_screen-d1-e7.speedscope.json",
+      "traceSha256": "0213481c76d73496860eb561e9105c9c09509c665c489c4d39b6b10a4d1fc804",
+      "topExclusive": [
+        {
+          "method": "Codestream.Encoding.Lossy.JxlAcStrategySearch.EstimateEntropy",
+          "exclusivePercent": 16.4,
+          "inclusivePercent": 62.0
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlChromaFromLumaSearch.Derivatives",
+          "exclusivePercent": 12.3,
+          "inclusivePercent": 12.3
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.IdctColumns",
+          "exclusivePercent": 10.0,
+          "inclusivePercent": 12.4
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.DctColumns",
+          "exclusivePercent": 9.9,
+          "inclusivePercent": 11.1
+        },
+        {
+          "method": "System.SpanHelpers.Memmove",
+          "exclusivePercent": 6.7,
+          "inclusivePercent": 6.7
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Dct1D",
+          "exclusivePercent": 4.6,
+          "inclusivePercent": 18.3
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.ScaledIdct",
+          "exclusivePercent": 3.6,
+          "inclusivePercent": 18.1
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.ScaledDct",
+          "exclusivePercent": 3.5,
+          "inclusivePercent": 16.5
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.ForwardAfv",
+          "exclusivePercent": 2.7,
+          "inclusivePercent": 6.5
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlPatchFinder.FindTextLikePatches",
+          "exclusivePercent": 2.5,
+          "inclusivePercent": 2.9
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Afv",
+          "exclusivePercent": 2.1,
+          "inclusivePercent": 5.6
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Idct8",
+          "exclusivePercent": 2.0,
+          "inclusivePercent": 2.0
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlConvolution.Symmetric5",
+          "exclusivePercent": 1.7,
+          "inclusivePercent": 1.7
+        },
+        {
+          "method": "Codestream.Rendering.JxlRenderPipeline.Epf",
+          "exclusivePercent": 1.6,
+          "inclusivePercent": 1.8
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Gather",
+          "exclusivePercent": 1.4,
+          "inclusivePercent": 1.4
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Idct1D",
+          "exclusivePercent": 1.4,
+          "inclusivePercent": 16.5
+        },
+        {
+          "method": "Codestream.Color.JxlXybInput.Convert",
+          "exclusivePercent": 1.4,
+          "inclusivePercent": 1.4
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlEpfSharpnessSearch.BlockErrors",
+          "exclusivePercent": 1.3,
+          "inclusivePercent": 1.3
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Dct8",
+          "exclusivePercent": 1.2,
+          "inclusivePercent": 1.2
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Dct4X8",
+          "exclusivePercent": 0.8,
+          "inclusivePercent": 2.8
+        }
+      ],
+      "topInclusive": [
+        {
+          "method": "Integration.JxlEncoder.Encode",
+          "inclusivePercent": 99.3
+        },
+        {
+          "method": "Integration.JxlEncoder.EncodeTo",
+          "inclusivePercent": 99.3
+        },
+        {
+          "method": "Codestream.Encoding.JxlCodestreamWriter.WriteLossyTo",
+          "inclusivePercent": 97.7
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlVarDctEncoder.WriteFrame",
+          "inclusivePercent": 97.7
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlVarDctEncoder.ChooseParameters",
+          "inclusivePercent": 79.5
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlAcStrategySearch.ProcessTile",
+          "inclusivePercent": 62.2
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlAcStrategySearch.EstimateEntropy",
+          "inclusivePercent": 62.0
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlAcStrategySearch.FindBest8X8Transform",
+          "inclusivePercent": 32.7
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlAcStrategySearch.FindBestFirstLevelDivisionForSquare",
+          "inclusivePercent": 25.0
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Dct1D",
+          "inclusivePercent": 18.3
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.ScaledIdct",
+          "inclusivePercent": 18.1
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.ScaledDct",
+          "inclusivePercent": 16.5
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Idct1D",
+          "inclusivePercent": 16.5
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.TransformToPixels",
+          "inclusivePercent": 15.5
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.TransformFromPixels",
+          "inclusivePercent": 14.7
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlVarDctEncoder.ChromaFromLuma",
+          "inclusivePercent": 14.6
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlChromaFromLumaSearch.ComputeTile",
+          "inclusivePercent": 14.6
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlChromaFromLumaSearch.FindBestMultiplier",
+          "inclusivePercent": 12.5
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.IdctColumns",
+          "inclusivePercent": 12.4
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlChromaFromLumaSearch.Derivatives",
+          "inclusivePercent": 12.3
+        }
+      ]
+    },
+    {
+      "id": "encode/photo1-d1-e3",
+      "runs": 50,
+      "input": "photo1.png",
+      "inputSha256": "2a206c3d52f1a0203332c0ce01bb74ae8bbf6d8b02766bf29a18bd7f55abd871",
+      "localTrace": "artifacts/traces/simd-plan-0.7.10/encode_photo1-d1-e3.speedscope.json",
+      "traceSha256": "7c50db6c1df900cac3805fbc3e6a2e8ff8227473cd19d8abbed8a2978b8ec9a7",
+      "topExclusive": [
+        {
+          "method": "Codestream.Color.JxlXybInput.Convert",
+          "exclusivePercent": 28.4,
+          "inclusivePercent": 28.4
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Dct1D",
+          "exclusivePercent": 7.1,
+          "inclusivePercent": 8.8
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlCoefficientQuantizer.QuantizeBlockAC",
+          "exclusivePercent": 6.6,
+          "inclusivePercent": 6.6
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlAcTokenizer.Tokenize",
+          "exclusivePercent": 6.0,
+          "inclusivePercent": 10.2
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlCoefficientQuantizer.ComputeGroup",
+          "exclusivePercent": 6.0,
+          "inclusivePercent": 25.8
+        },
+        {
+          "method": "Codestream.Encoding.JxlEntropyEncoder.WriteStream",
+          "exclusivePercent": 5.3,
+          "inclusivePercent": 5.5
+        },
+        {
+          "method": "Codestream.Encoding.JxlModularTreeEncoder.Scan",
+          "exclusivePercent": 3.0,
+          "inclusivePercent": 6.7
+        },
+        {
+          "method": "System.Buffer.ZeroMemoryInternal",
+          "exclusivePercent": 2.9,
+          "inclusivePercent": 2.9
+        },
+        {
+          "method": "Codestream.Encoding.JxlHistogramClustering.MergeCost",
+          "exclusivePercent": 2.9,
+          "inclusivePercent": 2.9
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.ScaledDct",
+          "exclusivePercent": 2.4,
+          "inclusivePercent": 6.8
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlCoefficientOrders.CountZeros",
+          "exclusivePercent": 2.3,
+          "inclusivePercent": 2.3
+        },
+        {
+          "method": "System.Threading.Thread.<PollGC>g__PollGCWorker|67_0",
+          "exclusivePercent": 2.3,
+          "inclusivePercent": 2.3
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Dct8",
+          "exclusivePercent": 1.8,
+          "inclusivePercent": 1.8
+        },
+        {
+          "method": "System.Linq.Enumerable.Max",
+          "exclusivePercent": 1.6,
+          "inclusivePercent": 1.9
+        },
+        {
+          "method": "Codestream.Modular.JxlWeightedPredictor.Predict",
+          "exclusivePercent": 1.6,
+          "inclusivePercent": 1.9
+        },
+        {
+          "method": "Integration.JxlEncoder.ToXyb",
+          "exclusivePercent": 1.5,
+          "inclusivePercent": 30.9
+        },
+        {
+          "method": "System.Linq.Enumerable+IEnumerableWhereSelectIterator`2[System.Int32,System.ValueTuple`2[System.UInt32,System.Int64]].ToList",
+          "exclusivePercent": 1.5,
+          "inclusivePercent": 1.5
+        },
+        {
+          "method": "System.Buffer.MemmoveInternal",
+          "exclusivePercent": 1.3,
+          "inclusivePercent": 1.3
+        },
+        {
+          "method": "Codestream.Encoding.JxlEntropyEncoder.TokenHistograms",
+          "exclusivePercent": 1.2,
+          "inclusivePercent": 1.2
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlImage3F.PaddedToBlocks",
+          "exclusivePercent": 1.1,
+          "inclusivePercent": 2.4
+        }
+      ],
+      "topInclusive": [
+        {
+          "method": "Integration.JxlEncoder.Encode",
+          "inclusivePercent": 97.7
+        },
+        {
+          "method": "Integration.JxlEncoder.EncodeTo",
+          "inclusivePercent": 97.7
+        },
+        {
+          "method": "Codestream.Encoding.JxlCodestreamWriter.WriteLossyTo",
+          "inclusivePercent": 65.5
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlVarDctEncoder.WriteFrame",
+          "inclusivePercent": 65.4
+        },
+        {
+          "method": "Integration.JxlEncoder.ToXyb",
+          "inclusivePercent": 30.9
+        },
+        {
+          "method": "Codestream.Color.JxlXybInput.Convert",
+          "inclusivePercent": 28.4
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlVarDctEncoder.WritePrepared",
+          "inclusivePercent": 26.4
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlCoefficientQuantizer.ComputeGroup",
+          "inclusivePercent": 25.8
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.TransformFromPixels",
+          "inclusivePercent": 11.5
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlAcTokenizer.Tokenize",
+          "inclusivePercent": 10.2
+        },
+        {
+          "method": "Codestream.Encoding.JxlEntropyEncoder.Build",
+          "inclusivePercent": 10.0
+        },
+        {
+          "method": "Codestream.Encoding.JxlModularStreamSet.Build",
+          "inclusivePercent": 9.4
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Dct1D",
+          "inclusivePercent": 8.8
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.ScaledDct",
+          "inclusivePercent": 6.8
+        },
+        {
+          "method": "Codestream.Encoding.JxlModularTreeEncoder.TokenizeStreams",
+          "inclusivePercent": 6.7
+        },
+        {
+          "method": "Codestream.Encoding.JxlModularTreeEncoder.Scan",
+          "inclusivePercent": 6.7
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlCoefficientQuantizer.QuantizeBlockAC",
+          "inclusivePercent": 6.6
+        },
+        {
+          "method": "Codestream.Encoding.Lossy.JxlVarDctEncoder.WriteSections",
+          "inclusivePercent": 6.5
+        },
+        {
+          "method": "Codestream.Encoding.JxlEntropyEncoder.WriteStream",
+          "inclusivePercent": 5.5
+        },
+        {
+          "method": "Codestream.Encoding.JxlHistogramClustering.Cluster",
+          "inclusivePercent": 4.3
+        }
+      ]
+    },
+    {
+      "id": "encode/photo1-d0-e7",
+      "runs": 10,
+      "input": "photo1.png",
+      "inputSha256": "2a206c3d52f1a0203332c0ce01bb74ae8bbf6d8b02766bf29a18bd7f55abd871",
+      "localTrace": "artifacts/traces/simd-plan-0.7.10/encode_photo1-d0-e7.speedscope.json",
+      "traceSha256": "1e90a0fe9baca2e587e0855f45c64012a448c118500d8ccfaa43352f7c3e2412",
+      "topExclusive": [
+        {
+          "method": "Codestream.Encoding.JxlTreeLearner+Search.FindSplit",
+          "exclusivePercent": 34.0,
+          "inclusivePercent": 35.3
+        },
+        {
+          "method": "Codestream.Encoding.JxlModularTreeEncoder.TokenizeRecorded",
+          "exclusivePercent": 16.8,
+          "inclusivePercent": 17.8
+        },
+        {
+          "method": "Codestream.Encoding.JxlModularTreeEncoder.Scan",
+          "exclusivePercent": 11.0,
+          "inclusivePercent": 23.2
+        },
+        {
+          "method": "Codestream.Encoding.JxlModularTransformChooser.ChooseRct",
+          "exclusivePercent": 6.7,
+          "inclusivePercent": 6.7
+        },
+        {
+          "method": "Codestream.Modular.JxlWeightedPredictor.Predict",
+          "exclusivePercent": 4.7,
+          "inclusivePercent": 5.3
+        },
+        {
+          "method": "Codestream.Encoding.JxlEntropyEncoder.WriteStream",
+          "exclusivePercent": 4.6,
+          "inclusivePercent": 4.8
+        },
+        {
+          "method": "Codestream.Encoding.JxlTreeLearner.Add",
+          "exclusivePercent": 4.2,
+          "inclusivePercent": 4.5
+        },
+        {
+          "method": "Codestream.Encoding.JxlTreeLearner+Search.Swap",
+          "exclusivePercent": 2.9,
+          "inclusivePercent": 2.9
+        },
+        {
+          "method": "Codestream.Encoding.JxlTreeLearner+Search.Partition",
+          "exclusivePercent": 2.4,
+          "inclusivePercent": 5.2
+        },
+        {
+          "method": "Codestream.Modular.JxlWeightedPredictor.Update",
+          "exclusivePercent": 2.4,
+          "inclusivePercent": 2.4
+        },
+        {
+          "method": "Codestream.Encoding.JxlTreeLearner.Quantize",
+          "exclusivePercent": 1.4,
+          "inclusivePercent": 1.4
+        },
+        {
+          "method": "System.Buffer.MemmoveInternal",
+          "exclusivePercent": 0.7,
+          "inclusivePercent": 0.7
+        },
+        {
+          "method": "Codestream.Encoding.JxlTreeLearner+Search.EstimateBits",
+          "exclusivePercent": 0.7,
+          "inclusivePercent": 0.7
+        },
+        {
+          "method": "System.Buffer.ZeroMemoryInternal",
+          "exclusivePercent": 0.7,
+          "inclusivePercent": 0.7
+        },
+        {
+          "method": "Codestream.Encoding.JxlEntropyEncoder.TokenHistograms",
+          "exclusivePercent": 0.6,
+          "inclusivePercent": 0.6
+        },
+        {
+          "method": "Codestream.Encoding.JxlEntropyEncoder.ValueHistograms",
+          "exclusivePercent": 0.6,
+          "inclusivePercent": 0.8
+        },
+        {
+          "method": "Codestream.Modular.JxlWeightedPredictor.ErrorWeight",
+          "exclusivePercent": 0.5,
+          "inclusivePercent": 0.6
+        },
+        {
+          "method": "Codestream.Encoding.JxlTokens.Add",
+          "exclusivePercent": 0.5,
+          "inclusivePercent": 0.8
+        },
+        {
+          "method": "Codestream.Encoding.JxlModularTransformChooser.ForwardRct",
+          "exclusivePercent": 0.5,
+          "inclusivePercent": 0.5
+        },
+        {
+          "method": "Integration.JxlEncoder.SplitPlanes",
+          "exclusivePercent": 0.4,
+          "inclusivePercent": 0.4
+        }
+      ],
+      "topInclusive": [
+        {
+          "method": "Integration.JxlEncoder.Encode",
+          "inclusivePercent": 98.8
+        },
+        {
+          "method": "Integration.JxlEncoder.EncodeTo",
+          "inclusivePercent": 98.8
+        },
+        {
+          "method": "Codestream.Encoding.JxlCodestreamWriter.WriteTo",
+          "inclusivePercent": 98.3
+        },
+        {
+          "method": "Codestream.Encoding.JxlModularEncoder.WriteFrame",
+          "inclusivePercent": 97.8
+        },
+        {
+          "method": "Codestream.Encoding.JxlModularTreeEncoder.Learn",
+          "inclusivePercent": 65.4
+        },
+        {
+          "method": "Codestream.Encoding.JxlTreeLearner.Learn",
+          "inclusivePercent": 42.1
+        },
+        {
+          "method": "Codestream.Encoding.JxlTreeLearner+Search.FindSplit",
+          "inclusivePercent": 35.3
+        },
+        {
+          "method": "Codestream.Encoding.JxlModularTreeEncoder.Scan",
+          "inclusivePercent": 23.2
+        },
+        {
+          "method": "Codestream.Encoding.JxlModularTreeEncoder.TokenizeStreams",
+          "inclusivePercent": 17.9
+        },
+        {
+          "method": "Codestream.Encoding.JxlModularTreeEncoder.TokenizeRecorded",
+          "inclusivePercent": 17.8
+        },
+        {
+          "method": "Codestream.Encoding.JxlModularEncoder.ApplyTransforms",
+          "inclusivePercent": 7.3
+        },
+        {
+          "method": "Codestream.Encoding.JxlModularTransformChooser.ChooseRct",
+          "inclusivePercent": 6.7
+        },
+        {
+          "method": "Codestream.Modular.JxlWeightedPredictor.Predict",
+          "inclusivePercent": 5.3
+        },
+        {
+          "method": "Codestream.Encoding.JxlTreeLearner+Search.Partition",
+          "inclusivePercent": 5.2
+        },
+        {
+          "method": "Codestream.Encoding.JxlEntropyEncoder.WriteStream",
+          "inclusivePercent": 4.8
+        },
+        {
+          "method": "Codestream.Encoding.JxlTreeLearner.Add",
+          "inclusivePercent": 4.5
+        },
+        {
+          "method": "Codestream.Encoding.JxlTreeLearner+Search.Swap",
+          "inclusivePercent": 2.9
+        },
+        {
+          "method": "Codestream.Modular.JxlWeightedPredictor.Update",
+          "inclusivePercent": 2.4
+        },
+        {
+          "method": "Codestream.Encoding.JxlEntropyEncoder.Build",
+          "inclusivePercent": 2.3
+        },
+        {
+          "method": "Codestream.Encoding.JxlTreeLearner.Quantize",
+          "inclusivePercent": 1.4
+        }
+      ]
+    },
+    {
+      "id": "encode16/photo1-16-d0-e7",
+      "runs": 10,
+      "input": "photo1-16.png",
+      "inputSha256": "7ab17a82e089a44687f6da713740b8266a7744fdc0bc16ba363e4e477516d204",
+      "localTrace": "artifacts/traces/simd-plan-0.7.10/encode16_photo1-16-d0-e7.speedscope.json",
+      "traceSha256": "b3d177166004cdbba4c5c4e4fc0bde372f8c6215b5c434d3dedd8e02db98db0c",
+      "topExclusive": [
+        {
+          "method": "Codestream.Encoding.JxlTreeLearner+Search.FindSplit",
+          "exclusivePercent": 27.2,
+          "inclusivePercent": 47.9
+        },
+        {
+          "method": "Codestream.Encoding.JxlModularTreeEncoder.TokenizeRecorded",
+          "exclusivePercent": 11.9,
+          "inclusivePercent": 12.4
+        },
+        {
+          "method": "Codestream.Encoding.JxlTreeLearner+Search.EstimateBits",
+          "exclusivePercent": 11.7,
+          "inclusivePercent": 11.7
+        },
+        {
+          "method": "System.Buffer.ZeroMemoryInternal",
+          "exclusivePercent": 9.0,
+          "inclusivePercent": 9.0
+        },
+        {
+          "method": "Codestream.Encoding.JxlModularTreeEncoder.Scan",
+          "exclusivePercent": 8.0,
+          "inclusivePercent": 17.4
+        },
+        {
+          "method": "Codestream.Encoding.JxlModularTransformChooser.ChooseRct",
+          "exclusivePercent": 5.7,
+          "inclusivePercent": 5.7
+        },
+        {
+          "method": "Codestream.Encoding.JxlEntropyEncoder.WriteStream",
+          "exclusivePercent": 5.1,
+          "inclusivePercent": 5.4
+        },
+        {
+          "method": "Codestream.Encoding.JxlTreeLearner.Add",
+          "exclusivePercent": 3.4,
+          "inclusivePercent": 3.7
+        },
+        {
+          "method": "Codestream.Modular.JxlWeightedPredictor.Predict",
+          "exclusivePercent": 3.2,
+          "inclusivePercent": 3.7
+        },
+        {
+          "method": "Codestream.Encoding.JxlTreeLearner+Search.Swap",
+          "exclusivePercent": 2.3,
+          "inclusivePercent": 2.3
+        },
+        {
+          "method": "Codestream.Modular.JxlWeightedPredictor.Update",
+          "exclusivePercent": 1.9,
+          "inclusivePercent": 1.9
+        },
+        {
+          "method": "Codestream.Encoding.JxlTreeLearner+Search.Partition",
+          "exclusivePercent": 1.7,
+          "inclusivePercent": 4.0
+        },
+        {
+          "method": "Codestream.Encoding.JxlTreeLearner.Quantize",
+          "exclusivePercent": 1.1,
+          "inclusivePercent": 1.1
+        },
+        {
+          "method": "Codestream.Encoding.JxlHistogramClustering.MergeCost",
+          "exclusivePercent": 1.0,
+          "inclusivePercent": 1.0
+        },
+        {
+          "method": "Codestream.Encoding.JxlEntropyEncoder.TokenHistograms",
+          "exclusivePercent": 0.9,
+          "inclusivePercent": 0.9
+        },
+        {
+          "method": "System.Buffer.MemmoveInternal",
+          "exclusivePercent": 0.7,
+          "inclusivePercent": 0.7
+        },
+        {
+          "method": "Codestream.Modular.JxlWeightedPredictor.ErrorWeight",
+          "exclusivePercent": 0.5,
+          "inclusivePercent": 0.5
+        },
+        {
+          "method": "Codestream.Encoding.JxlEntropyEncoder.ValueHistograms",
+          "exclusivePercent": 0.5,
+          "inclusivePercent": 0.7
+        },
+        {
+          "method": "Codestream.Encoding.JxlModularTransformChooser.ForwardRct",
+          "exclusivePercent": 0.3,
+          "inclusivePercent": 0.3
+        },
+        {
+          "method": "Codestream.Encoding.JxlEntropyEncoder.ChooseConfig",
+          "exclusivePercent": 0.3,
+          "inclusivePercent": 0.4
+        }
+      ],
+      "topInclusive": [
+        {
+          "method": "Integration.JxlEncoder.Encode",
+          "inclusivePercent": 99.0
+        },
+        {
+          "method": "Integration.JxlEncoder.EncodeTo",
+          "inclusivePercent": 98.9
+        },
+        {
+          "method": "Codestream.Encoding.JxlCodestreamWriter.WriteTo",
+          "inclusivePercent": 98.5
+        },
+        {
+          "method": "Codestream.Encoding.JxlModularEncoder.WriteFrame",
+          "inclusivePercent": 98.5
+        },
+        {
+          "method": "Codestream.Encoding.JxlModularTreeEncoder.Learn",
+          "inclusivePercent": 70.6
+        },
+        {
+          "method": "Codestream.Encoding.JxlTreeLearner.Learn",
+          "inclusivePercent": 53.1
+        },
+        {
+          "method": "Codestream.Encoding.JxlTreeLearner+Search.FindSplit",
+          "inclusivePercent": 47.9
+        },
+        {
+          "method": "Codestream.Encoding.JxlModularTreeEncoder.Scan",
+          "inclusivePercent": 17.4
+        },
+        {
+          "method": "Codestream.Encoding.JxlModularTreeEncoder.TokenizeStreams",
+          "inclusivePercent": 12.6
+        },
+        {
+          "method": "Codestream.Encoding.JxlModularTreeEncoder.TokenizeRecorded",
+          "inclusivePercent": 12.4
+        },
+        {
+          "method": "Codestream.Encoding.JxlTreeLearner+Search.EstimateBits",
+          "inclusivePercent": 11.7
+        },
+        {
+          "method": "Codestream.Encoding.JxlModularEncoder.ApplyTransforms",
+          "inclusivePercent": 6.1
+        },
+        {
+          "method": "Codestream.Encoding.JxlModularTransformChooser.ChooseRct",
+          "inclusivePercent": 5.7
+        },
+        {
+          "method": "Codestream.Encoding.JxlEntropyEncoder.WriteStream",
+          "inclusivePercent": 5.4
+        },
+        {
+          "method": "Codestream.Encoding.JxlTreeLearner+Search.Partition",
+          "inclusivePercent": 4.0
+        },
+        {
+          "method": "Codestream.Encoding.JxlTreeLearner.Add",
+          "inclusivePercent": 3.7
+        },
+        {
+          "method": "Codestream.Modular.JxlWeightedPredictor.Predict",
+          "inclusivePercent": 3.7
+        },
+        {
+          "method": "Codestream.Encoding.JxlEntropyEncoder.Build",
+          "inclusivePercent": 3.4
+        },
+        {
+          "method": "Codestream.Encoding.JxlTreeLearner+Search.Swap",
+          "inclusivePercent": 2.3
+        },
+        {
+          "method": "Codestream.Modular.JxlWeightedPredictor.Update",
+          "inclusivePercent": 1.9
+        }
+      ]
+    },
+    {
+      "id": "decode16/photo12-16-d1-e7",
+      "runs": 8,
+      "input": "photo12-16-d1-e7.jxl",
+      "inputSha256": "7d70cef00f1c356534a745fdde01eb8493df986651e51dfa3d93fbc54f7a3908",
+      "localTrace": "artifacts/traces/simd-plan-0.7.10/decode16_photo12-16-d1-e7.speedscope.json",
+      "traceSha256": "1763a0efa602adc9aae14ee196ebe8ddda9df3cbe51b5da417bb57c5c985b04c",
+      "topExclusive": [
+        {
+          "method": "Codestream.Color.JxlColorOutput.Apply",
+          "exclusivePercent": 17.2,
+          "inclusivePercent": 17.2
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.IdctColumns",
+          "exclusivePercent": 13.8,
+          "inclusivePercent": 17.4
+        },
+        {
+          "method": "Codestream.Rendering.JxlRenderPipeline.Epf",
+          "exclusivePercent": 13.7,
+          "inclusivePercent": 14.4
+        },
+        {
+          "method": "Codestream.VarDct.JxlVarDctFrame.Dequantize",
+          "exclusivePercent": 7.9,
+          "inclusivePercent": 8.0
+        },
+        {
+          "method": "Integration.JxlPixelWriter.WriteWideRow",
+          "exclusivePercent": 6.2,
+          "inclusivePercent": 6.2
+        },
+        {
+          "method": "Codestream.Entropy.JxlSymbolReader.ReadClustered",
+          "exclusivePercent": 6.0,
+          "inclusivePercent": 6.2
+        },
+        {
+          "method": "Codestream.Rendering.JxlRenderPipeline.Gaborish",
+          "exclusivePercent": 5.4,
+          "inclusivePercent": 5.7
+        },
+        {
+          "method": "System.SpanHelpers.Memmove",
+          "exclusivePercent": 3.9,
+          "inclusivePercent": 3.9
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.ScaledIdct",
+          "exclusivePercent": 3.5,
+          "inclusivePercent": 25.1
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Idct8",
+          "exclusivePercent": 2.8,
+          "inclusivePercent": 2.8
+        },
+        {
+          "method": "Codestream.Modular.JxlMaTree.DecodeWithLookup",
+          "exclusivePercent": 2.4,
+          "inclusivePercent": 4.9
+        },
+        {
+          "method": "Codestream.VarDct.JxlVarDctFrame.DecodePass",
+          "exclusivePercent": 2.3,
+          "inclusivePercent": 8.7
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Idct1D",
+          "exclusivePercent": 2.0,
+          "inclusivePercent": 22.0
+        },
+        {
+          "method": "System.Buffer.ZeroMemoryInternal",
+          "exclusivePercent": 1.8,
+          "inclusivePercent": 1.8
+        },
+        {
+          "method": "System.SpanHelpers.Fill",
+          "exclusivePercent": 1.6,
+          "inclusivePercent": 1.6
+        },
+        {
+          "method": "Codestream.Modular.JxlWeightedPredictor.Predict",
+          "exclusivePercent": 0.9,
+          "inclusivePercent": 1.0
+        },
+        {
+          "method": "Codestream.Modular.JxlWeightedPredictor.Update",
+          "exclusivePercent": 0.8,
+          "inclusivePercent": 0.8
+        },
+        {
+          "method": "System.Buffer.MemmoveInternal",
+          "exclusivePercent": 0.6,
+          "inclusivePercent": 0.6
+        },
+        {
+          "method": "Codestream.VarDct.JxlVarDctFrame.RenderGroup",
+          "exclusivePercent": 0.5,
+          "inclusivePercent": 35.0
+        },
+        {
+          "method": "Codestream.VarDct.JxlVarDctFrame.ReadBlockCoefficients",
+          "exclusivePercent": 0.5,
+          "inclusivePercent": 5.8
+        }
+      ],
+      "topInclusive": [
+        {
+          "method": "Integration.JxlDecoder.Decode",
+          "inclusivePercent": 98.9
+        },
+        {
+          "method": "Codestream.Frames.JxlDecodeSession.Decode",
+          "inclusivePercent": 90.8
+        },
+        {
+          "method": "Codestream.Frames.JxlFrameSectionReader.DecodeSections",
+          "inclusivePercent": 51.2
+        },
+        {
+          "method": "Codestream.Frames.JxlFrameDecoder.Finish",
+          "inclusivePercent": 37.6
+        },
+        {
+          "method": "Codestream.Frames.JxlFrameDecoder.Render",
+          "inclusivePercent": 37.6
+        },
+        {
+          "method": "Codestream.Rendering.JxlFrameRenderer.Render",
+          "inclusivePercent": 37.4
+        },
+        {
+          "method": "Codestream.VarDct.JxlVarDctFrame.RenderGroup",
+          "inclusivePercent": 35.0
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.ScaledIdct",
+          "inclusivePercent": 25.1
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.TransformToPixels",
+          "inclusivePercent": 25.0
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.Idct1D",
+          "inclusivePercent": 22.0
+        },
+        {
+          "method": "Codestream.Rendering.JxlFrameRenderer.Restore",
+          "inclusivePercent": 20.1
+        },
+        {
+          "method": "Codestream.VarDct.JxlDct.IdctColumns",
+          "inclusivePercent": 17.4
+        },
+        {
+          "method": "Codestream.Color.JxlColorOutput.Apply",
+          "inclusivePercent": 17.2
+        },
+        {
+          "method": "Codestream.Rendering.JxlRenderPipeline.Epf",
+          "inclusivePercent": 14.4
+        },
+        {
+          "method": "Codestream.Frames.JxlFrameDecoder.DecodePassGroup",
+          "inclusivePercent": 8.7
+        },
+        {
+          "method": "Codestream.VarDct.JxlVarDctFrame.DecodePass",
+          "inclusivePercent": 8.7
+        },
+        {
+          "method": "Codestream.VarDct.JxlVarDctFrame.Dequantize",
+          "inclusivePercent": 8.0
+        },
+        {
+          "method": "Integration.JxlPixelWriter.WriteWide",
+          "inclusivePercent": 7.9
+        },
+        {
+          "method": "Codestream.Entropy.JxlSymbolReader.ReadClustered",
+          "inclusivePercent": 6.2
+        },
+        {
+          "method": "Integration.JxlPixelWriter.WriteWideRow",
+          "inclusivePercent": 6.2
+        }
+      ]
+    }
+  ]
+}

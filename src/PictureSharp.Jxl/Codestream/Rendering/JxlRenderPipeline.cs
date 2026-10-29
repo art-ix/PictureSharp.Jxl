@@ -1,3 +1,4 @@
+using System.Runtime.Intrinsics;
 using System.Runtime.CompilerServices;
 using PictureSharp.Formats.Jxl.Codestream.Buffers;
 using PictureSharp.Formats.Jxl.Codestream.Model;
@@ -11,7 +12,7 @@ namespace PictureSharp.Formats.Jxl.Codestream.Rendering;
 /// lib/jxl/render_pipeline/simple_render_pipeline.cc, stage_chroma_upsampling.cc, stage_gaborish.cc, stage_epf.cc,
 /// stage_upsampling.cc and lib/jxl/epf.cc (BSD-3-Clause).
 /// </summary>
-internal static class JxlRenderPipeline
+internal static partial class JxlRenderPipeline
 {
     // 4 * (sqrt(0.5) - 1), so that Weight(sigma) = 0.5, and the sigma below which EPF leaves a block unchanged.
     public const float InvSigmaNum = -1.1715728752538099024f;
@@ -85,11 +86,12 @@ internal static class JxlRenderPipeline
                 ReadOnlySpan<float> up = data.AsSpan(i - stride, result.Length + 2);
                 ReadOnlySpan<float> middle = data.AsSpan(i, result.Length + 2);
                 ReadOnlySpan<float> down = data.AsSpan(i + stride, result.Length + 2);
+                int done = GaborishAvx2(up, middle, down, result, w0, w1, w2);
                 // A 3x3 window slid along the row: each pixel loads only its right column.
-                (float upLeft, float upCentre) = (up[0], up[1]);
-                (float left, float centre) = (middle[0], middle[1]);
-                (float downLeft, float downCentre) = (down[0], down[1]);
-                for (int x = 0; x < result.Length; x++)
+                (float upLeft, float upCentre) = (up[done], up[done + 1]);
+                (float left, float centre) = (middle[done], middle[done + 1]);
+                (float downLeft, float downCentre) = (down[done], down[done + 1]);
+                for (int x = done; x < result.Length; x++)
                 {
                     float upRight = up[x + 2];
                     float right = middle[x + 2];
@@ -168,9 +170,11 @@ internal static class JxlRenderPipeline
     private interface IEpfKernel
     {
         void Filter(float[] p0, float[] p1, float[] p2, int i, int stride, float invSigma, out float x, out float y, out float b, out float w);
+        void FilterAvx2(float[] p0, float[] p1, float[] p2, int i, int stride, Vector256<float> invSigma,
+            out Vector256<float> x, out Vector256<float> y, out Vector256<float> b, out Vector256<float> w);
     }
 
-    private readonly struct Epf0Kernel(IReadOnlyList<float> scale) : IEpfKernel
+    private readonly partial struct Epf0Kernel(IReadOnlyList<float> scale) : IEpfKernel
     {
         private readonly float scale0 = scale[0];
         private readonly float scale1 = scale[1];
@@ -209,7 +213,7 @@ internal static class JxlRenderPipeline
         }
     }
 
-    private readonly struct Epf1Kernel(IReadOnlyList<float> scale) : IEpfKernel
+    private readonly partial struct Epf1Kernel(IReadOnlyList<float> scale) : IEpfKernel
     {
         private readonly float scale0 = scale[0];
         private readonly float scale1 = scale[1];
@@ -284,7 +288,7 @@ internal static class JxlRenderPipeline
         }
     }
 
-    private readonly struct Epf2Kernel(IReadOnlyList<float> scale) : IEpfKernel
+    private readonly partial struct Epf2Kernel(IReadOnlyList<float> scale) : IEpfKernel
     {
         private readonly float scale0 = scale[0];
         private readonly float scale1 = scale[1];
@@ -385,6 +389,8 @@ internal static class JxlRenderPipeline
 
                 float inner = blockSigma * sm;
                 float edge = blockSigma * bsm;
+                if (count == 8 && EpfAvx2(kernel, src0, src1, src2, i, stride, inner, edge, borderRow,
+                    dst0.Slice(x0, 8), dst1.Slice(x0, 8), dst2.Slice(x0, 8))) continue;
                 for (int k = 0; k < count; k++, i++)
                 {
                     float invSigma = borderRow || k == 0 || k == 7 ? edge : inner;

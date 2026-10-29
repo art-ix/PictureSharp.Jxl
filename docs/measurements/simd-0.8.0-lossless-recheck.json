@@ -1,0 +1,527 @@
+{
+  "date": "2026-10-29",
+  "cpu": "Intel Core i5-12500H",
+  "affinity": "0",
+  "runtime": "10.0.12",
+  "tieredCompilation": false,
+  "mode": "native",
+  "rounds": 4,
+  "runs": 5,
+  "builds": {
+    "before": {
+      "dll": "artifacts/simd-0.8.0/baseline-extended/build/bin/PictureSharp.Jxl.Speed/release/PictureSharp.Jxl.Speed.dll",
+      "jxlSha256": "8c4e779f6bbc58a6ec3079223abe76dad41f02835d63568f58e11cfa56d72470"
+    },
+    "after": {
+      "dll": "artifacts/simd-0.8.0/variants/all/build/bin/PictureSharp.Jxl.Speed/release/PictureSharp.Jxl.Speed.dll",
+      "jxlSha256": "7b9f17f8f73e4764f152843debd49a24bef96c74a918ed1e98aad2ec81295d98"
+    }
+  },
+  "measurements": [
+    {
+      "id": "encode/photo1-d0-e1",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 785105,
+      "coldMs": 969.5783,
+      "coldAllocatedBytes": 162568128,
+      "warmups": 4,
+      "medianMs": 808.7649,
+      "minMs": 796.9581,
+      "allocatedBytes": 60301304,
+      "gen0PerRun": 1.4,
+      "gen2PerRun": 0.4,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 387.46875
+    },
+    {
+      "id": "encode/photo1-d0-e1",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 785105,
+      "coldMs": 999.8691,
+      "coldAllocatedBytes": 162567776,
+      "warmups": 4,
+      "medianMs": 808.8238,
+      "minMs": 799.5011,
+      "allocatedBytes": 60301304,
+      "gen0PerRun": 1.4,
+      "gen2PerRun": 0.4,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 383.92578125
+    },
+    {
+      "id": "encode/photo1-d0-e1",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 785105,
+      "coldMs": 998.2829,
+      "coldAllocatedBytes": 162568128,
+      "warmups": 4,
+      "medianMs": 826.6218,
+      "minMs": 809.1938,
+      "allocatedBytes": 60301304,
+      "gen0PerRun": 1.4,
+      "gen2PerRun": 0.4,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 387.56640625
+    },
+    {
+      "id": "encode/photo1-d0-e1",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 785105,
+      "coldMs": 1001.2354,
+      "coldAllocatedBytes": 162567776,
+      "warmups": 4,
+      "medianMs": 819.0136,
+      "minMs": 806.0684,
+      "allocatedBytes": 60301304,
+      "gen0PerRun": 1.4,
+      "gen2PerRun": 0.4,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 384.01171875
+    },
+    {
+      "id": "encode/photo1-d0-e1",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 785105,
+      "coldMs": 990.0115,
+      "coldAllocatedBytes": 162567672,
+      "warmups": 4,
+      "medianMs": 809.1636,
+      "minMs": 796.7056,
+      "allocatedBytes": 60301304,
+      "gen0PerRun": 1.4,
+      "gen2PerRun": 0.4,
+      "variant": "before",
+      "round": 2,
+      "peakRssMiB": 384.09375
+    },
+    {
+      "id": "encode/photo1-d0-e1",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 785105,
+      "coldMs": 989.1215,
+      "coldAllocatedBytes": 162567672,
+      "warmups": 4,
+      "medianMs": 811.4415,
+      "minMs": 797.3641,
+      "allocatedBytes": 60301304,
+      "gen0PerRun": 1.4,
+      "gen2PerRun": 0.4,
+      "variant": "after",
+      "round": 2,
+      "peakRssMiB": 387.64453125
+    },
+    {
+      "id": "encode/photo1-d0-e1",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 785105,
+      "coldMs": 979.3376,
+      "coldAllocatedBytes": 162567672,
+      "warmups": 4,
+      "medianMs": 803.6843,
+      "minMs": 802.315,
+      "allocatedBytes": 60301304,
+      "gen0PerRun": 1.4,
+      "gen2PerRun": 0.4,
+      "variant": "after",
+      "round": 3,
+      "peakRssMiB": 384.01953125
+    },
+    {
+      "id": "encode/photo1-d0-e1",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 785105,
+      "coldMs": 975.2593,
+      "coldAllocatedBytes": 162567672,
+      "warmups": 4,
+      "medianMs": 809.023,
+      "minMs": 797.4621,
+      "allocatedBytes": 60301304,
+      "gen0PerRun": 1.4,
+      "gen2PerRun": 0.4,
+      "variant": "before",
+      "round": 3,
+      "peakRssMiB": 387.58203125
+    },
+    {
+      "id": "encode/screen-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 108866,
+      "coldMs": 650.9588,
+      "coldAllocatedBytes": 136574520,
+      "warmups": 6,
+      "medianMs": 475.1765,
+      "minMs": 471.3961,
+      "allocatedBytes": 55502624,
+      "gen0PerRun": 1.6,
+      "gen2PerRun": 0.4,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 288.25
+    },
+    {
+      "id": "encode/screen-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 108866,
+      "coldMs": 635.911,
+      "coldAllocatedBytes": 136572592,
+      "warmups": 6,
+      "medianMs": 477.4904,
+      "minMs": 469.0862,
+      "allocatedBytes": 55502624,
+      "gen0PerRun": 1.6,
+      "gen2PerRun": 0.4,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 288.171875
+    },
+    {
+      "id": "encode/screen-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 108866,
+      "coldMs": 636.1797,
+      "coldAllocatedBytes": 136572416,
+      "warmups": 6,
+      "medianMs": 473.9422,
+      "minMs": 470.1269,
+      "allocatedBytes": 55502624,
+      "gen0PerRun": 1.6,
+      "gen2PerRun": 0.4,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 288.125
+    },
+    {
+      "id": "encode/screen-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 108866,
+      "coldMs": 639.7536,
+      "coldAllocatedBytes": 136572416,
+      "warmups": 6,
+      "medianMs": 471.1329,
+      "minMs": 462.9948,
+      "allocatedBytes": 55502624,
+      "gen0PerRun": 1.6,
+      "gen2PerRun": 0.4,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 288.1484375
+    },
+    {
+      "id": "encode/screen-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 108866,
+      "coldMs": 628.9806,
+      "coldAllocatedBytes": 136572416,
+      "warmups": 6,
+      "medianMs": 475.7878,
+      "minMs": 466.4964,
+      "allocatedBytes": 55502624,
+      "gen0PerRun": 1.6,
+      "gen2PerRun": 0.4,
+      "variant": "before",
+      "round": 2,
+      "peakRssMiB": 288.0546875
+    },
+    {
+      "id": "encode/screen-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 108866,
+      "coldMs": 673.1577,
+      "coldAllocatedBytes": 136573248,
+      "warmups": 6,
+      "medianMs": 467.2538,
+      "minMs": 465.3344,
+      "allocatedBytes": 55502624,
+      "gen0PerRun": 1.6,
+      "gen2PerRun": 0.4,
+      "variant": "after",
+      "round": 2,
+      "peakRssMiB": 288.07421875
+    },
+    {
+      "id": "encode/screen-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 108866,
+      "coldMs": 633.2978,
+      "coldAllocatedBytes": 136572920,
+      "warmups": 6,
+      "medianMs": 468.5158,
+      "minMs": 466.4978,
+      "allocatedBytes": 55502624,
+      "gen0PerRun": 1.6,
+      "gen2PerRun": 0.4,
+      "variant": "after",
+      "round": 3,
+      "peakRssMiB": 284.421875
+    },
+    {
+      "id": "encode/screen-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 108866,
+      "coldMs": 645.9601,
+      "coldAllocatedBytes": 136567056,
+      "warmups": 6,
+      "medianMs": 475.3082,
+      "minMs": 462.4467,
+      "allocatedBytes": 55502624,
+      "gen0PerRun": 1.6,
+      "gen2PerRun": 0.4,
+      "variant": "before",
+      "round": 3,
+      "peakRssMiB": 284.4296875
+    },
+    {
+      "id": "encode16/photo1-16-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 2651786,
+      "coldMs": 1273.8111,
+      "coldAllocatedBytes": 177489840,
+      "warmups": 3,
+      "medianMs": 1093.1369,
+      "minMs": 1085.0115,
+      "allocatedBytes": 72655000,
+      "gen0PerRun": 1.6,
+      "gen2PerRun": 0.2,
+      "variant": "before",
+      "round": 0,
+      "peakRssMiB": 611.3828125
+    },
+    {
+      "id": "encode16/photo1-16-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 2651786,
+      "coldMs": 1236.49,
+      "coldAllocatedBytes": 177489840,
+      "warmups": 3,
+      "medianMs": 1076.8254,
+      "minMs": 1072.7289,
+      "allocatedBytes": 72655000,
+      "gen0PerRun": 1.4,
+      "gen2PerRun": 0.2,
+      "variant": "after",
+      "round": 0,
+      "peakRssMiB": 610.3515625
+    },
+    {
+      "id": "encode16/photo1-16-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 2651786,
+      "coldMs": 1234.1305,
+      "coldAllocatedBytes": 177483216,
+      "warmups": 3,
+      "medianMs": 1072.4797,
+      "minMs": 1069.3718,
+      "allocatedBytes": 72655000,
+      "gen0PerRun": 1.2,
+      "gen2PerRun": 0,
+      "variant": "after",
+      "round": 1,
+      "peakRssMiB": 620.125
+    },
+    {
+      "id": "encode16/photo1-16-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 2651786,
+      "coldMs": 1236.9406,
+      "coldAllocatedBytes": 177502176,
+      "warmups": 3,
+      "medianMs": 1073.8976,
+      "minMs": 1066.2547,
+      "allocatedBytes": 72655000,
+      "gen0PerRun": 1.6,
+      "gen2PerRun": 0.2,
+      "variant": "before",
+      "round": 1,
+      "peakRssMiB": 611.2421875
+    },
+    {
+      "id": "encode16/photo1-16-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 2651786,
+      "coldMs": 1244.5169,
+      "coldAllocatedBytes": 177488640,
+      "warmups": 3,
+      "medianMs": 1102.7035,
+      "minMs": 1092.4826,
+      "allocatedBytes": 72655000,
+      "gen0PerRun": 1.2,
+      "gen2PerRun": 0,
+      "variant": "before",
+      "round": 2,
+      "peakRssMiB": 620.08984375
+    },
+    {
+      "id": "encode16/photo1-16-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 2651786,
+      "coldMs": 1286.0891,
+      "coldAllocatedBytes": 177489840,
+      "warmups": 3,
+      "medianMs": 1091.4313,
+      "minMs": 1088.0404,
+      "allocatedBytes": 72655000,
+      "gen0PerRun": 1.4,
+      "gen2PerRun": 0.2,
+      "variant": "after",
+      "round": 2,
+      "peakRssMiB": 610.73828125
+    },
+    {
+      "id": "encode16/photo1-16-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 2651786,
+      "coldMs": 1260.7163,
+      "coldAllocatedBytes": 177495984,
+      "warmups": 3,
+      "medianMs": 1103.3632,
+      "minMs": 1090.9848,
+      "allocatedBytes": 72655000,
+      "gen0PerRun": 1.6,
+      "gen2PerRun": 0.2,
+      "variant": "after",
+      "round": 3,
+      "peakRssMiB": 611.1484375
+    },
+    {
+      "id": "encode16/photo1-16-d0-e7",
+      "hardware": {
+        "avx2": true,
+        "sse41": true,
+        "fma": true
+      },
+      "bytes": 2651786,
+      "coldMs": 1360.6547,
+      "coldAllocatedBytes": 177489840,
+      "warmups": 3,
+      "medianMs": 1096.8541,
+      "minMs": 1085.2963,
+      "allocatedBytes": 72655000,
+      "gen0PerRun": 1.6,
+      "gen2PerRun": 0.2,
+      "variant": "before",
+      "round": 3,
+      "peakRssMiB": 611.296875
+    }
+  ],
+  "summary": [
+    {
+      "case": "encode/photo1-d0-e1",
+      "beforeMs": 809.0933,
+      "afterMs": 810.13265,
+      "changePercent": 0.1284586091616413
+    },
+    {
+      "case": "encode/screen-d0-e7",
+      "beforeMs": 475.24235,
+      "afterMs": 471.22900000000004,
+      "changePercent": -0.8444849243759434
+    },
+    {
+      "case": "encode16/photo1-16-d0-e7",
+      "beforeMs": 1094.9955,
+      "afterMs": 1084.12835,
+      "changePercent": -0.9924378684661339
+    }
+  ],
+  "inputs": {
+    "encode/photo1-d0-e1": "2a206c3d52f1a0203332c0ce01bb74ae8bbf6d8b02766bf29a18bd7f55abd871",
+    "encode/screen-d0-e7": "110e1a2c2d9a9896150908202d9878d926631129bfdff7410dd0017038e2ca7e",
+    "encode16/photo1-16-d0-e7": "7ab17a82e089a44687f6da713740b8266a7744fdc0bc16ba363e4e477516d204"
+  }
+}

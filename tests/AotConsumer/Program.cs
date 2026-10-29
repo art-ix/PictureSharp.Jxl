@@ -1,5 +1,8 @@
+using System.Runtime.Intrinsics.X86;
 using PictureSharp;
 using PictureSharp.Formats.Jxl;
+
+Console.WriteLine($"JXL consumer ISA: AVX2={Avx2.IsSupported}; SSE4.1={Sse41.IsSupported}; FMA={Fma.IsSupported}");
 
 ImageConfiguration.Default = ImageConfiguration.Default.ToBuilder().AddFormat(new JxlFormat()).Build();
 // tests/assets/corpus/tiny-1x1.jxl: a 1×1 lossless RGB codestream.

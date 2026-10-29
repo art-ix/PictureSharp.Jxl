@@ -16,7 +16,7 @@ namespace PictureSharp.Formats.Jxl.Codestream.VarDct;
 /// lib/jxl/dec_frame.cc, dec_group.cc, dec_modular.cc (DecodeVarDCTDC, DecodeAcMetadata), compressed_dc.cc,
 /// quantizer.cc, quantizer-inl.h, chroma_from_luma.cc and passes_state.cc (BSD-3-Clause).
 /// </summary>
-internal sealed class JxlVarDctFrame
+internal sealed partial class JxlVarDctFrame
 {
     private const int GroupBlocks = 32;
     private const int ColorTileBlocks = 8;
@@ -703,7 +703,8 @@ internal sealed class JxlVarDctFrame
         ReadOnlySpan<int> qx = coefficients.AsSpan(offset, size);
         ReadOnlySpan<int> qy = coefficients.AsSpan(area + offset, size);
         ReadOnlySpan<int> qb = coefficients.AsSpan(2 * area + offset, size);
-        for (int k = 0; k < size; k++)
+        int done = DequantizeAvx2(qx, qy, qb, matrix, block, size, stepX, step, stepB, xCc, bCc, quantBiases);
+        for (int k = done; k < size; k++)
         {
             float xMul = matrix[k] * stepX;
             float yMul = matrix[size + k] * step;
