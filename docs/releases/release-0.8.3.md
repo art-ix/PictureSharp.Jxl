@@ -11,9 +11,9 @@ worse. Decoding is unchanged; no API changes.
 - **Faster lossy encoding:** entropy sums run in eight lanes, as in libjxl. 6 of 247 test files differ, with the same
   size and decoded pixels.
 
-Speed-up over 0.8.2 (warm medians, Intel Core i5-12500H, 16 logical CPUs, JIT, Linux):
+Speed-up from 0.8.2 to 0.8.3 (warm medians, Intel Core i5-12500H, 16 logical CPUs, JIT, Linux):
 
-| Encode | Effort | 1 thread | 16 threads |
+| Encode | Effort | 0.8.2 → 0.8.3, 1 thread | 0.8.2 → 0.8.3, 16 threads |
 | --- | :---: | ---: | ---: |
 | Lossy, 1 MP photo | 7 | **1.10×** | 1.05× |
 | Lossy, 12 MP photo | 7 | **1.09×** | 1.05× |
