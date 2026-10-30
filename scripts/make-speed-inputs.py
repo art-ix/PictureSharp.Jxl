@@ -7,6 +7,7 @@ Decode inputs are encoded by cjxl so they exercise the streams libjxl writes; en
 16-bit inputs (name suffix -16, crop16-*): the photo decoded by djxl to float sRGB and rounded to 16 bits (real 16-bit values
 from the lossy original) and the screen widened from 8 bits (v * 257). photo1w-16 is the 8-bit photo1 widened the same way: an
 encode input with exactly the 8-bit image's content, for the 16-bit/8-bit time ratio.
+small64/small256 (0.8.5) are centre crops of the photo for the fixed per-image cost.
 """
 import os
 from pathlib import Path
@@ -113,6 +114,10 @@ def main():
         w, h = image.size
         image.crop(((w - 1280) // 2, (h - 800) // 2, (w + 1280) // 2, (h + 800) // 2)).save(OUT / 'photo1.png')
         image.crop((w // 3, h // 3, w // 3 + 384, h // 3 + 256)).save(OUT / 'crop-photo.png')
+        # Small images (0.8.5) for the fixed per-image cost: centre crops of the photo.
+        for size in (64, 256):
+            image.crop(((w - size) // 2, (h - size) // 2, (w + size) // 2, (h + size) // 2)).save(OUT / f'small{size}.png')
+            pngs[f'small{size}'] = OUT / f'small{size}.png'
         rgba = image.crop((w // 2, h // 2, w // 2 + 256, h // 2 + 192)).convert('RGBA')
         rgba.putalpha(Image.linear_gradient('L').resize(rgba.size))
         rgba.save(OUT / 'crop-photo-alpha.png')
@@ -123,6 +128,8 @@ def main():
         'photo12': [('d1-e7', '-d', '1', '-e', '7'), ('d0-e1', '-d', '0', '-e', '1'), ('d0-e2', '-d', '0', '-e', '2'), ('d0-e7', '-d', '0', '-e', '7')],
         'photo1': [('d1-e7', '-d', '1', '-e', '7'), ('d3-e3', '-d', '3', '-e', '3'), ('d0-e3', '-d', '0', '-e', '3'), ('d0-e7', '-d', '0', '-e', '7')],
         'screen': [('d1-e7', '-d', '1', '-e', '7'), ('d0-e7', '-d', '0', '-e', '7')],
+        'small64': [('d1-e7', '-d', '1', '-e', '7'), ('d0-e7', '-d', '0', '-e', '7')],
+        'small256': [('d1-e7', '-d', '1', '-e', '7'), ('d0-e7', '-d', '0', '-e', '7')],
     }
     plans |= {f'{name}-16': [p for p in plans[name] if p[0] in ('d1-e7', 'd0-e7')] for name in ('photo12', 'photo1', 'screen')}
     for name, source in pngs.items():

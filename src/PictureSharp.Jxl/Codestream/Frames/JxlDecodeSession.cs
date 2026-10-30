@@ -50,7 +50,7 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
         var reader = JxlFrameSectionReader.FirstFrame(codestream, headers, cancellationToken, out byte[]? icc, maxIccBytes, reserveIcc);
         IccProfile = icc;
         JxlColorTarget target = renderSrgb ? JxlColorTarget.Srgb
-            : JxlColorTarget.Profile(icc is null ? null : JxlIccTarget.TryCreate(icc, metadata.Color.ColorSpace == JxlColorSpace.Gray));
+            : JxlColorTarget.Profile(icc, metadata.Color.ColorSpace == JxlColorSpace.Gray);
         // Reference frames (patch sources) and DC frames come first; the last frame is the image.
         while (true)
         {

@@ -124,7 +124,7 @@ its ICC profile via `JxlIccTarget`) or sRGB for `ToSrgb`.
   Output is identical at every degree; see the [parallelism design](design/0.8.1-parallelism.md).
 - **Scheduling and scratch (0.8.2):** MA-tree properties and then independent subtrees are learned in
   parallel; replay in sequential depth-first order preserves node numbering and encoded bytes. RCT candidates
-  are costed independently, and palette discovery/index mapping uses row bands with deterministic final sorting.
+  are costed independently (since 0.8.5 per distinct transformed channel), and palette discovery/index mapping uses row bands with deterministic final sorting.
   JPEG scans with `Ss = 0` and `Ah = 0` encode restart-interval or MCU-row chunks independently, merging raw bits,
   byte stuffing, padding and markers in order. A 64-bit accumulator replaces per-bit output. Corrupt chunk encoding
   is replayed sequentially so an earlier padding error is not hidden by a later coefficient error. AC search, CfL
@@ -142,6 +142,11 @@ its ICC profile via `JxlIccTarget`) or sRGB for `ToSrgb`.
   moves) with its four error rows interleaved and read through `Unsafe.Add` after one range check. Row-batched
   prefix-code symbols go through `JxlBitReader.ReadRow`, which keeps the bit buffer in locals while 8 bytes remain
   in the slice and hands it to an inlined `IJxlBitDecoder`. See the [Modular design](design/0.8.4-modular.md).
+- **Consolidation (0.8.5):** the RCT search costs each distinct transformed channel once and sums them per candidate
+  in the old order. Library quantization tables are computed once per process and shared read-only; signalled tables
+  stay per frame. Encoder coefficient orders cover only the buckets up to the largest used one. The decoder parses the
+  ICC output target lazily. `ForWorkers` creates a worker's state with its first index, so idle workers allocate
+  nothing. See the [consolidation design](design/0.8.5-consolidation.md).
 
 ## Tests and release
 

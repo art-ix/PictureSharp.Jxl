@@ -31,7 +31,7 @@ keep it at most 600 lines by condensing the oldest entries.
 - Pixels use straight alpha: Rgba32 by default, Rgba64 for sources above 8 bits with PreserveBitDepth. Encode Rgba64 without an 8-bit intermediate; charge its pixels twice through ReservePixels.
 - Port scalar code first from pinned references, record origin and license notices.
 - Roadmap (user decision, 2026-10-29): 0.8.0 SIMD, 0.8.1 group parallelism,
-  0.8.2–0.8.5 further improvements, 0.8.6–0.9.0 fuzzing and resilience.
+  0.8.2–0.8.5 further improvements, 0.8.6 memory use (user decision, 2026-10-30), 0.8.7–0.9.0 fuzzing and resilience.
   Follow docs/design/0.8.0-simd.md (AVX2/SSE4.1, FMA checked separately). Vector implementations belong in sibling `*.Simd.cs`
   partial-class files (same capitalization as the core); keep scalar fallback, 0.7.10 bit identity (until 0.8.3, see above),
   explicit FMA/reduction semantics, logical buffer bounds and the no-`unsafe`-blocks constraint.

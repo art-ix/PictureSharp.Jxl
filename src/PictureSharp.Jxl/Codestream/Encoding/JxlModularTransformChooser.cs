@@ -261,7 +261,8 @@ internal static class JxlModularTransformChooser
 
     /// <summary>
     /// The RCT type whose channels cost least with the gradient predictor on a sample of rows; none when no transform
-    /// beats the untransformed channels. Candidates are costed independently (in parallel) and chosen in type order.
+    /// beats the untransformed channels. Distinct transformed channels are costed independently (in parallel) and the
+    /// candidates chosen in type order.
     /// </summary>
     /// <param name="image">The channels; the first three are transformed.</param>
     /// <param name="cancellationToken">Cancels the search.</param>
@@ -282,9 +283,45 @@ internal static class JxlModularTransformChooser
 
         if (only is not null) candidates.AddRange(only);
 
+        // Each candidate's cost is the sum of its three channels' costs, and candidates share channels (the first
+        // channel of every permutation, the differences): each distinct channel is costed once.
+        var channels = new List<RctChannel>();
+        var parts = new int[candidates.Count, 3];
+        for (int i = 0; i < candidates.Count; i++)
+        {
+            var forward = new ForwardRctStep(candidates[i]);
+            for (int c = 0; c < 3; c++)
+            {
+                RctChannel channel = forward.Channel(c);
+                int index = channels.IndexOf(channel);
+                if (index < 0)
+                {
+                    index = channels.Count;
+                    channels.Add(channel);
+                }
+
+                parts[i, c] = index;
+            }
+        }
+
+        var channelCosts = new (long Extra, double Entropy)[channels.Count];
+        JxlParallel.For(channels.Count, parallelism, cancellationToken, i =>
+            channelCosts[i] = ChannelCost(planes, image[0].Width, image[0].Height, channels[i]));
         var costs = new double[candidates.Count];
-        JxlParallel.For(candidates.Count, parallelism, cancellationToken, i =>
-            costs[i] = RctCost(planes, image[0].Width, image[0].Height, candidates[i]));
+        for (int i = 0; i < candidates.Count; i++)
+        {
+            // The extra bits of all channels, then the channels' entropies summed in channel order.
+            long extra = 0;
+            double entropy = 0;
+            for (int c = 0; c < 3; c++)
+            {
+                extra += channelCosts[parts[i, c]].Extra;
+                entropy += channelCosts[parts[i, c]].Entropy;
+            }
+
+            costs[i] = extra + entropy;
+        }
+
         JxlRctType best = JxlRctType.None;
         double bestCost = double.MaxValue;
         for (int i = 0; i < candidates.Count; i++)
@@ -299,7 +336,7 @@ internal static class JxlModularTransformChooser
         return best;
     }
 
-    // The estimated bits of one channel's gradient residuals on a sample of rows (RctCost for one channel).
+    // The estimated bits of one channel's gradient residuals on a sample of rows (ChannelCost for an untransformed plane).
     private static double GradientCost(int[] pixels, int width, int height)
     {
         int step = (int)Math.Max(1, (long)width * height / RctSamplePixels);
@@ -321,38 +358,32 @@ internal static class JxlModularTransformChooser
         return extra + JxlHistogramClustering.Entropy(histogram);
     }
 
-    private static double RctCost(int[][] planes, int width, int height, JxlRctType type)
+    // The extra bits and entropy of one transformed channel's gradient residuals on a sample of rows.
+    private static (long Extra, double Entropy) ChannelCost(int[][] planes, int width, int height, RctChannel channel)
     {
         int step = (int)Math.Max(1, (long)width * height / RctSamplePixels);
-        var forward = new ForwardRctStep(type);
-        // The sampled row and the row above it after the transform, three interleaved channels per pixel.
-        int[] above = new int[3 * width];
-        int[] row = new int[3 * width];
-        var histograms = new long[3][];
-        for (int c = 0; c < 3; c++) histograms[c] = new long[CostTokens];
+        // The sampled row and the row above it after the transform.
+        int[] above = new int[width];
+        int[] row = new int[width];
+        long[] histogram = new long[CostTokens];
         long extra = 0;
+        int aboveRow = -1;
         for (int y = 1; y < height; y += step)
         {
-            for (int x = 0; x < width; x++)
-            {
-                (above[3 * x], above[3 * x + 1], above[3 * x + 2]) = forward.Apply(planes, (y - 1) * width + x);
-                (row[3 * x], row[3 * x + 1], row[3 * x + 2]) = forward.Apply(planes, y * width + x);
-            }
-
+            if (aboveRow == y - 1) (above, row) = (row, above);
+            else channel.Apply(planes, (y - 1) * width, above);
+            channel.Apply(planes, y * width, row);
+            aboveRow = y;
             for (int x = 1; x < width; x++)
             {
-                for (int c = 0; c < 3; c++)
-                {
-                    int i = 3 * x + c;
-                    long residual = row[i] - JxlMaProperty.ClampedGradient(row[i - 3], above[i], above[i - 3]);
-                    uint token = JxlHybridUint.Default.Encode(PackSigned(residual), out int bits, out _);
-                    histograms[c][Math.Min(token, CostTokens - 1)]++;
-                    extra += bits;
-                }
+                long residual = row[x] - JxlMaProperty.ClampedGradient(row[x - 1], above[x], above[x - 1]);
+                uint token = JxlHybridUint.Default.Encode(PackSigned(residual), out int bits, out _);
+                histogram[Math.Min(token, CostTokens - 1)]++;
+                extra += bits;
             }
         }
 
-        return extra + histograms.Sum(JxlHistogramClustering.Entropy);
+        return (extra, JxlHistogramClustering.Entropy(histogram));
     }
 
     /// <summary>Replaces the first three channels of <paramref name="image"/> by their transformed values.</summary>
@@ -402,6 +433,63 @@ internal static class JxlModularTransformChooser
             else if (secondMode == 2) s -= (a + t) >> 1;
             if (subtractsFirst) t -= a;
             return (a, s, t);
+        }
+
+        /// <summary>Output channel <paramref name="c"/> as a function of the planes.</summary>
+        public RctChannel Channel(int c) => yCoCg ? new RctChannel(RctChannelKind.YCoCg + c, first, second, third)
+            : c == 0 ? new RctChannel(RctChannelKind.Plane, first, 0, 0)
+            : c == 1 ? secondMode switch
+            {
+                0 => new RctChannel(RctChannelKind.Plane, second, 0, 0),
+                1 => new RctChannel(RctChannelKind.Difference, second, first, 0),
+                // (first + third) >> 1 does not depend on their order.
+                _ => new RctChannel(RctChannelKind.MinusAverage, second, Math.Min(first, third), Math.Max(first, third)),
+            }
+            : subtractsFirst ? new RctChannel(RctChannelKind.Difference, third, first, 0)
+            : new RctChannel(RctChannelKind.Plane, third, 0, 0);
+    }
+
+    private enum RctChannelKind
+    {
+        Plane,
+        Difference,
+        MinusAverage,
+        YCoCg, // YCoCg + 1 and + 2: Co and Cg.
+    }
+
+    // One channel of a forward RCT: plane p, p − q, p − ((q + r) >> 1), or YCoCg channel (kind − YCoCg) of the
+    // planes (p, q, r) in permutation order; the same values as ForwardRctStep.Apply.
+    private readonly record struct RctChannel(RctChannelKind Kind, int P, int Q, int R)
+    {
+        public void Apply(int[][] planes, int start, int[] output)
+        {
+            int width = output.Length;
+            ReadOnlySpan<int> p = planes[P].AsSpan(start, width);
+            ReadOnlySpan<int> q = planes[Q].AsSpan(start, width);
+            ReadOnlySpan<int> r = planes[R].AsSpan(start, width);
+            switch (Kind)
+            {
+                case RctChannelKind.Plane:
+                    p.CopyTo(output);
+                    break;
+                case RctChannelKind.Difference:
+                    for (int x = 0; x < width; x++) output[x] = p[x] - q[x];
+                    break;
+                case RctChannelKind.MinusAverage:
+                    for (int x = 0; x < width; x++) output[x] = p[x] - ((q[x] + r[x]) >> 1);
+                    break;
+                default:
+                    int c = Kind - RctChannelKind.YCoCg;
+                    for (int x = 0; x < width; x++)
+                    {
+                        int co = p[x] - r[x];
+                        int tmp = r[x] + (co >> 1);
+                        int cg = q[x] - tmp;
+                        output[x] = c == 0 ? tmp + (cg >> 1) : c == 1 ? co : cg;
+                    }
+
+                    break;
+            }
         }
     }
 }

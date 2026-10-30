@@ -46,7 +46,7 @@ def main():
     if any(t == 0 or t < -1 for t in degrees):
         parser.error('threads must be -1 or positive')
     env = dict(os.environ, DOTNET_TieredCompilation='0')
-    for key in ('DOTNET_EnableAVX', 'DOTNET_EnableAVX2', 'DOTNET_EnableHWIntrinsic', 'JXL_THREADS'):
+    for key in ('DOTNET_EnableAVX', 'DOTNET_EnableAVX2', 'DOTNET_EnableHWIntrinsic', 'JXL_THREADS', 'JXL_CONCURRENT'):
         env.pop(key, None)
     builds = {'baseline': args.baseline.resolve(), 'current': args.current.resolve()}
     listing = subprocess.run(['dotnet', str(builds['current']), 'list', str(ROOT)], env=env,
@@ -71,7 +71,7 @@ def main():
         args.out.write_text(json.dumps(record, indent=2) + '\n')
 
     for case in args.cases:
-        runs = (args.small_runs if case in ('decode/tiny-1x1', 'decode/small-64x64')
+        runs = (args.small_runs if case in ('decode/tiny-1x1', 'decode/small-64x64') or '/small64-' in case
                 else args.large_runs if 'photo12' in case else args.runs)
         for degree in degrees:
             for round_index in range(args.rounds):

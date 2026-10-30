@@ -12,16 +12,23 @@ internal sealed class JxlColorTarget
     /// <summary>The image's colour space.</summary>
     public static readonly JxlColorTarget Original = new(null, srgb: false);
 
-    private JxlColorTarget(JxlIccTarget? icc, bool srgb)
+    private readonly Lazy<JxlIccTarget?>? icc;
+
+    private JxlColorTarget(Lazy<JxlIccTarget?>? icc, bool srgb)
     {
-        Icc = icc;
+        this.icc = icc;
         IsSrgb = srgb;
     }
 
     /// <summary>The image's ICC profile as an output colour space, when it has a usable one.</summary>
-    public JxlIccTarget? Icc { get; }
+    public JxlIccTarget? Icc => icc?.Value;
 
     public bool IsSrgb { get; }
 
-    public static JxlColorTarget Profile(JxlIccTarget? icc) => icc is null ? Original : new(icc, srgb: false);
+    /// <summary>
+    /// The profile <paramref name="icc"/>, parsed when first needed: only images whose colour encoding is an ICC profile
+    /// render to it, so most images (enumerated colour spaces, whose profile is synthesized) never parse it.
+    /// </summary>
+    public static JxlColorTarget Profile(byte[]? icc, bool gray) =>
+        icc is null ? Original : new(new Lazy<JxlIccTarget?>(() => JxlIccTarget.TryCreate(icc, gray)), srgb: false);
 }

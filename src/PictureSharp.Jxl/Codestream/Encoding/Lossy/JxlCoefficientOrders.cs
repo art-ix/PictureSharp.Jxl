@@ -1,3 +1,4 @@
+using System.Numerics;
 using PictureSharp.Formats.Jxl.Codestream.Entropy;
 using PictureSharp.Formats.Jxl.Codestream.VarDct;
 using static PictureSharp.Formats.Jxl.Codestream.Numerics.JxlIntMath;
@@ -11,13 +12,20 @@ namespace PictureSharp.Formats.Jxl.Codestream.Encoding.Lossy;
 /// </summary>
 internal static class JxlCoefficientOrders
 {
-    /// <summary>The orders and the buckets whose order is coded (the rest use the natural order).</summary>
+    /// <summary>
+    /// The orders and the buckets whose order is coded (the rest use the natural order). The orders cover the buckets
+    /// up to the largest one the frame uses, at the offsets <see cref="JxlAcStrategy.OrderOffset"/> gives.
+    /// </summary>
     public static (int[] Orders, uint CodedBuckets) Compute(JxlLossyFrame frame)
     {
         (uint used, uint customized) = UsedOrders(frame);
-        int[] orders = new int[JxlAcStrategy.OrderOffset(JxlAcStrategy.Orders - 1, 3)];
-        long[] zeros = new long[orders.Length];
+        uint present = used;
+        foreach (JxlVarblock varblock in frame.Strategies) present |= 1u << varblock.Type.OrderBucket;
+        // The orders of all buckets take 394K coefficients (most of them for DCT128 and DCT256): only the buckets up
+        // to the largest used one are kept.
+        int[] orders = new int[JxlAcStrategy.OrderOffset(31 - BitOperations.LeadingZeroCount(present) + 1, 0)];
         if (frame.Jpeg) customized = 0;
+        long[] zeros = customized != 0 ? new long[orders.Length] : [];
         if (customized != 0)
         {
             CountZeros(frame, zeros, frame.Settings.SpeedTier >= JxlLossySettings.Squirrel && customized == 1 ? 0.5 : 1.0);

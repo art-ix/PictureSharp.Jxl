@@ -134,6 +134,20 @@ public sealed class JxlParallelTests
     }
 
     [Test]
+    public async Task ForWorkers_CreatesStatesForTakenIndicesAndReportsCreationFailures()
+    {
+        foreach (int degree in (int[])[1, .. Degrees])
+        {
+            // A worker creates its state with its first index: never more states than indices.
+            int states = 0;
+            JxlParallel.ForWorkers(3, degree, default, () => Interlocked.Increment(ref states), (_, _) => Thread.Sleep(1));
+            await Assert.That(states >= 1 && states <= 3).IsTrue();
+            await Assert.That(() => JxlParallel.ForWorkers<object>(20, degree, default,
+                () => throw new InvalidOperationException("state"), (_, _) => { })).Throws<InvalidOperationException>().WithMessageContaining("state");
+        }
+    }
+
+    [Test]
     public async Task For_HonoursCancellationInsideWorkers()
     {
         foreach (int degree in (int[])[1, .. Degrees])

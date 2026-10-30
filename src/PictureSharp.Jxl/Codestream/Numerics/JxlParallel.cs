@@ -59,7 +59,8 @@ internal static class JxlParallel
     /// <summary>
     /// Runs <paramref name="body"/> for every index in [0, <paramref name="count"/>) with per-worker state: each worker
     /// creates one state and takes the next index until none is left, so items must not depend on which worker, or in
-    /// which order, they run. A single-threaded run creates one state and visits the indices in order.
+    /// which order, they run. A worker creates its state when it takes its first index (a failure to create it is that
+    /// index's failure). A single-threaded run creates one state and visits the indices in order.
     /// </summary>
     public static void ForWorkers<TState>(int count, int degree, CancellationToken cancellationToken, Func<TState> create,
         Action<TState, int> body)
@@ -82,25 +83,23 @@ internal static class JxlParallel
         int workers = Workers(degree, count);
         Parallel.For(0, workers, new ParallelOptions { MaxDegreeOfParallelism = workers }, _ =>
         {
-            TState state;
-            try
-            {
-                state = create();
-            }
-            catch (Exception exception)
-            {
-                // Charged to the first index this worker would have taken.
-                failure.Record(Math.Min(count - 1, Volatile.Read(ref next) + 1), exception);
-                return;
-            }
-
+            // The state is created for the first index the worker takes: a worker that finds no index left (the pool
+            // was busy, as when callers decode several images at once) allocates no scratch.
+            TState? state = default;
+            bool created = false;
             for (int i; (i = Interlocked.Increment(ref next)) < count;)
             {
                 if (i > Volatile.Read(ref failure.Index)) return;
                 try
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    body(state, i);
+                    if (!created)
+                    {
+                        state = create();
+                        created = true;
+                    }
+
+                    body(state!, i);
                 }
                 catch (Exception exception)
                 {

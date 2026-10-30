@@ -82,11 +82,17 @@ internal sealed record SpeedCase(string Id, string Input, string Reference, Func
         ("screen", 0, 1), ("screen", 0, 2), ("screen", 0, 3), ("screen", 0, 4), ("screen", 0, 5),
         ("photo1w-16", 0, 1), ("photo1w-16", 0, 3), ("photo1w-16", 0, 7), ("photo1w-16", 1, 3), ("photo1w-16", 1, 7),
         ("screen-16", 0, 1), ("screen-16", 0, 3),
+        // Small images (0.8.5): fixed per-image cost.
+        ("small64", 0, 7), ("small64", 1, 7), ("small256", 0, 7), ("small256", 1, 7),
     ];
 
     // JXL_THREADS sets MaxDegreeOfParallelism (default -1, the library default); package builds before 0.8.1 have no
     // encoder or transcoder option (source builds define JXL_PARALLEL) and ignore the decoder one.
     internal static readonly int Threads = int.TryParse(Environment.GetEnvironmentVariable("JXL_THREADS"), out int threads) ? threads : -1;
+
+    // JXL_CONCURRENT runs that many copies of the operation at once (Parallel.For), like a server handling independent
+    // images; times are per batch.
+    internal static readonly int Concurrent = int.TryParse(Environment.GetEnvironmentVariable("JXL_CONCURRENT"), out int concurrent) ? concurrent : 1;
 
     private static readonly DecoderOptions Load = new() { MaxDegreeOfParallelism = Threads };
 
@@ -182,7 +188,13 @@ internal sealed record SpeedCase(string Id, string Input, string Reference, Func
 
     public object Measure(int runs)
     {
-        Func<byte[]> operation = Prepare(File.ReadAllBytes(Input));
+        Func<byte[]> single = Prepare(File.ReadAllBytes(Input));
+        Func<byte[]> operation = Concurrent <= 1 ? single : () =>
+        {
+            var results = new byte[Concurrent][];
+            Parallel.For(0, Concurrent, new ParallelOptions { MaxDegreeOfParallelism = Concurrent }, i => results[i] = single());
+            return results[0];
+        };
         long coldAllocated = GC.GetTotalAllocatedBytes(precise: true);
         long coldStart = Stopwatch.GetTimestamp();
         byte[] result = operation();
@@ -214,6 +226,7 @@ internal sealed record SpeedCase(string Id, string Input, string Reference, Func
         {
             id = Id,
             threads = Threads,
+            concurrent = Concurrent,
             processors = Environment.ProcessorCount,
             hardware = new { avx2 = Avx2.IsSupported, sse41 = Sse41.IsSupported, fma = Fma.IsSupported },
             bytes = result.Length,

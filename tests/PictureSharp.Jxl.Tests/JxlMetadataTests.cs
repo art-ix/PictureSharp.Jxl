@@ -74,7 +74,7 @@ public sealed class JxlMetadataTests
         await Assert.That(Read("icc-lossy-rgb.jxl", Options() with { ColorConversion = ColorConversionMode.ToSrgb }).IccProfile).IsNotNull();
         // The sRGB target overrides the profile, including one with lookup tables, and enumerated colour spaces.
         JxlImageMetadata metadata = Headers("icc-lossy-rgb.jxl").Metadata;
-        foreach (JxlColorTarget target in new[] { JxlColorTarget.Srgb, JxlColorTarget.Profile(null) })
+        foreach (JxlColorTarget target in new[] { JxlColorTarget.Srgb, JxlColorTarget.Profile(null, gray: false) })
         {
             JxlColorEncoding output = JxlColorOutput.DescribeOutput(metadata, JxlColorTransform.Xyb, target);
             await Assert.That((output.WantIcc, output.Primaries, output.TransferFunction)).IsEqualTo((false, JxlPrimaries.Srgb, JxlTransferFunction.Srgb));

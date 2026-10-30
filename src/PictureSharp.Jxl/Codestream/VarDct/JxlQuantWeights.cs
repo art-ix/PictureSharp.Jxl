@@ -74,6 +74,11 @@ internal sealed class JxlQuantWeights
 
     private static readonly JxlQuantEncoding[] Library = CreateLibrary();
 
+    // Library tables are shared by every frame of the process (computed on first use, read-only), which saves small
+    // images from computing them per frame; tables a frame signals are cached per instance.
+    private static readonly float[]?[] LibraryTables = new float[Tables][];
+    private static readonly float[]?[] LibraryInverseTables = new float[Tables][];
+
     private readonly float[]?[] tables = new float[Tables][];
     private readonly float[]?[] inverseTables = new float[Tables][];
     private JxlQuantEncoding[] encodings = LibraryEncodings();
@@ -132,8 +137,11 @@ internal sealed class JxlQuantWeights
     public float[] Matrix(JxlAcStrategyType strategy)
     {
         int table = StrategyTable[(int)strategy];
-        // Workers of a parallel region may compute a table at the same time: the results are identical, one is kept.
-        return tables[table] ?? Publish(ref tables[table], Compute(encodings[table].Mode == JxlQuantMode.Library ? Library[table] : encodings[table], table));
+        bool library = encodings[table].Mode == JxlQuantMode.Library;
+        ref float[]? slot = ref library ? ref LibraryTables[table] : ref tables[table];
+        // Workers of a parallel region (or other decoders) may compute a table at the same time: the results are
+        // identical, one is kept.
+        return slot ?? Publish(ref slot, Compute(library ? Library[table] : encodings[table], table));
     }
 
     /// <summary>
@@ -143,8 +151,10 @@ internal sealed class JxlQuantWeights
     public float[] InverseMatrix(JxlAcStrategyType strategy)
     {
         int table = StrategyTable[(int)strategy];
-        if (inverseTables[table] is { } cached) return cached;
-        float[] weights = Weights(encodings[table].Mode == JxlQuantMode.Library ? Library[table] : encodings[table], table);
+        bool library = encodings[table].Mode == JxlQuantMode.Library;
+        ref float[]? slot = ref library ? ref LibraryInverseTables[table] : ref inverseTables[table];
+        if (slot is { } cached) return cached;
+        float[] weights = Weights(library ? Library[table] : encodings[table], table);
         int xs = Math.Max(RequiredSizeX[table], RequiredSizeY[table]);
         int ys = Math.Min(RequiredSizeX[table], RequiredSizeY[table]);
         int size = weights.Length / 3;
@@ -156,7 +166,7 @@ internal sealed class JxlQuantWeights
             }
         }
 
-        return Publish(ref inverseTables[table], weights);
+        return Publish(ref slot, weights);
     }
 
     private static float[] Publish(ref float[]? slot, float[] value) => Interlocked.CompareExchange(ref slot, value, null) ?? value;

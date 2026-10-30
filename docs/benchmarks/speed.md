@@ -1,4 +1,4 @@
-# Speed measurements — 0.7.3–0.8.4
+# Speed measurements — 0.7.3–0.8.5
 
 Measured on 2026-10-27, Linux x64, Intel Core i5-12500H, .NET 10, one thread (`DOTNET_PROCESSOR_COUNT=1`).
 libjxl 0.12.0 (`4128790`) times are its own `--num_reps=3` geomean with `--num_threads=1`, PNG I/O excluded, AVX2 enabled.
@@ -716,3 +716,45 @@ writer rents one row per channel and worker); peak RSS follows GC timing with eq
 
 Small candidates measured against a build without them (4 rounds, 1 thread): photo1 e7 −3.1%, photo12 e7 −3.0%,
 16-bit −0.4% to −1.1%, screen −0.7% to −1.2%; kept for the 8-bit e7 target.
+
+## Consolidation (0.8.5)
+
+Fixed per-image costs and concurrency (see the [consolidation design](../design/0.8.5-consolidation.md)): the RCT search
+costs each distinct transformed channel once, library quantization tables are shared by the process, coefficient
+orders cover only the buckets a frame uses, the decoder parses the ICC output target on first use, and per-worker
+state is created with a worker's first item. Decoded pixels and encoded bytes are identical to 0.8.4 (golden: the 1433
+earlier results, SHA-256 88eccd4b…, at 1 and 16 threads; 1469 with the new small inputs).
+
+Measured 2026-10-30 with `scripts/measure-paired.py` on the machine and runtime of the earlier sections: 0.8.4 and
+0.8.5 sources in separate processes, A/B then B/A, 2 rounds × 5 warm calls (12 MP: 3; 64×64: 200), tiered
+compilation off, 1 thread on CPU 0 and -1 on CPUs 0–15. New inputs `small64`/`small256` are centre crops of the 12 MP
+photo. libjxl: `cjxl`/`djxl --num_threads=0 --num_reps=50` 0.12.0 on CPU 0.
+[Raw data](../measurements/consolidation-0.8.5.json).
+
+Small images:
+
+| Case | 1 thread 0.8.4 → 0.8.5 (ms) | Speed-up | 16 threads 0.8.4 → 0.8.5 (ms) | Allocated 1 thread (KiB) | libjxl 1 thread (ms) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| decode/small64-d0-e7 | 0.507 → 0.340 | 1.49× | 0.574 → 0.358 | 110 → 47 | 0.27 |
+| decode/small64-d1-e7 | 0.174 → 0.143 | 1.22× | 0.186 → 0.162 | 134 → 98 | 0.20 |
+| decode/small256-d0-e7 | 12.6 → 12.0 | 1.05× | 12.3 → 12.1 | 565 → 502 | 9.1 |
+| decode/small256-d1-e7 | 1.41 → 1.34 | 1.05× | 1.78 → 1.37 | 557 → 482 | 0.91 |
+| encode/small64-d0-e7 | 5.12 → 2.58 | 1.98× | 2.70 → 1.83 | 1076 → 992 | 2.5 |
+| encode/small64-d1-e7 | 3.73 → 2.57 | 1.45× | 3.84 → 2.76 | 7328 → 2269 | 2.7 |
+| encode/small256-d0-e7 | 96.6 → 56.1 | 1.72× | 41.0 → 34.1 | 5614 → 5406 | 45 |
+| encode/small256-d1-e7 | 27.5 → 26.1 | 1.05× | 15.1 → 13.9 | 9042 → 4009 | 13.7 |
+
+Larger images, 1 thread: lossless encoding `photo1-d0-e7` 717 → 663 ms (−7.4%) and `photo1w-16-d0-e7` 742 → 694 ms
+(−6.5%) from the RCT search; `decode/photo1-d1-e7` −4.3%; lossy encodes allocate about 5 MB less per frame. Every
+other case is within ±1.4% at 1 thread. At 16 threads most cases are within ±3%; `decode/photo1-d0-e3` −11.9%,
+`encode/photo12-d1-e7` −8.5%. Single-run increases at 16 threads were not rechecked (user decision):
+`decode16/screen-16-d0-e7` +22.3% (14.8 → 18.1 ms), `encode/photo1-d1-e7` +6.6%, `decode/small-64x64` +6.4%,
+`decode16/photo1-16-d0-e7` +4.6%, `decode/screen-d1-e7` +4.5%, `encode/photo1-d0-e3` +4.4%, `tojpeg/IMG_0160-jpeg`
++4.1%; all are unchanged or faster at 1 thread, and the lossless decoding and JPEG reconstruction code they run did not
+change. Earlier 16-thread rechecks of such single runs (0.8.4) came back within noise.
+
+Concurrency (`JXL_CONCURRENT=16`: 16 independent operations at once on CPUs 0–15, tiered compilation off, 9 calls):
+with the library default (-1) throughput matches one thread per image for decoding (`small256-d1` 0.27 ms/image,
+`photo1-d0-e7` 28.6 ms/image both ways). Lossy encoding of 256×256 images at -1 took 5.90 ms and 13.2 MB per image in
+0.8.4 sources (5.02 ms / 4.1 MB at one thread per image): every potential worker created its scratch. With the state
+created on a worker's first item: 5.08 ms and 5.8 MB.
