@@ -795,6 +795,22 @@ Per operation (`--collect`), 12 MP unless noted:
 | | 16 | 743 → 743 | **567 → 111** | **1593 → 1035** |
 | encode lossy d1 e7 | 1 | 4926 → 4775 | 376 → 282 | **959 → 817** |
 | | 16 | 1093 → 1091 | 200 → 91 | **994 → 847** |
+
+16-bit token contexts (added after this matrix; Modular streams with at most 65536 leaves and lossy AC streams store a
+context in 2 bytes) against the 0.8.6 build above, `--collect --cool-below 60`, 2 rounds; encoded bytes identical:
+
+| Case | Threads | Time (ms) | Allocated (MB) | Peak RSS (MiB) |
+| --- | ---: | ---: | ---: | ---: |
+| encode 12 MP lossless e7 | 1 | 3617 → 3574 | 576 → 458 | **864 → 804** |
+| | 16 | 765 → 736 | 114 → 113 | **1032 → 944** |
+| encode 12 MP lossy d1 e7 | 1 | 4816 → 4813 | 282 → 257 | 817 → 791 |
+| | 16 | 1113 → 1133 (+1.8%) | 91 → 90 | 848 → 834 |
+| encode 1 MP lossless e7 | 1 / 16 | 663 → 660 / 199 → 191 | 30 → 26 / 24 → 24 | 205 → 197 / 296 → 292 |
+| encode 1 MP lossless e1 | 1 / 16 | 57.2 → 58.8 / 26.5 → 26.3 | unchanged | 122 → 114 / 145 → 141 |
+| encode screen lossless e7 | 1 / 16 | 401 → 398 / 132 → 132 | 38 → 32 / 28 → 28 | 193 → 191 / 251 → 248 |
+
+The 1-thread e1 increase was noise: −1.6% with 6 rounds. Raw data: `contextsPaired` and `contextsRecheckE1` in
+[memory-0.8.6.json](../measurements/memory-0.8.6.json).
 | decode 16-bit lossless e7 | 1 | 3040 → 3026 | **341 → 170** | 369 → 351 |
 | | 16 | 434 → 398 | 341 → 171 | 441 → 442 |
 | decode lossless e7 | 1 | 2149 → 2122 | 136 → 76 | 267 → 267 |

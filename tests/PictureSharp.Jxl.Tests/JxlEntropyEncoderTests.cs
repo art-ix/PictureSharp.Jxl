@@ -77,6 +77,51 @@ public sealed class JxlEntropyEncoderTests
         await Assert.That(Decode(writer.ToArray(), contexts, streams)).IsEqualTo("ok");
     }
 
+    [Test]
+    [Arguments(1, 3000, 0, true)]
+    [Arguments(300, 50000, 4, true)]
+    [Arguments(65536, 40000, 6, true)]
+    [Arguments(65537, 40000, 7, false)]
+    public async Task NarrowContexts_CodeTheSameBits(int contexts, int count, int seed, bool narrow)
+    {
+        // 16-bit context storage (0.8.6) codes exactly the bits of 32-bit storage; mixed streams are allowed.
+        var random = new Random(seed);
+        using var buffers = new Codestream.Buffers.JxlBufferScope();
+        var wide = new List<JxlTokens>();
+        var narrowed = new List<JxlTokens>();
+        for (int s = 0; s < 3; s++)
+        {
+            var a = new JxlTokens(buffers, 16);
+            var b = new JxlTokens();
+            if (s != 1) b.ExpectContexts(contexts);
+            for (int i = 0; i < count / 3 + s; i++)
+            {
+                int context = i % 7 == 0 ? contexts - 1 : random.Next(contexts);
+                uint value = (uint)(random.Next(1, 1 << 14) / random.Next(1, 200));
+                a.Add(context, value);
+                b.Add(context, value);
+            }
+
+            wide.Add(a);
+            narrowed.Add(b);
+        }
+
+        await Assert.That(narrowed[0].NarrowContexts).IsEqualTo(narrow);
+        byte[] Code(List<JxlTokens> streams)
+        {
+            JxlEntropyEncoder encoder = JxlEntropyEncoder.Build(contexts, streams);
+            var writer = new JxlBitWriter();
+            encoder.WriteHeader(writer);
+            foreach (JxlTokens tokens in streams) encoder.WriteStream(writer, tokens);
+            writer.Write(16, 0xBEEF);
+            return writer.ToArray();
+        }
+
+        byte[] expected = Code(wide);
+        await Assert.That(Code(narrowed).SequenceEqual(expected)).IsTrue();
+        await Assert.That(Decode(expected, contexts, narrowed)).IsEqualTo("ok");
+    }
+
     internal static string Decode(byte[] data, int contexts, List<JxlTokens> streams)
     {
         var reader = new JxlBitReader(new JxlCodestream(data));
@@ -87,7 +132,7 @@ public sealed class JxlEntropyEncoderTests
             using var symbols = new JxlSymbolReader(code, ref reader);
             for (int i = 0; i < tokens.Count; i++)
             {
-                uint decoded = symbols.Read(tokens.Contexts[i], ref reader);
+                uint decoded = symbols.Read(tokens.NarrowContexts ? tokens.NarrowContextValues[i] : tokens.Contexts[i], ref reader);
                 if (decoded != tokens.Values[i]) return $"stream {s} token {i}: {decoded} instead of {tokens.Values[i]}";
             }
 

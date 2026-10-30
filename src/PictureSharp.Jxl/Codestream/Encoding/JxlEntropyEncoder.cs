@@ -1,3 +1,4 @@
+using System.Numerics;
 using PictureSharp.Formats.Jxl.Codestream.Buffers;
 using PictureSharp.Formats.Jxl.Codestream.Entropy;
 using static PictureSharp.Formats.Jxl.Codestream.Numerics.JxlIntMath;
@@ -80,11 +81,21 @@ internal sealed class JxlEntropyEncoder
     /// <summary>Writes the ANS stream of <paramref name="tokens"/>: the final state, then the renormalization and raw bits.</summary>
     public void WriteStream(JxlBitWriter writer, JxlTokens tokens, CancellationToken cancellationToken = default)
     {
-        ReadOnlySpan<int> ctx = tokens.Contexts;
-        ReadOnlySpan<uint> values = tokens.Values;
         using var buffers = new JxlBufferScope();
         // Per symbol, its renormalization chunk (if any) and raw bits as JxlBitWriter.WritePacked takes them.
-        ulong[] packed = buffers.Rent<ulong>(ctx.Length, clear: false);
+        ulong[] packed = buffers.Rent<ulong>(tokens.Count, clear: false);
+        uint state = tokens.NarrowContexts
+            ? Encode(tokens.NarrowContextValues, tokens.Values, packed, cancellationToken)
+            : Encode(tokens.Contexts, tokens.Values, packed, cancellationToken);
+        writer.Write(32, state);
+        cancellationToken.ThrowIfCancellationRequested();
+        writer.WritePacked(packed.AsSpan(0, tokens.Count));
+    }
+
+    // ANS-codes the tokens into packed, backwards, and returns the final state.
+    private uint Encode<TContext>(ReadOnlySpan<TContext> ctx, ReadOnlySpan<uint> values, ulong[] packed, CancellationToken cancellationToken)
+        where TContext : unmanaged, IBinaryInteger<TContext>
+    {
         byte[] map = contextMap;
         JxlHybridUint[] clusterConfigs = configs;
         JxlAnsEncodingTable[] clusterTables = tables;
@@ -94,7 +105,7 @@ internal sealed class JxlEntropyEncoder
         for (int i = ctx.Length - 1; i >= 0; i--)
         {
             if ((i & 0xffff) == 0) cancellationToken.ThrowIfCancellationRequested();
-            int cluster = map[ctx[i]];
+            int cluster = map[int.CreateTruncating(ctx[i])];
             uint token = clusterConfigs[cluster].Encode(values[i], out int bitCount, out uint bits);
             JxlAnsEncodingTable table = clusterTables[cluster];
             uint frequency = table.Frequency(token);
@@ -112,9 +123,7 @@ internal sealed class JxlEntropyEncoder
             state = (quotient << LogTabSize) + table.Slot(token, state - quotient * frequency);
         }
 
-        writer.Write(32, state);
-        cancellationToken.ThrowIfCancellationRequested();
-        writer.WritePacked(packed.AsSpan(0, ctx.Length));
+        return state;
     }
 
     /// <summary>Codes <paramref name="tokens"/> with their own codes: header and stream.</summary>
@@ -134,14 +143,8 @@ internal sealed class JxlEntropyEncoder
         var rows = new long[]?[contexts];
         foreach (JxlTokens stream in streams)
         {
-            ReadOnlySpan<int> ctx = stream.Contexts;
-            ReadOnlySpan<uint> streamValues = stream.Values;
-            for (int i = 0; i < ctx.Length; i++)
-            {
-                if ((i & 0xffff) == 0) cancellationToken.ThrowIfCancellationRequested();
-                uint token = JxlHybridUint.Default.Encode(streamValues[i], out _, out _);
-                (rows[ctx[i]] ??= new long[DefaultTokens])[token]++;
-            }
+            if (stream.NarrowContexts) Count(stream.NarrowContextValues, stream.Values, rows, cancellationToken);
+            else Count(stream.Contexts, stream.Values, rows, cancellationToken);
         }
 
         var histograms = new long[contexts][];
@@ -152,6 +155,17 @@ internal sealed class JxlEntropyEncoder
         }
 
         return histograms;
+
+        static void Count<TContext>(ReadOnlySpan<TContext> ctx, ReadOnlySpan<uint> streamValues, long[]?[] rows, CancellationToken cancellationToken)
+            where TContext : unmanaged, IBinaryInteger<TContext>
+        {
+            for (int i = 0; i < ctx.Length; i++)
+            {
+                if ((i & 0xffff) == 0) cancellationToken.ThrowIfCancellationRequested();
+                uint token = JxlHybridUint.Default.Encode(streamValues[i], out _, out _);
+                (rows[int.CreateTruncating(ctx[i])] ??= new long[DefaultTokens])[token]++;
+            }
+        }
     }
 
     // Per cluster, every distinct value with its count, small values first in value order.
@@ -167,21 +181,8 @@ internal sealed class JxlEntropyEncoder
 
         foreach (JxlTokens stream in streams)
         {
-            ReadOnlySpan<int> ctx = stream.Contexts;
-            ReadOnlySpan<uint> v = stream.Values;
-            for (int i = 0; i < ctx.Length; i++)
-            {
-                if ((i & 0xffff) == 0) cancellationToken.ThrowIfCancellationRequested();
-                int cluster = contextMap[ctx[i]];
-                if (v[i] < SmallValues)
-                {
-                    small[cluster][v[i]]++;
-                }
-                else
-                {
-                    large[cluster][v[i]] = large[cluster].GetValueOrDefault(v[i]) + 1;
-                }
-            }
+            if (stream.NarrowContexts) Count(stream.NarrowContextValues, stream.Values, contextMap, small, large, cancellationToken);
+            else Count(stream.Contexts, stream.Values, contextMap, small, large, cancellationToken);
         }
 
         var values = new List<(uint Value, long Count)>[clusters];
@@ -192,6 +193,24 @@ internal sealed class JxlEntropyEncoder
         }
 
         return values;
+
+        static void Count<TContext>(ReadOnlySpan<TContext> ctx, ReadOnlySpan<uint> v, byte[] contextMap, long[][] small,
+            Dictionary<uint, long>[] large, CancellationToken cancellationToken) where TContext : unmanaged, IBinaryInteger<TContext>
+        {
+            for (int i = 0; i < ctx.Length; i++)
+            {
+                if ((i & 0xffff) == 0) cancellationToken.ThrowIfCancellationRequested();
+                int cluster = contextMap[int.CreateTruncating(ctx[i])];
+                if (v[i] < SmallValues)
+                {
+                    small[cluster][v[i]]++;
+                }
+                else
+                {
+                    large[cluster][v[i]] = large[cluster].GetValueOrDefault(v[i]) + 1;
+                }
+            }
+        }
     }
 
     // The candidate configuration with the fewest estimated bits, and its token counts.

@@ -212,6 +212,36 @@ public sealed class JxlEncoderTierTests
     }
 
     [Test]
+    public async Task NarrowTokens_AppendGrowAndValidate()
+    {
+        // 16-bit contexts (0.8.6): announced before the first token, appended as ushort, bounded by the announced count.
+        using var buffers = new JxlBufferScope();
+        var tokens = new JxlTokens(buffers);
+        tokens.ExpectContexts(2000);
+        for (int i = 0; i < 50; i++) tokens.Add(i, (uint)i * 3);
+        await Assert.That(() => tokens.Append(10, out Span<int> _, out Span<uint> _)).Throws<InvalidOperationException>();
+        tokens.Append(1000, out Span<ushort> contexts, out Span<uint> values);
+        for (int i = 0; i < 1000; i++) (contexts[i], values[i]) = ((ushort)(i + 50), (uint)(i + 50) * 3);
+        tokens.Add(1050, 3150);
+        await Assert.That(tokens.Count).IsEqualTo(1051);
+        await Assert.That(tokens.NarrowContexts).IsTrue();
+        bool ordered = true;
+        for (int i = 0; i < tokens.Count; i++) ordered &= tokens.NarrowContextValues[i] == i && tokens.Values[i] == (uint)i * 3;
+        await Assert.That(ordered).IsTrue();
+        await Assert.That(() => tokens.Add(2000, 0)).Throws<ArgumentOutOfRangeException>();
+        await Assert.That(() => tokens.ExpectContexts(10)).Throws<InvalidOperationException>();
+        await Assert.That(() => tokens.Contexts.Length).Throws<InvalidOperationException>();
+
+        // Lent value storage narrows too: the contexts are created with the first token, at the lent capacity.
+        var lent = new JxlTokens(buffers, 300);
+        Memory<int> storage = lent.ValueStorage(0, 300);
+        storage.Span.Fill(-5);
+        lent.ExpectContexts(4);
+        for (int i = 0; i < 300; i++) lent.Add(i % 4, (uint)i);
+        await Assert.That(lent.NarrowContexts && lent.Count == 300 && lent.Values[299] == 299 && lent.NarrowContextValues[299] == 3).IsTrue();
+    }
+
+    [Test]
     public async Task TokensAppend_GrowsAndKeepsEarlierTokens()
     {
         using var tokens = new JxlTokens();

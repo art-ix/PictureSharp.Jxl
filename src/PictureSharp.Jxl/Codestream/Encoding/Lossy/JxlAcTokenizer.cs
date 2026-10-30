@@ -23,6 +23,7 @@ internal static class JxlAcTokenizer
         using var scratchBuffers = new JxlBufferScope();
         int[][] nonZeros = [scratchBuffers.Rent<int>(GroupBlocks * GroupBlocks), scratchBuffers.Rent<int>(GroupBlocks * GroupBlocks), scratchBuffers.Rent<int>(GroupBlocks * GroupBlocks)];
         var tokens = new JxlTokens(buffers);
+        tokens.ExpectContexts(contexts.AcContexts);
         int offset = 0;
         for (int by = 0; by < height; by++)
         {

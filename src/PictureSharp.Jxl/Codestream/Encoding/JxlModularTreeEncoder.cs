@@ -167,12 +167,15 @@ internal static class JxlModularTreeEncoder
         CancellationToken cancellationToken, Dictionary<JxlChannel, Memory<int>>? errors = null, JxlBufferScope? buffers = null,
         int parallelism = JxlParallel.Sequential, IReadOnlyList<JxlTokens>? storage = null)
     {
-        // Streams are tokenized on their own and kept in stream order.
+        // Streams are tokenized on their own and kept in stream order; the contexts are leaf indices.
         var tokens = new JxlTokens[streams.Count];
+        int leaves = Math.Max(1, leafOf.Count(leaf => leaf >= 0));
         JxlParallel.For(streams.Count, parallelism, cancellationToken, s =>
         {
             (int id, List<JxlChannel> channels) = streams[s];
-            var visitor = new TokenVisitor(tree, leafOf, storage?[s] ?? new JxlTokens(buffers, Capacity(channels)));
+            JxlTokens target = storage?[s] ?? new JxlTokens(buffers, Capacity(channels));
+            target.ExpectContexts(leaves);
+            var visitor = new TokenVisitor(tree, leafOf, target);
             for (int c = 0; c < channels.Count; c++)
             {
                 visitor.StartChannel(c, id);
@@ -182,7 +185,8 @@ internal static class JxlModularTreeEncoder
                 }
                 else if (IsGradientOnly(visitor.Nodes))
                 {
-                    TokenizeGradient(channels[c], visitor.Nodes, visitor.Tokens, cancellationToken);
+                    if (visitor.Tokens.NarrowContexts) TokenizeGradient<ushort>(channels[c], visitor.Nodes, visitor.Tokens, cancellationToken);
+                    else TokenizeGradient<int>(channels[c], visitor.Nodes, visitor.Tokens, cancellationToken);
                 }
                 else
                 {
@@ -335,14 +339,15 @@ internal static class JxlModularTreeEncoder
     }
 
     /// <summary>Tokenizes a channel as <see cref="TokenVisitor"/> does for a tree that <see cref="IsGradientOnly"/>.</summary>
-    private static void TokenizeGradient(JxlChannel channel, Node[] nodes, JxlTokens tokens, CancellationToken cancellationToken)
+    private static void TokenizeGradient<TContext>(JxlChannel channel, Node[] nodes, JxlTokens tokens, CancellationToken cancellationToken)
+        where TContext : unmanaged, System.Numerics.IBinaryInteger<TContext>
     {
         int width = channel.Width;
         int[] pixels = channel.Pixels;
         for (int y = 0; y < channel.Height; y++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            tokens.Append(width, out Span<int> contexts, out Span<uint> values);
+            tokens.Append(width, out Span<TContext> contexts, out Span<uint> values);
             ReadOnlySpan<int> row = pixels.AsSpan(y * width, width);
             if (y == 0)
             {
@@ -350,7 +355,7 @@ internal static class JxlModularTreeEncoder
                 for (int x = 0; x < width; x++)
                 {
                     int w = x > 0 ? row[x - 1] : 0;
-                    (contexts[x], values[x]) = GradientToken(nodes, w, w, w, row[x]);
+                    (contexts[x], values[x]) = GradientToken<TContext>(nodes, w, w, w, row[x]);
                 }
 
                 continue;
@@ -358,11 +363,11 @@ internal static class JxlModularTreeEncoder
 
             ReadOnlySpan<int> above = pixels.AsSpan((y - 1) * width, width);
             // The first column: W and NW substituted by N.
-            (contexts[0], values[0]) = GradientToken(nodes, above[0], above[0], above[0], row[0]);
+            (contexts[0], values[0]) = GradientToken<TContext>(nodes, above[0], above[0], above[0], row[0]);
             if (nodes.Length == 1)
             {
                 int context = nodes[0].Left;
-                contexts[1..].Fill(context);
+                contexts[1..].Fill(TContext.CreateTruncating(context));
                 for (int x = 1; x < row.Length; x++)
                 {
                     values[x] = PackSigned(row[x] - (long)JxlMaProperty.ClampedGradient(row[x - 1], above[x], above[x - 1]));
@@ -371,18 +376,19 @@ internal static class JxlModularTreeEncoder
                 continue;
             }
 
-            for (int x = 1; x < row.Length; x++) (contexts[x], values[x]) = GradientToken(nodes, row[x - 1], above[x], above[x - 1], row[x]);
+            for (int x = 1; x < row.Length; x++) (contexts[x], values[x]) = GradientToken<TContext>(nodes, row[x - 1], above[x], above[x - 1], row[x]);
         }
     }
 
     // The context (leaf found with the gradient property W + N − NW) and packed residual of the gradient prediction.
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
-    private static (int Context, uint Value) GradientToken(Node[] nodes, int w, int n, int nw, int pixel)
+    private static (TContext Context, uint Value) GradientToken<TContext>(Node[] nodes, int w, int n, int nw, int pixel)
+        where TContext : unmanaged, System.Numerics.IBinaryInteger<TContext>
     {
         int gradient = unchecked((int)((long)w + n - nw));
         Node node = nodes[0];
         while (node.Property >= 0) node = nodes[gradient > node.Split ? node.Left : node.Right];
-        return (node.Left, PackSigned(pixel - (long)JxlMaProperty.ClampedGradient(w, n, nw)));
+        return (TContext.CreateTruncating(node.Left), PackSigned(pixel - (long)JxlMaProperty.ClampedGradient(w, n, nw)));
     }
 
     private struct SampleVisitor(JxlTreeLearner learner, uint threshold, uint state) : IPixelVisitor
