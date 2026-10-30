@@ -8,6 +8,32 @@ namespace PictureSharp.Formats.Jxl.Integration;
 // Output conversion has deliberately separate multiply/add instructions and needs no FMA.
 internal static partial class JxlPixelWriter
 {
+    // Int-to-float conversion rounds to nearest like the scalar conversion; the product is a single multiply.
+    internal static int ScaleRowSimd(ReadOnlySpan<int> values, float scale, Span<float> output)
+    {
+        if (!Avx2.IsSupported && !Sse41.IsSupported) return 0;
+        if (Avx2.IsSupported)
+        {
+            int end = output.Length & ~7;
+            Vector256<float> factor = Vector256.Create(scale);
+            for (int i = 0; i < end; i += 8)
+            {
+                Avx.Multiply(Avx.ConvertToVector256Single(Vector256.Create(values.Slice(i, 8))), factor).CopyTo(output.Slice(i, 8));
+            }
+
+            return end;
+        }
+
+        int last = output.Length & ~3;
+        Vector128<float> factor4 = Vector128.Create(scale);
+        for (int i = 0; i < last; i += 4)
+        {
+            Sse.Multiply(Sse2.ConvertToVector128Single(Vector128.Create(values.Slice(i, 4))), factor4).CopyTo(output.Slice(i, 4));
+        }
+
+        return last;
+    }
+
     internal static int WriteWideRowSimd(ReadOnlySpan<float> r, ReadOnlySpan<float> g, ReadOnlySpan<float> b,
         ReadOnlySpan<float> a, Span<Rgba64> row, bool gray)
     {

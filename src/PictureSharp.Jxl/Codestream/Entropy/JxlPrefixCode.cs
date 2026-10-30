@@ -49,6 +49,65 @@ internal sealed class JxlPrefixCode
         return entry.Value;
     }
 
+    /// <summary>
+    /// Reads up to <c>values.Length</c> values coded with this code and <paramref name="config"/>, stopping after a
+    /// token at or above <paramref name="stopToken"/> (an LZ77 length), which <paramref name="stop"/> returns; returns
+    /// the number of values read.
+    /// </summary>
+    public int ReadRow(ref JxlBitReader reader, JxlHybridUint config, uint stopToken, Span<uint> values, out uint stop)
+    {
+        var decoder = new RowDecoder(this, config, stopToken);
+        return reader.ReadRow(ref decoder, values, out stop);
+    }
+
+    /// <summary>A symbol and its raw bits: at most 15 + 31 bits.</summary>
+    private readonly struct RowDecoder(JxlPrefixCode code, JxlHybridUint config, uint stopToken) : IJxlBitDecoder
+    {
+        private readonly JxlHuffmanEntry[] table = code.table;
+        private readonly uint split = config.SplitToken;
+
+        static int IJxlBitDecoder.MaxBits => JxlPrefixCode.MaxBits + 31;
+
+        [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+        public bool TryDecode(ref ulong bits, ref int buffered, out uint value)
+        {
+            int index = (int)(bits & ((1u << RootBits) - 1));
+            JxlHuffmanEntry entry = table[index];
+            if (entry.Bits > RootBits)
+            {
+                bits >>= RootBits;
+                buffered -= RootBits;
+                index += entry.Value + (int)(bits & ((1UL << (entry.Bits - RootBits)) - 1));
+                entry = table[index];
+            }
+
+            bits >>= entry.Bits;
+            buffered -= entry.Bits;
+            uint token = entry.Value;
+            if (token >= stopToken)
+            {
+                value = token;
+                return false;
+            }
+
+            value = token < split ? token : config.Decode(token, ref bits, ref buffered);
+            return true;
+        }
+
+        public bool TryDecode(ref JxlBitReader reader, out uint value)
+        {
+            uint token = code.ReadSymbol(ref reader);
+            if (token >= stopToken)
+            {
+                value = token;
+                return false;
+            }
+
+            value = token < split ? token : config.Decode(token, ref reader);
+            return true;
+        }
+    }
+
     public static JxlPrefixCode Read(ref JxlBitReader reader, int alphabetSize)
     {
         // 1: simple code; 0: no skipping; 2 or 3: skip that many code length code lengths.

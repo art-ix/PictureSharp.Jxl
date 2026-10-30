@@ -11,7 +11,7 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/art-ix/picturesharp.jxl</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageReleaseNotes>0.8.3: encoder work. Lossless efforts 1-6 follow libjxl Modular tiers (per-channel gradient, fixed gradient/weighted-predictor trees, smaller learned trees; 8-bit effort 7-9 unchanged), 1.2-14x faster than 0.8.2 where every effort coded as 7. 16-bit lossless: palette for samples above 32767 and per-channel compaction (widened 8-bit content about 3x smaller). Lossy encoding about 9% faster (lane-ordered entropy sums; rare decision changes with the same sizes and decoded pixels). Decoding unchanged. No API changes. See docs/releases/release-0.8.3.md and docs/benchmarks/speed.md.</PackageReleaseNotes>
+    <PackageReleaseNotes>0.8.4: faster lossless (Modular) decoding with identical output: branch-free weighted predictor, prefix-code rows with the bit buffer in locals, vectorized integer pixel output. Lossless decoding 1.2-1.9x faster than 0.8.3 on one thread, lossless encoding up to 1.5x faster (same bytes). No API changes. See docs/releases/release-0.8.4.md and docs/benchmarks/speed.md.</PackageReleaseNotes>
   </PropertyGroup>
   <ItemGroup><PackageReference Include="PictureSharp" Version="$(PictureSharpVersion)" /></ItemGroup>
   <ItemGroup>

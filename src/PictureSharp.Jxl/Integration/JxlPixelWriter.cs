@@ -112,7 +112,8 @@ internal static partial class JxlPixelWriter
             for (int x = done; x < row.Length; x++) row[x] = new(ToUInt16(r[x]), ToUInt16(g[x]), ToUInt16(b[x]), ToUInt16(a[x]));
     }
 
-    // Preserve the old two-step floating-point conversion without storing intermediate planes or rows.
+    // Preserve the old two-step floating-point conversion (sample × scale, then the float writer) without storing
+    // intermediate planes; each worker keeps one scaled row per channel.
     private static Image WriteInteger(JxlDecodedImage decoded, bool wide, CancellationToken cancellationToken, int parallelism)
     {
         JxlIntegerImage source = decoded.IntegerSamples!;
@@ -128,15 +129,30 @@ internal static partial class JxlPixelWriter
             int width = decoded.Width;
             JxlParallel.ForBands(decoded.Height, MinBandRows, parallelism, cancellationToken, (start, end) =>
             {
+                // One scaled row per channel, owned by this worker: the float row writers vectorize the conversion.
+                using var buffers = new JxlBufferScope();
+                Span<float> fr = buffers.Rent<float>(width, clear: false).AsSpan(0, width);
+                Span<float> fg = gray ? fr : buffers.Rent<float>(width, clear: false).AsSpan(0, width);
+                Span<float> fb = gray ? fr : buffers.Rent<float>(width, clear: false).AsSpan(0, width);
+                Span<float> fa = source.Alpha is null ? default : buffers.Rent<float>(width, clear: false).AsSpan(0, width);
                 for (int y = start; y < end; y++)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    ReadOnlySpan<int> r = source.Color[0].Row(y);
-                    ReadOnlySpan<int> g = gray ? r : source.Color[1].Row(y);
-                    ReadOnlySpan<int> b = gray ? r : source.Color[2].Row(y);
-                    ReadOnlySpan<int> a = source.Alpha is null ? default : source.Alpha.Row(y);
-                    if (wide) WriteIntegerWideRow(r, g, b, a, scale, alphaScale, widePixels.Span.Slice(y * width, width), gray);
-                    else WriteIntegerNarrowRow(r, g, b, a, scale, alphaScale, narrowPixels.Span.Slice(y * width, width), gray, y);
+                    ScaleRow(source.Color[0].Row(y), scale, fr);
+                    if (!gray)
+                    {
+                        ScaleRow(source.Color[1].Row(y), scale, fg);
+                        ScaleRow(source.Color[2].Row(y), scale, fb);
+                    }
+
+                    if (source.Alpha is not null)
+                    {
+                        ScaleRow(source.Alpha.Row(y), alphaScale, fa);
+                    }
+
+                    if (wide) WriteWideRow(fr, fg, fb, fa, widePixels.Span.Slice(y * width, width), gray);
+                    else if (gray) WriteGrayRow(fr, fa, narrowPixels.Span.Slice(y * width, width), y);
+                    else WriteColorRow(fr, fg, fb, fa, narrowPixels.Span.Slice(y * width, width), y);
                 }
             });
             return image;
@@ -144,41 +160,14 @@ internal static partial class JxlPixelWriter
         catch { image.Dispose(); throw; }
     }
 
-    private static void WriteIntegerWideRow(ReadOnlySpan<int> r, ReadOnlySpan<int> g, ReadOnlySpan<int> b,
-        ReadOnlySpan<int> a, float scale, float alphaScale, Span<Rgba64> row, bool gray)
+    // value × scale in single precision, as the integer rows were converted before 0.8.4.
+    private static void ScaleRow(ReadOnlySpan<int> values, float scale, Span<float> output)
     {
-        if (gray)
+        values = values[..output.Length];
+        for (int x = ScaleRowSimd(values, scale, output); x < output.Length; x++)
         {
-            if (a.IsEmpty)
-                for (int x = 0; x < row.Length; x++) { ushort v = ToUInt16(r[x] * scale); row[x] = new(v, v, v, 65535); }
-            else
-                for (int x = 0; x < row.Length; x++) { ushort v = ToUInt16(r[x] * scale); row[x] = new(v, v, v, ToUInt16(a[x] * alphaScale)); }
+            output[x] = values[x] * scale;
         }
-        else if (a.IsEmpty)
-            for (int x = 0; x < row.Length; x++) row[x] = new(ToUInt16(r[x] * scale), ToUInt16(g[x] * scale), ToUInt16(b[x] * scale), 65535);
-        else
-            for (int x = 0; x < row.Length; x++) row[x] = new(ToUInt16(r[x] * scale), ToUInt16(g[x] * scale), ToUInt16(b[x] * scale), ToUInt16(a[x] * alphaScale));
-    }
-
-    private static void WriteIntegerNarrowRow(ReadOnlySpan<int> r, ReadOnlySpan<int> g, ReadOnlySpan<int> b,
-        ReadOnlySpan<int> a, float scale, float alphaScale, Span<Rgba32> row, bool gray, int y)
-    {
-        ReadOnlySpan<float> dr = JxlDither.Row(y, 0), dg = JxlDither.Row(y, 1), db = JxlDither.Row(y, 2);
-        int alphaChannel = gray ? 1 : 3;
-        ReadOnlySpan<float> da = JxlDither.Row(y, alphaChannel);
-        if (gray)
-        {
-            for (int x = 0; x < row.Length; x++)
-            {
-                byte v = JxlDither.ToByte(r[x] * scale, dr[JxlDither.Column(x, 0)]);
-                row[x] = new(v, v, v, a.IsEmpty ? (byte)255 : JxlDither.ToByte(a[x] * alphaScale, da[JxlDither.Column(x, alphaChannel)]));
-            }
-        }
-        else for (int x = 0; x < row.Length; x++)
-            row[x] = new(JxlDither.ToByte(r[x] * scale, dr[JxlDither.Column(x, 0)]),
-                JxlDither.ToByte(g[x] * scale, dg[JxlDither.Column(x, 1)]),
-                JxlDither.ToByte(b[x] * scale, db[JxlDither.Column(x, 2)]),
-                a.IsEmpty ? (byte)255 : JxlDither.ToByte(a[x] * alphaScale, da[JxlDither.Column(x, alphaChannel)]));
     }
 
     private static ushort ToUInt16(float value) => (ushort)Math.Clamp(MathF.Floor((value * 65535.0f) + 0.5f), 0, 65535);

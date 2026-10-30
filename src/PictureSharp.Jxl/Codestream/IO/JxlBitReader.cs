@@ -127,6 +127,74 @@ internal ref struct JxlBitReader
         }
     }
 
+    /// <summary>
+    /// Fills <paramref name="values"/> with symbols of <paramref name="decoder"/>, which consumes at most
+    /// <see cref="IJxlBitDecoder.MaxBits"/> (up to 56) bits per symbol, and returns how many it filled: fewer when the
+    /// decoder ends the row at a symbol, which <paramref name="stop"/> returns. While 8 bytes remain in the current
+    /// slice the buffer stays in locals and is refilled once per symbol, so the decoder reads it without checks;
+    /// elsewhere each symbol takes the checked path, with the same results and failures.
+    /// </summary>
+    public int ReadRow<TDecoder>(ref TDecoder decoder, Span<uint> values, out uint stop) where TDecoder : struct, IJxlBitDecoder
+    {
+        int i = 0;
+        stop = 0;
+        while (i < values.Length)
+        {
+            ulong bits = buffer;
+            int count = bufferedBits;
+            int at = offset;
+            ReadOnlySpan<byte> data = current;
+            bool more = true;
+            while (i < values.Length && data.Length - at >= 8)
+            {
+                if (count < TDecoder.MaxBits)
+                {
+                    int bytes = (63 - count) >> 3;
+                    bits |= (BinaryPrimitives.ReadUInt64LittleEndian(data[at..]) & ((1UL << (bytes * 8)) - 1)) << count;
+                    count += bytes * 8;
+                    at += bytes;
+                }
+
+                if (!decoder.TryDecode(ref bits, ref count, out values[i]))
+                {
+                    more = false;
+                    break;
+                }
+
+                i++;
+            }
+
+            buffer = bits;
+            bufferedBits = count;
+            offset = at;
+            if (more && i < values.Length)
+            {
+                more = decoder.TryDecode(ref this, out values[i]);
+                i += more ? 1 : 0;
+            }
+
+            if (!more)
+            {
+                stop = values[i];
+                return i;
+            }
+        }
+
+        return i;
+    }
+
+    /// <summary>
+    /// Takes <paramref name="count"/> bits from a buffer of <see cref="ReadRow"/> that holds at least that many.
+    /// </summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    public static uint Take(ref ulong bits, ref int buffered, int count)
+    {
+        uint value = (uint)(bits & ((1UL << count) - 1));
+        bits >>= count;
+        buffered -= count;
+        return value;
+    }
+
     private void Refill()
     {
         ReadOnlySpan<byte> rest = current[offset..];
@@ -177,4 +245,20 @@ internal ref struct JxlBitReader
     }
 
     public static ImageFormatException Truncated() => JxlDescriptor.Corrupt("Truncated codestream.");
+}
+
+/// <summary>A symbol decoder for <see cref="JxlBitReader.ReadRow"/>.</summary>
+internal interface IJxlBitDecoder
+{
+    /// <summary>The most bits one symbol consumes; at most 56.</summary>
+    static abstract int MaxBits { get; }
+
+    /// <summary>
+    /// Decodes a symbol from a buffer holding at least <see cref="MaxBits"/> bits; false when the symbol ends the row
+    /// (<paramref name="value"/> is then the symbol).
+    /// </summary>
+    bool TryDecode(ref ulong bits, ref int buffered, out uint value);
+
+    /// <summary>The same with the reader's checked operations.</summary>
+    bool TryDecode(ref JxlBitReader reader, out uint value);
 }

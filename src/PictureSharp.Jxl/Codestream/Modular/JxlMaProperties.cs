@@ -71,6 +71,22 @@ internal static class JxlMaProperty
         }
     }
 
+    /// <summary>Sets properties 9–14 only, for trees that decide on no other local property but the weighted error.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void SetDifferences(Span<int> properties, JxlNeighbours n)
+    {
+        (long w, long north, long nw, long ne, long ww, long nn) = (n.W, n.N, n.NW, n.NE, n.WW, n.NN);
+        unchecked
+        {
+            properties[Gradient] = (int)(w + north - nw);
+            properties[WMinusNW] = (int)(w - nw);
+            properties[NWMinusN] = (int)(nw - north);
+            properties[NMinusNE] = (int)(north - ne);
+            properties[NMinusNN] = (int)(north - nn);
+            properties[WMinusWW] = (int)(w - ww);
+        }
+    }
+
     /// <summary>W + N − NW clamped to the range of W and N (the gradient predictor).</summary>
     public static int ClampedGradient(int w, int n, int nw)
     {

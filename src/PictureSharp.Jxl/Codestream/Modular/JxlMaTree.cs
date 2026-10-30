@@ -241,6 +241,12 @@ internal sealed class JxlMaTree
     {
         public int ReferenceProperties => PropertyCount - JxlMaProperty.Local;
 
+        /// <summary>
+        /// Whether the decisions use none of properties 2–8 (position, neighbours and the running gradient), as
+        /// libjxl's default trees: only the neighbour differences and the weighted error are then computed per pixel.
+        /// </summary>
+        public bool UsesOnlyDifferences { get; } = Array.TrueForAll(Property, p => p < 0 || p >= JxlMaProperty.Gradient);
+
         // The decision nodes packed together, so each step of a lookup reads one 16-byte entry. (libjxl's two-level
         // FlatDecisionNode was measured too: no faster with branches, about 10 % slower without them.)
         private readonly Node[] nodes = [.. Property.Select((p, i) => new Node(p, Split[i], Left[i], Right[i]))];
@@ -345,6 +351,7 @@ internal sealed class JxlMaTree
         using var buffers = new JxlBufferScope();
         int[] references = buffers.Rent<int>(referenceCount * width);
         using JxlWeightedPredictor? weighted = tree.UsesWeighted ? new JxlWeightedPredictor(weightedHeader, width) : null;
+        bool differencesOnly = tree.UsesOnlyDifferences;
         for (int y = 0; y < channel.Height; y++)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -358,7 +365,15 @@ internal sealed class JxlMaTree
             for (int x = 0; x < width; x++)
             {
                 var neighbours = JxlNeighbours.At(pixels, width, x, y);
-                JxlMaProperty.SetLocal(properties, x, neighbours);
+                if (differencesOnly)
+                {
+                    JxlMaProperty.SetDifferences(properties, neighbours);
+                }
+                else
+                {
+                    JxlMaProperty.SetLocal(properties, x, neighbours);
+                }
+
                 long weightedPrediction = 0;
                 if (weighted is not null)
                 {
@@ -371,7 +386,7 @@ internal sealed class JxlMaTree
                 }
 
                 ref readonly JxlMaLeaf leaf = ref tree.Lookup(properties);
-                long guess = leaf.Offset + Predict(leaf.Predictor, neighbours, weightedPrediction);
+                long guess = leaf.Offset + PredictMixed(leaf.Predictor, neighbours, weightedPrediction);
                 uint value = symbols.ReadClustered(leaf.Cluster, ref reader);
                 pixels[row + x] = unchecked((int)(UnpackSigned(value) * (long)leaf.Multiplier + guess));
                 weighted?.Update(pixels[row + x], x, y);
@@ -546,6 +561,23 @@ internal sealed class JxlMaTree
         var neighbours = JxlNeighbours.At(pixels, width, x, y);
         long weightedPrediction = weighted?.Predict(x, y, neighbours, out _) ?? 0;
         return Predict(predictor, neighbours, weightedPrediction);
+    }
+
+    /// <summary>
+    /// <see cref="Predict"/> for trees whose leaves mix the gradient and weighted predictors from pixel to pixel, as
+    /// libjxl's default trees do: those two are selected without a jump (0.8.4, an indirect jump mispredicts there).
+    /// </summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    private static long PredictMixed(JxlPredictor predictor, in JxlNeighbours n, long weighted)
+    {
+        if ((uint)(predictor - JxlPredictor.Gradient) > JxlPredictor.Weighted - JxlPredictor.Gradient)
+        {
+            return Predict(predictor, n, weighted);
+        }
+
+        long gradient = JxlMaProperty.ClampedGradient((int)n.W, (int)n.N, (int)n.NW);
+        long useWeighted = -(long)(predictor - JxlPredictor.Gradient);
+        return gradient ^ ((gradient ^ weighted) & useWeighted);
     }
 
     internal static long Predict(JxlPredictor predictor, in JxlNeighbours n, long weighted) => predictor switch

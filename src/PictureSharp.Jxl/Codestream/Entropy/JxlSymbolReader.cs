@@ -89,15 +89,7 @@ internal sealed class JxlSymbolReader : IDisposable
         ObjectDisposedException.ThrowIf(disposed, this);
         if (window is null && usePrefixCode)
         {
-            JxlPrefixCode prefix = code.PrefixCodes[cluster];
-            JxlHybridUint config = configs[cluster];
-            uint split = config.SplitToken;
-            for (int i = 0; i < values.Length; i++)
-            {
-                uint token = prefix.ReadSymbol(ref reader);
-                values[i] = token < split ? token : config.Decode(token, ref reader);
-            }
-
+            code.PrefixCodes[cluster].ReadRow(ref reader, configs[cluster], uint.MaxValue, values, out _);
             return;
         }
 
@@ -123,9 +115,29 @@ internal sealed class JxlSymbolReader : IDisposable
             {
                 // Literals up to the next copy; the window position stays in a local meanwhile.
                 uint position = decoded;
-                while (at < values.Length)
+                if (literals is not null)
                 {
-                    uint token = literals is not null ? literals.ReadSymbol(ref reader) : ReadAnsSymbol(cluster, ref reader);
+                    int filled = literals.ReadRow(ref reader, hybrid, minSymbol, values[at..], out uint stop);
+                    for (int end = at + filled; at < end; at++)
+                    {
+                        history[position++ & WindowMask] = values[at];
+                    }
+
+                    decoded = position;
+                    if (at < values.Length)
+                    {
+                        StartCopy(stop, ref reader);
+                    }
+
+                    if (toCopy == 0)
+                    {
+                        continue;
+                    }
+                }
+
+                while (literals is null && at < values.Length)
+                {
+                    uint token = ReadAnsSymbol(cluster, ref reader);
                     if (token >= minSymbol)
                     {
                         decoded = position;
@@ -258,3 +270,4 @@ internal sealed class JxlSymbolReader : IDisposable
         }
     }
 }
+

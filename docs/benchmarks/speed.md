@@ -1,4 +1,4 @@
-# Speed measurements — 0.7.3–0.8.3
+# Speed measurements — 0.7.3–0.8.4
 
 Measured on 2026-10-27, Linux x64, Intel Core i5-12500H, .NET 10, one thread (`DOTNET_PROCESSOR_COUNT=1`).
 libjxl 0.12.0 (`4128790`) times are its own `--num_reps=3` geomean with `--num_threads=1`, PNG I/O excluded, AVX2 enabled.
@@ -665,3 +665,54 @@ allocations, while the 12 MP one is lower (2172 → 1838 MiB); peak RSS at 16 th
 controlled quantity.
 
 Rejected: both predictors' tree-learner histograms in one pass (lossless photo e7 −0.3%, 16-bit +0.0%).
+
+## Modular decoding (0.8.4)
+
+Lossless decoding work (see the [Modular design](../design/0.8.4-modular.md)): a branch-free weighted predictor,
+prefix-code rows with the bit buffer in locals, and vectorized output of integer samples. Decoded pixels and encoded
+bytes are identical to 0.8.3 (golden: 1433 results, SHA-256 88eccd4b…, at 1 and 16 threads). The lossless encoder
+runs the same predictor and is faster at efforts 3–7.
+
+Measured 2026-10-30 with `scripts/measure-paired.py` on the machine and runtime of the earlier sections: 0.8.3 and
+0.8.4 sources in separate processes, A/B then B/A, 2 rounds × 5 warm calls (12 MP: 3), tiered compilation off,
+1 thread on CPU 0 and -1 on CPUs 0–15. libjxl: `djxl --num_threads=0 --num_reps=5` 0.12.0 on CPU 0.
+[Raw data](../measurements/modular-0.8.4.json).
+
+Lossless decoding:
+
+| Case | 1 thread 0.8.3 → 0.8.4 (ms) | Speed-up | 16 threads 0.8.3 → 0.8.4 (ms) | libjxl 1 thread (ms) | 0.8.4 / libjxl |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| decode/photo1-d0-e3 | 185 → 99.4 | 1.86× | 28.8 → 19.4 | 72 | 1.38× |
+| decode/photo1-d0-e7 | 277 → 181 | 1.53× | 38.7 → 32.2 | 140 | 1.30× |
+| decode/photo1-16-d0-e7 | 369 → 267 | 1.38× | 50.6 → 42.5 | 182 | 1.47× |
+| decode16/photo1-16-d0-e7 | 365 → 266 | 1.37× | 50.7 → 39.8 | 182 | 1.46× |
+| decode/screen-d0-e7 | 98.8 → 78.1 | 1.27× | 20.2 → 15.1 | 57 | 1.37× |
+| decode16/screen-16-d0-e7 | 98.4 → 76.4 | 1.29× | 21.5 → 15.3 | 59 | 1.29× |
+| decode/photo12-d0-e1 | 610 → 458 | 1.33× | 107 → 82.6 | 335 | 1.37× |
+| decode/photo12-d0-e2 | 621 → 536 | 1.16× | 103 → 95.1 | 411 | 1.30× |
+| decode/photo12-d0-e7 | 3351 → 2161 | 1.55× | 433 → 303 | 1685 | 1.28× |
+| decode16/photo12-16-d0-e7 | 4361 → 3086 | 1.41× | 535 → 397 | 2161 | 1.43× |
+
+Lossless encoding (same bytes):
+
+| Case | 1 thread 0.8.3 → 0.8.4 (ms) | 16 threads 0.8.3 → 0.8.4 (ms) |
+| --- | ---: | ---: |
+| encode/photo1-d0-e3 | 265 → 182 (−31.5%) | 50.0 → 39.1 (−21.8%) |
+| encode/photo1-d0-e7 | 775 → 697 (−10.0%) | 203 → 197 (−3.1%) |
+| encode/screen-d0-e7 | 397 → 372 (−6.4%) | 135 → 133 (−1.3%) |
+| encode16/photo1w-16-d0-e7 | 776 → 698 (−10.0%) | 213 → 208 (−2.3%) |
+| encode/photo12-d0-e7 | 4496 → 3628 (−19.3%) | 843 → 751 (−10.8%) |
+
+16-bit decoding (decision 6: ≤ 1.1× the 8-bit time of the same image): `photo1-16` and `photo12-16` hold real 16-bit
+noise rather than the 8-bit content, and `cjxl` builds trees 5–10 times larger for them; their decodes take 1.47× and
+1.43× the 8-bit time (libjxl: 1.30× and 1.28×). The widened `screen-16` meets the target (0.98×).
+
+Controls (VarDCT decoding, JPEG transcoding, lossy encoding, small images): all faster or within noise at 1 thread
+(−1% to −6%). At 16 threads `decode/screen-d1-e7` +6.0% rechecked at −2.3% (6 rounds); `encode/photo1-d0-e1` +2.5%
+rechecked at +2.1% and −3.8%, with `encode/screen-d0-e1` −0.0% / +5.8% in the same run: 20–25 ms encodes at 16 threads
+vary by several percent, and no code on the effort-1 encoding path changed. Allocations are unchanged (the output
+writer rents one row per channel and worker); peak RSS follows GC timing with equal allocations (12 MP e1 at 1 thread
+585 → 632 MiB, 16-bit 12 MP e7 762 → 864 MiB; most other rows within a few MiB).
+
+Small candidates measured against a build without them (4 rounds, 1 thread): photo1 e7 −3.1%, photo12 e7 −3.0%,
+16-bit −0.4% to −1.1%, screen −0.7% to −1.2%; kept for the 8-bit e7 target.

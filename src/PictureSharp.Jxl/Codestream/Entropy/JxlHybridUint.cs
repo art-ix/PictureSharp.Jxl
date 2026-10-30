@@ -32,6 +32,22 @@ internal readonly record struct JxlHybridUint(int SplitExponent, int MsbInToken,
         return (uint)value;
     }
 
+    /// <summary>
+    /// <see cref="Decode(uint, ref JxlBitReader)"/> of a token at or above <see cref="SplitToken"/> from a buffer of
+    /// <see cref="JxlBitReader.ReadRow"/> holding at least 31 bits.
+    /// </summary>
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.AggressiveInlining)]
+    public uint Decode(uint token, ref ulong bits, ref int buffered)
+    {
+        int inToken = MsbInToken + LsbInToken;
+        int count = (int)((uint)(SplitExponent - inToken) + ((token - SplitToken) >> inToken)) & 31;
+        uint low = token & ((1u << LsbInToken) - 1);
+        token >>= LsbInToken;
+        ulong raw = JxlBitReader.Take(ref bits, ref buffered, count);
+        ulong value = ((((1UL << MsbInToken) | (token & ((1u << MsbInToken) - 1))) << count) | raw) << LsbInToken | low;
+        return (uint)value;
+    }
+
     /// <summary>The token of <paramref name="value"/> and its raw bits (HybridUintConfig::Encode).</summary>
     public uint Encode(uint value, out int bitCount, out uint bits)
     {

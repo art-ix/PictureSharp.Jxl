@@ -86,7 +86,8 @@ streams and row bands run on up to `MaxDegreeOfParallelism` threads (core `Decod
   are known before writing. A single-group frame still concatenates section bits before padding. Token buffers
   grow by replacing/returning rentals and are disposed with their stream/frame owners.
 - Eligible Modular frames return integer samples after common transform/shape validation. Pixel writing normalizes
-  samples with the previous float operations and dithering, avoiding intermediate float planes.
+  samples with the previous float operations and dithering, avoiding intermediate float planes (since 0.8.4 through
+  one scaled float row per channel and worker, which the vectorized row writers convert).
 - Cancellation is checked per row or bounded batch, not per bit.
 - `ReservePixels` limits the output image, not temporary memory; a shared budget needs a later, measured change.
 
@@ -137,6 +138,10 @@ its ICC profile via `JxlIccTarget`) or sRGB for `ToSrgb`.
   (native, SSE4.1-only, scalar) check bit identity. See the [SIMD design](design/0.8.0-simd.md).
   Native AOT compiles `IsSupported` against its instruction-set baseline (x86-64-v2 by default: SSE4.1 kernels
   only); applications opt into AVX2/FMA with `IlcInstructionSet`.
+- **Modular decoding (0.8.4):** the weighted predictor is branch-free (sign masks; the JIT emits no conditional
+  moves) with its four error rows interleaved and read through `Unsafe.Add` after one range check. Row-batched
+  prefix-code symbols go through `JxlBitReader.ReadRow`, which keeps the bit buffer in locals while 8 bytes remain
+  in the slice and hands it to an inlined `IJxlBitDecoder`. See the [Modular design](design/0.8.4-modular.md).
 
 ## Tests and release
 
