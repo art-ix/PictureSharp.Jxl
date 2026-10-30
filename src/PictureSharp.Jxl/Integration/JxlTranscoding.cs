@@ -1,3 +1,4 @@
+using PictureSharp.Formats.Jxl.Codestream.Buffers;
 using System.Buffers.Binary;
 using PictureSharp.Formats.Jxl.Codestream.Encoding;
 using PictureSharp.Formats.Jxl.Codestream.Frames;
@@ -46,8 +47,10 @@ internal static class JxlTranscoding
         if ((long)headers.Size.Width * headers.Size.Height > options.MaxPixels) throw JxlDescriptor.Corrupt("JPEG XL exceeds MaxPixels.");
         if (container.JpegReconstruction is not { } reconstruction) throw JxlDescriptor.Unsupported("the JPEG XL file has no JPEG reconstruction data.");
         JxlJpegData jpeg = JxlJpegReconstruction.Read(reconstruction, budget.Reserve, cancellationToken);
+        // The coefficients are pooled until the JPEG is written.
+        using var buffers = new JxlBufferScope();
         byte[]? icc = JxlJpegDecoder.Decode(container.Codestream, headers, jpeg, options.MaxMetadataBytes, budget.Reserve, cancellationToken,
-            options.MaxDegreeOfParallelism);
+            options.MaxDegreeOfParallelism, buffers);
         ReadOnlyMemory<byte> exif = default, xmp = default;
         bool haveExif = false, haveXmp = false;
         foreach (var box in container.MetadataBoxes)

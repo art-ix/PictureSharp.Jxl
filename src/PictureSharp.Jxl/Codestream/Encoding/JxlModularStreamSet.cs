@@ -59,7 +59,7 @@ internal sealed class JxlModularStreamSet : IDisposable
         this.cancellationToken = cancellationToken;
         cancellationToken.ThrowIfCancellationRequested();
         var useful = new List<int>();
-        var errors = new Dictionary<JxlChannel, int[]>(ReferenceEqualityComparer.Instance);
+        var errors = new Dictionary<JxlChannel, Memory<int>>(ReferenceEqualityComparer.Instance);
         var trees = new List<List<JxlTreeNode>>();
         for (int chunk = 0; chunk + 1 < splits.Count; chunk++)
         {

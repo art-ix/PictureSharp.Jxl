@@ -4,6 +4,7 @@ using PictureSharp.Formats.Jxl.Codestream.Buffers;
 using PictureSharp.Formats.Jxl.Codestream.Encoding;
 using PictureSharp.Formats.Jxl.Codestream.IO;
 using PictureSharp.Formats.Jxl.Codestream.Model;
+using PictureSharp.Formats.Jxl.Codestream.Rendering;
 
 namespace PictureSharp.Formats.Jxl.Tests;
 
@@ -132,4 +133,75 @@ public sealed class JxlMemoryTests
         await Assert.That(image.ToJxl(options)).IsEquivalentTo(expected);
     }
 
+    // 0.8.6: 4:2:0 chroma is upsampled in one pass into pooled planes, sequentially or in row bands.
+    [Test]
+    public async Task ChromaUpsampling2x2_MatchesSeparablePasses()
+    {
+        var random = new Random(5);
+        string error = "";
+        foreach (int width in new[] { 1, 2, 3, 7, 16, 33, 64 })
+        foreach (int height in new[] { 1, 2, 3, 17, 40, 67 })
+        foreach (int parallelism in new[] { 1, 4 })
+        {
+            var low = new JxlPlane((width + 1) / 2, (height + 1) / 2, 8, 8);
+            for (int y = 0; y < low.Height; y++)
+                for (int x = 0; x < low.Width; x++) low.Row(y)[x] = (float)random.NextDouble() * 2 - 1;
+            JxlPlane copy = low.Clone();
+            JxlPlane expected = JxlRenderPipelineScalar.UpsampleChromaVertically(
+                JxlRenderPipelineScalar.UpsampleChromaHorizontally(low, width), height);
+            using var buffers = new JxlBufferScope();
+            JxlPlane actual = JxlRenderPipeline.UpsampleChroma2x2(copy, width, height, parallelism: parallelism, buffers: buffers);
+            if (actual.Width != width || actual.Height != height) error += $"size {width}x{height}; ";
+            for (int y = 0; y < height; y++)
+                if (!actual.Row(y).SequenceEqual(expected.Row(y))) error += $"{width}x{height} t={parallelism} y={y}; ";
+        }
+
+        await Assert.That(error).IsEqualTo("");
+    }
+
+    // 0.8.6: subsampled YCbCr rows rendered per band equal whole-plane upsampling followed by the conversion.
+    [Test]
+    public async Task YCbCrRows_MatchWholePlaneRendering()
+    {
+        var random = new Random(9);
+        string error = "";
+        foreach ((int hs, int vs) in new[] { (1, 1), (1, 0), (0, 1) })
+        foreach (int width in new[] { 1, 2, 5, 16, 33 })
+        foreach (int height in new[] { 1, 2, 7, 18 })
+        {
+            int[] hShift = [hs, 0, hs], vShift = [vs, 0, vs];
+            JxlPlane[] planes = new JxlPlane[3];
+            for (int c = 0; c < 3; c++)
+            {
+                planes[c] = new JxlPlane((width + (1 << hShift[c]) - 1) >> hShift[c], (height + (1 << vShift[c]) - 1) >> vShift[c], 40, 24);
+                for (int y = 0; y < planes[c].Height; y++)
+                    for (int x = 0; x < planes[c].Width; x++) planes[c].Row(y)[x] = (float)random.NextDouble() - 0.5f;
+            }
+
+            JxlPlane[] expected = [.. planes.Select(p => p.Clone())];
+            for (int c = 0; c < 3; c++)
+            {
+                if (hShift[c] != 0) expected[c] = JxlRenderPipelineScalar.UpsampleChromaHorizontally(expected[c], width);
+                if (vShift[c] != 0) expected[c] = JxlRenderPipelineScalar.UpsampleChromaVertically(expected[c], height);
+            }
+
+            for (int y = 0; y < height; y++) JxlColorOutput.YCbCrToRgbRow(expected[0].Row(y), expected[1].Row(y), expected[2].Row(y));
+            var rows = new JxlYCbCrRows(planes, hShift, vShift, width, height);
+            float[] r = new float[width], g = new float[width], b = new float[width];
+            // Bands may start at any row, odd or even.
+            foreach (int start in new[] { 0, height / 2, height - 1 })
+            {
+                JxlColorRows.Band band = rows.Open();
+                for (int y = start; y < height; y++)
+                {
+                    band.Render(y, r, g, b);
+                    if (!r.AsSpan().SequenceEqual(expected[0].Row(y)) || !g.AsSpan().SequenceEqual(expected[1].Row(y))
+                        || !b.AsSpan().SequenceEqual(expected[2].Row(y)))
+                        error += $"{hs}{vs} {width}x{height} start {start} y={y}; ";
+                }
+            }
+        }
+
+        await Assert.That(error).IsEqualTo("");
+    }
 }

@@ -337,15 +337,16 @@ internal sealed class JxlFrameDecoder
                     alpha < 0 ? 8 : (int)metadata.ExtraChannels[alpha].BitDepth.BitsPerSample),
             };
         }
-        (JxlPlane[] color, JxlPlane[] extra) = Render(colorTransform: true, finalized: true);
-        return new JxlDecodedImage((int)frame.Width, (int)frame.Height, color, alpha < 0 ? null : extra[alpha], metadata.Color.ColorSpace == JxlColorSpace.Gray,
-            JxlColorOutput.DescribeOutput(metadata, frame.ColorTransform, colorTarget));
+        bool gray = metadata.Color.ColorSpace == JxlColorSpace.Gray;
+        (JxlPlane[] color, JxlPlane[] extra, JxlColorRows? rows) = Render(colorTransform: true, finalized: true, deferChroma: !gray);
+        return new JxlDecodedImage((int)frame.Width, (int)frame.Height, color, alpha < 0 ? null : extra[alpha], gray,
+            JxlColorOutput.DescribeOutput(metadata, frame.ColorTransform, colorTarget)) { Rows = rows };
     }
 
     /// <summary>The frame as saved for later frames: before the colour transform (save_before_color_transform).</summary>
     public JxlReferenceFrame Store()
     {
-        (JxlPlane[] color, JxlPlane[] extra) = Render(colorTransform: false);
+        (JxlPlane[] color, JxlPlane[] extra, _) = Render(colorTransform: false);
         return new JxlReferenceFrame(color, extra);
     }
 
@@ -375,7 +376,7 @@ internal sealed class JxlFrameDecoder
 
     }
 
-    private (JxlPlane[] Color, JxlPlane[] Extra) Render(bool colorTransform, bool finalized = false)
+    private (JxlPlane[] Color, JxlPlane[] Extra, JxlColorRows? Rows) Render(bool colorTransform, bool finalized = false, bool deferChroma = false)
     {
         if (!finalized) FinalizeSamples();
         IReadOnlyList<JxlChannel> channels = image.Channels;
@@ -391,9 +392,9 @@ internal sealed class JxlFrameDecoder
             ? JxlEpfSigma.Compute(frame.LoopFilter, (int)frame.XSizeBlocks, (int)frame.YSizeBlocks,
                 varDct.QuantScale, varDct.QuantField, varDct.Sharpness, varDct.Varblocks, cancellationToken)
             : null;
-        color = new JxlFrameRenderer(frame, headers, patches, references, sigma, cancellationToken, colorTarget, Parallelism)
-            .Render(color, extraPlanes, colorTransform);
-        return (color, extraPlanes);
+        var renderer = new JxlFrameRenderer(frame, headers, patches, references, sigma, cancellationToken, colorTarget, Parallelism, buffers);
+        color = renderer.Render(color, extraPlanes, colorTransform, deferChroma);
+        return (color, extraPlanes, renderer.Rows);
     }
 
     // Colour channels of a Modular frame as floats (ModularImageToDecodedRect): XYB is coded as Y, X, B - Y.

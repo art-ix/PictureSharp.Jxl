@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Runtime;
 using System.Runtime.Intrinsics.X86;
 using System.Text.Json;
 using PictureSharp;
@@ -94,6 +95,11 @@ internal sealed record SpeedCase(string Id, string Input, string Reference, Func
     // images; times are per batch.
     internal static readonly int Concurrent = int.TryParse(Environment.GetEnvironmentVariable("JXL_CONCURRENT"), out int concurrent) ? concurrent : 1;
 
+    // JXL_COLLECT=1 (0.8.6) runs a full compacting collection, outside the timing, before every operation, so the
+    // process's peak RSS is that of one operation (live data, its garbage and pooled buffers) instead of growing with
+    // the number of runs until the GC's large-object budget triggers a collection.
+    internal static readonly bool Collect = Environment.GetEnvironmentVariable("JXL_COLLECT") == "1";
+
     private static readonly DecoderOptions Load = new() { MaxDegreeOfParallelism = Threads };
 
     private static readonly DecoderOptions Preserve = Load with { PreserveBitDepth = true };
@@ -186,6 +192,14 @@ internal sealed record SpeedCase(string Id, string Input, string Reference, Func
         return () => source.ToJxl(options);
     };
 
+    private static void Settle()
+    {
+        if (!Collect) return;
+        GCSettings.LargeObjectHeapCompactionMode = GCLargeObjectHeapCompactionMode.CompactOnce;
+        GC.Collect(2, GCCollectionMode.Forced, blocking: true, compacting: true);
+        GC.WaitForPendingFinalizers();
+    }
+
     public object Measure(int runs)
     {
         Func<byte[]> single = Prepare(File.ReadAllBytes(Input));
@@ -195,6 +209,7 @@ internal sealed record SpeedCase(string Id, string Input, string Reference, Func
             Parallel.For(0, Concurrent, new ParallelOptions { MaxDegreeOfParallelism = Concurrent }, i => results[i] = single());
             return results[0];
         };
+        Settle();
         long coldAllocated = GC.GetTotalAllocatedBytes(precise: true);
         long coldStart = Stopwatch.GetTimestamp();
         byte[] result = operation();
@@ -205,6 +220,7 @@ internal sealed record SpeedCase(string Id, string Input, string Reference, Func
         int warmups = 1;
         for (long warmStart = Stopwatch.GetTimestamp(); warmups < 50 && (warmups < 2 || Stopwatch.GetElapsedTime(warmStart).TotalMilliseconds < 2000); warmups++)
         {
+            Settle();
             result = operation();
         }
 
@@ -213,6 +229,7 @@ internal sealed record SpeedCase(string Id, string Input, string Reference, Func
         int gen0 = GC.CollectionCount(0), gen2 = GC.CollectionCount(2);
         for (int i = 0; i < runs; i++)
         {
+            Settle();
             long allocated = GC.GetTotalAllocatedBytes(precise: true);
             long start = Stopwatch.GetTimestamp();
             result = operation();
@@ -236,8 +253,10 @@ internal sealed record SpeedCase(string Id, string Input, string Reference, Func
             medianMs = times[runs / 2],
             minMs = times[0],
             allocatedBytes = allocations[runs / 2],
-            gen0PerRun = (double)(GC.CollectionCount(0) - gen0) / runs,
-            gen2PerRun = (double)(GC.CollectionCount(2) - gen2) / runs,
+            // Without the collections JXL_COLLECT induces between runs.
+            gen0PerRun = (double)(GC.CollectionCount(0) - gen0) / runs - (Collect ? 1 : 0),
+            gen2PerRun = (double)(GC.CollectionCount(2) - gen2) / runs - (Collect ? 1 : 0),
+            collect = Collect,
         };
     }
 }

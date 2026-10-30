@@ -49,11 +49,14 @@ internal sealed partial class JxlEncoder
     }
 
     // One integer plane per colour channel (one for gray) and an alpha plane when requested.
-    private static (int[][] Color, int[]? Alpha) SplitPlanes(ReadOnlySpan<Rgba64> pixels, bool gray, bool alpha, CancellationToken cancellationToken)
+    private static (int[][] Color, int[]? Alpha) SplitPlanes(ReadOnlySpan<Rgba64> pixels, bool gray, bool alpha, JxlBufferScope buffers,
+        CancellationToken cancellationToken)
     {
+        // Pooled (0.8.6), owned by the encode's working buffers; every sample is written below.
         int count = pixels.Length;
-        int[][] color = gray ? [new int[count]] : [new int[count], new int[count], new int[count]];
-        int[]? alphaPlane = alpha ? new int[count] : null;
+        int[][] color = gray ? [buffers.Rent<int>(count, clear: false)]
+            : [buffers.Rent<int>(count, clear: false), buffers.Rent<int>(count, clear: false), buffers.Rent<int>(count, clear: false)];
+        int[]? alphaPlane = alpha ? buffers.Rent<int>(count, clear: false) : null;
         for (int i = 0; i < count; i++)
         {
             if ((i & CancellationCheckMask) == 0) cancellationToken.ThrowIfCancellationRequested();

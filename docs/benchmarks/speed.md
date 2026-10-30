@@ -264,6 +264,8 @@ python3 scripts/measure-speed.py decode/photo1            # only cases whose id 
 python3 scripts/compare-speed.py artifacts/speed-measurements/baseline-0.7.2.json artifacts/speed-measurements/current.json
 scripts/profile-speed.sh decode/photo1-d1-e7              # hotspots of one case
 scripts/golden-hash.sh                                    # output identical to 0.7.8 (8-bit and 16-bit)
+python3 scripts/measure-paired.py OLD.dll NEW.dll --case decode/photo1-d1-e7 --out paired.json   # A/B, B/A (0.8.2+)
+python3 scripts/measure-paired.py OLD.dll NEW.dll --collect --cool-below 60 --case ... --out m.json  # per-operation peak, cooled (0.8.6)
 ```
 
 ## Allocations and memory (0.7.10)
@@ -747,8 +749,11 @@ Small images:
 Larger images, 1 thread: lossless encoding `photo1-d0-e7` 717 → 663 ms (−7.4%) and `photo1w-16-d0-e7` 742 → 694 ms
 (−6.5%) from the RCT search; `decode/photo1-d1-e7` −4.3%; lossy encodes allocate about 5 MB less per frame. Every
 other case is within ±1.4% at 1 thread. At 16 threads most cases are within ±3%; `decode/photo1-d0-e3` −11.9%,
-`encode/photo12-d1-e7` −8.5%. Single-run increases at 16 threads were not rechecked (user decision):
-`decode16/screen-16-d0-e7` +22.3% (14.8 → 18.1 ms), `encode/photo1-d1-e7` +6.6%, `decode/small-64x64` +6.4%,
+`encode/photo12-d1-e7` −8.5%. The largest single-run increase at 16 threads, `decode16/screen-16-d0-e7` +22.3%
+(14.8 → 18.1 ms), was rechecked after the release with 6 paired rounds
+(`artifacts/perf-0.8.5/recheck-screen16.json`): 15.9 → 16.2 ms (+1.3%), single rounds 15.5–18.1 ms in both builds,
+and `decode/screen-d0-e7` +0.4% — noise. The other single-run increases were not rechecked (user decision):
+`encode/photo1-d1-e7` +6.6%, `decode/small-64x64` +6.4%,
 `decode16/photo1-16-d0-e7` +4.6%, `decode/screen-d1-e7` +4.5%, `encode/photo1-d0-e3` +4.4%, `tojpeg/IMG_0160-jpeg`
 +4.1%; all are unchanged or faster at 1 thread, and the lossless decoding and JPEG reconstruction code they run did not
 change. Earlier 16-thread rechecks of such single runs (0.8.4) came back within noise.
@@ -758,3 +763,57 @@ with the library default (-1) throughput matches one thread per image for decodi
 `photo1-d0-e7` 28.6 ms/image both ways). Lossy encoding of 256×256 images at -1 took 5.90 ms and 13.2 MB per image in
 0.8.4 sources (5.02 ms / 4.1 MB at one thread per image): every potential worker created its scratch. With the state
 created on a worker's first item: 5.08 ms and 5.8 MB.
+
+## Memory use (0.8.6)
+
+Peak memory and allocations of large images (see the [memory design](../design/0.8.6-memory.md)): 4:2:0 chroma is
+upsampled in one pass, and subsampled YCbCr frames are upsampled and converted per row band inside the pixel writer;
+lossless encoding applies the colour transform to its group crops, sizes token storage once and records the weighted
+errors in it; the lossy encoder releases its image after quantization; closures, list growth and per-histogram arrays
+left the per-block and per-group paths; JPEG reconstruction pools its coefficients. Decoded pixels and encoded bytes
+are identical to 0.8.5 (golden: 1469 results, SHA-256 7f0990ec…, at 1 and 16 threads).
+
+Measured 2026-10-30 with `scripts/measure-paired.py` on the machine and runtime of the earlier sections, 2 rounds,
+tiered compilation off, 1 thread on CPU 0 and -1 on CPUs 0–15. [Raw data](../measurements/memory-0.8.6.json).
+
+Peak RSS needs care. In the default harness mode the process peak mostly follows the large-object garbage that has
+not been collected yet, chiefly the decoded images' pixel buffers, and so the number of runs: a 12 MP decode that
+allocates 55 instead of 245 MB per image still peaked at ~0.9 GB, after fewer gen-2 collections. The harness option
+`JXL_COLLECT=1` (`measure-paired.py --collect`) runs a full compacting collection before every operation, outside the
+timing, so the peak is that of one operation. That matrix compares the 0.8.5 library built with the 0.8.6 harness
+(`artifacts/perf-0.8.6/build.sh base v0.8.5`) with 0.8.6.
+
+Per operation (`--collect`), 12 MP unless noted:
+
+| Case | Threads | Time (ms) | Allocated (MB) | Peak RSS (MiB) |
+| --- | ---: | ---: | ---: | ---: |
+| decode, JPEG reconstructed 4:2:0 | 1 | 217 → 195 (−10%) | 244 → 53 | **332 → 180** |
+| | 16 | 82.8 → 45.2 (−45%) | 244 → 55 | **375 → 235** |
+| JPEG reconstruction (`tojpeg`) | 1 | 301 → 292 | 118 → 38 | 143 → 132 |
+| | 16 | 57.5 → 53.3 | 131 → 51 | 197 → 193 |
+| encode lossless e7 | 1 | 3526 → 3518 | **976 → 576** | **1192 → 864** |
+| | 16 | 743 → 743 | **567 → 111** | **1593 → 1035** |
+| encode lossy d1 e7 | 1 | 4926 → 4775 | 376 → 282 | **959 → 817** |
+| | 16 | 1093 → 1091 | 200 → 91 | **994 → 847** |
+| decode 16-bit lossless e7 | 1 | 3040 → 3026 | **341 → 170** | 369 → 351 |
+| | 16 | 434 → 398 | 341 → 171 | 441 → 442 |
+| decode lossless e7 | 1 | 2149 → 2122 | 136 → 76 | 267 → 267 |
+| decode lossless e1 / lossy d1 | 1 | within ±1.6% | unchanged | unchanged |
+| encode 1 MP lossless e7 | 16 | 189 → 183 | 49 → 24 | 361 → 297 |
+| encode 1 MP 16-bit lossless e7 | 16 | 201 → 203 | 63 → 38 | 390 → 336 |
+
+Standard matrix against the frozen 0.8.5 harness build (all 34 cases): allocations fall most in lossless encoding
+(1 MP e1 30 → 5 MB, e3 32 → 8 MB, e7 61 → 30 MB; 12 MP e7 976 → 576 MB at 1 thread, 559 → 107 MB at 16), Modular
+decoding (12 MP e2 84 → 62 MB, e7 136 → 76 MB, 16-bit e7 341 → 170 MB) and the JPEG cases (244 → 53 and 118 → 38 MB);
+small images are unchanged. Default-mode peak RSS: lossless 12 MP encode 2492 → 1615 MiB (1 thread) and 2100 → 1002
+MiB (16), lossy 1667 → 1201 and 1507 → 983 MiB, JPEG decode 895 → 376 and 1284 → 600 MiB, 1 MP lossless encodes at
+16 threads 620–720 → 180–460 MiB. Some 16-thread lossless decodes peaked higher (12 MP e1 892 → 1310 MiB, 16-bit e7
+395 → 1027 MiB) and `tojpeg` 461 → 554 MiB, with fewer collections; their per-operation peaks above are unchanged.
+
+Times: every case is within ±3% at 1 thread except faster ones (JPEG decode −10.9%, `tojpeg` −3.8%,
+`encode/photo1-d0-e3` −3.9%). At 16 threads the JPEG decode is 1.9× faster (87.6 → 45.8 ms; the row bands of the
+pixel writer replace the sequential chroma upsampling) and most Modular decodes are 1–13% faster. Two 16-thread increases,
+`decode/photo12-d1-e7` +9.8% and `encode/photo1-d0-e1` +4.7%, were rechecked with 6 rounds: +7.5% and +5.0% in default
+mode, but −2.3% and +1.2% with `--collect`, and +0.06% and −0.04% when every process started below 60 °C
+(`measure-paired.py --cool-below 60`, new in 0.8.6). Long 16-thread runs heat this laptop's CPU to its limit; the
+earlier single-run increases were thermal and GC-timing noise.

@@ -9,7 +9,7 @@ namespace PictureSharp.Formats.Jxl.Codestream.Frames;
 internal static class JxlJpegDecoder
 {
     public static byte[]? Decode(JxlCodestream codestream, JxlHeaders headers, JxlJpegData jpeg, long maxMetadataBytes,
-        Action<long> reserve, CancellationToken cancellationToken, int parallelism = 1)
+        Action<long> reserve, CancellationToken cancellationToken, int parallelism = 1, JxlBufferScope? buffers = null)
     {
         JxlImageMetadata metadata = headers.Metadata;
         if (metadata.XybEncoded || metadata.Animation is not null || metadata.ExtraChannels.Count != 0 || metadata.Preview is not null
@@ -37,7 +37,8 @@ internal static class JxlJpegDecoder
             component.HeightBlocks = checked((int)(frame.YSizeBlocks >> frame.VShift(c)));
             long size = (long)component.WidthBlocks * component.HeightBlocks * 64;
             if (size > Array.MaxLength) throw JxlDescriptor.Unsupported("JPEG coefficient array is too large.");
-            component.Coefficients = new short[(int)size];
+            // Pooled when the caller owns buffers that outlive the writer (0.8.6); zeroed like a new array.
+            component.Coefficients = buffers is null ? new short[(int)size] : buffers.Rent<short>((int)size);
         }
         jpeg.ValidateSupported();
         long start = JxlFrameSectionReader.ReadToc(ref reader, codestream, frame, out JxlToc toc);

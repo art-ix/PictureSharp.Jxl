@@ -371,43 +371,49 @@ internal sealed class JxlEntropyCode
             return;
         }
 
-        var underfull = new Stack<int>();
-        var overfull = new Stack<int>();
-        int[] cutoffs = new int[tableSize];
-        int[] right = new int[tableSize];
-        int[] offsets = new int[tableSize];
+        // Stacks and scratch on the stack (0.8.6): the table has at most 256 entries and this runs per histogram.
+        Span<int> underfull = stackalloc int[tableSize];
+        Span<int> overfull = stackalloc int[tableSize];
+        int underCount = 0, overCount = 0;
+        Span<int> cutoffs = stackalloc int[tableSize];
+        Span<int> right = stackalloc int[tableSize];
+        Span<int> offsets = stackalloc int[tableSize];
+        cutoffs.Clear();
+        right.Clear();
+        offsets.Clear();
         for (int i = 0; i < length; i++)
         {
             cutoffs[i] = distribution[i];
             if (cutoffs[i] > entrySize)
             {
-                overfull.Push(i);
+                overfull[overCount++] = i;
             }
             else if (cutoffs[i] < entrySize)
             {
-                underfull.Push(i);
+                underfull[underCount++] = i;
             }
         }
 
         for (int i = length; i < tableSize; i++)
         {
-            underfull.Push(i);
+            underfull[underCount++] = i;
         }
 
-        while (overfull.Count > 0)
+        while (overCount > 0)
         {
-            int over = overfull.Pop();
-            int under = underfull.Pop();
+            int over = overfull[--overCount];
+            if (underCount == 0) throw InvalidHistogram();
+            int under = underfull[--underCount];
             cutoffs[over] -= entrySize - cutoffs[under];
             right[under] = over;
             offsets[under] = cutoffs[over];
             if (cutoffs[over] < entrySize)
             {
-                underfull.Push(over);
+                underfull[underCount++] = over;
             }
             else if (cutoffs[over] > entrySize)
             {
-                overfull.Push(over);
+                overfull[overCount++] = over;
             }
         }
 

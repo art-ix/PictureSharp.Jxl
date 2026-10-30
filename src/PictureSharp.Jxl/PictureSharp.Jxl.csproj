@@ -11,7 +11,7 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/art-ix/picturesharp.jxl</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageReleaseNotes>0.8.5: lower fixed per-image costs and better behaviour under concurrent use, with identical output: RCT search costs each distinct channel once, shared library quantization tables, coefficient orders sized to the used transforms, lazily parsed ICC output target, per-worker scratch created only for workers that get work. Small images encode up to 2x and decode up to 1.5x faster; small lossy encodes allocate 3x less. No API changes. See docs/releases/release-0.8.5.md and docs/benchmarks/speed.md.</PackageReleaseNotes>
+    <PackageReleaseNotes>0.8.6: less memory for large images, with identical output: JPEG-recompressed 4:2:0 images are upsampled and converted per row band while writing pixels, lossless encoding transforms group copies and records predictor errors in its token storage, lossy encoding releases its working image early, Modular decoding and JPEG reconstruction no longer allocate per block. Per 12 MP image: JPEG decode peak 332 to 180 MiB (1.9x faster with 16 threads), lossless encode 1192 to 864 MiB and 976 to 576 MB allocated, 16-bit lossless decode allocates half as much. No API changes. See docs/releases/release-0.8.6.md and docs/benchmarks/speed.md.</PackageReleaseNotes>
   </PropertyGroup>
   <ItemGroup><PackageReference Include="PictureSharp" Version="$(PictureSharpVersion)" /></ItemGroup>
   <ItemGroup>

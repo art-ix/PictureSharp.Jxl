@@ -135,10 +135,7 @@ internal sealed partial class JxlColorOutput
             Span<float> r2 = planes[2].Row(y)[..r0.Length];
             if (transform == JxlColorTransform.YCbCr)
             {
-                for (int x = YCbCrToRgbAvx2(r0, r1, r2); x < r0.Length; x++)
-                {
-                    YCbCrToRgb(ref r0[x], ref r1[x], ref r2[x]);
-                }
+                YCbCrToRgbRow(r0, r1, r2);
             }
             else if (curves is null && transfer == JxlTransferFunction.Srgb)
             {
@@ -158,6 +155,15 @@ internal sealed partial class JxlColorOutput
                     XybToRgb(ref r0[x], ref r1[x], ref r2[x]);
                 }
             }
+        }
+    }
+
+    /// <summary>Converts one row of Cb, Y and Cr in place to R, G and B (also used per row band by <see cref="Rendering.JxlYCbCrRows"/>).</summary>
+    public static void YCbCrToRgbRow(Span<float> cb, Span<float> luma, Span<float> cr)
+    {
+        for (int x = YCbCrToRgbAvx2(cb, luma, cr); x < cb.Length; x++)
+        {
+            YCbCrToRgb(ref cb[x], ref luma[x], ref cr[x]);
         }
     }
 

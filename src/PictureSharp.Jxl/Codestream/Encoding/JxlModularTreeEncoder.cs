@@ -35,9 +35,11 @@ internal static class JxlModularTreeEncoder
     /// <param name="cancellationToken">Cancels learning.</param>
     /// <param name="errors">
     /// Receives the weighted predictor's error of every pixel of each channel, so <see cref="TokenizeStreams"/> need
-    /// not run the predictor again; a channel is left out when its errors cannot reproduce the predictions.
+    /// not run the predictor again: in the channel's entry when it has one (storage the caller provides, such as
+    /// <see cref="JxlTokens.ValueStorage"/>, for non-empty channels only), else in a new buffer. Afterwards it holds
+    /// the scanned channels whose errors reproduce the predictions.
     /// </param>
-    /// <param name="buffers">Owns recorded error buffers when provided.</param>
+    /// <param name="buffers">Owns new error buffers when provided.</param>
     /// <param name="parallelism">
     /// The maximum degree of parallelism of the channel scans (1 = single-threaded, -1 = automatic). Every channel starts
     /// at the state of the sampling sequence its sequential scan would have, and its samples are added to the learner
@@ -45,7 +47,7 @@ internal static class JxlModularTreeEncoder
     /// </param>
     /// <param name="effort">The learning settings (properties, quantization, sample fraction, split threshold); effort 7 by default.</param>
     public static List<JxlTreeNode> Learn(List<(int Id, List<JxlChannel> Channels)> streams, CancellationToken cancellationToken,
-        Dictionary<JxlChannel, int[]>? errors = null, JxlBufferScope? buffers = null, int parallelism = JxlParallel.Sequential,
+        Dictionary<JxlChannel, Memory<int>>? errors = null, JxlBufferScope? buffers = null, int parallelism = JxlParallel.Sequential,
         JxlModularEffort? effort = null)
     {
         effort ??= JxlModularEffort.Default;
@@ -74,10 +76,12 @@ internal static class JxlModularTreeEncoder
             var visitor = new SampleVisitor(learner, threshold, SampleVisitor.InitialState);
             foreach ((int id, int c, JxlChannel channel, _) in scans)
             {
-                int[]? channelErrors = NewErrors(channel, errors, buffers);
-                if (Scan(channel, c, id, ref visitor, cancellationToken, channelErrors) && channelErrors is not null)
+                Memory<int> channelErrors = NewErrors(channel, errors, buffers);
+                bool reproducible = Scan(channel, c, id, ref visitor, cancellationToken, channelErrors.Span);
+                if (errors is not null)
                 {
-                    errors![channel] = channelErrors;
+                    if (reproducible) errors[channel] = channelErrors;
+                    else errors.Remove(channel);
                 }
             }
 
@@ -86,7 +90,7 @@ internal static class JxlModularTreeEncoder
 
         // Each channel collects its own samples from its own position of the sequence.
         var batches = new JxlTreeLearner?[scans.Count];
-        var recorded = new int[]?[scans.Count];
+        var recorded = new Memory<int>?[scans.Count];
         try
         {
             JxlParallel.For(scans.Count, parallelism, cancellationToken, i =>
@@ -94,15 +98,18 @@ internal static class JxlModularTreeEncoder
                 (int id, int c, JxlChannel channel, uint start) = scans[i];
                 var batch = batches[i] = new JxlTreeLearner(properties, Predictors, effort.MaxPropertyValues);
                 var visitor = new SampleVisitor(batch, threshold, start);
-                int[]? channelErrors = NewErrors(channel, errors, buffers);
-                if (Scan(channel, c, id, ref visitor, cancellationToken, channelErrors)) recorded[i] = channelErrors;
+                Memory<int> channelErrors = NewErrors(channel, errors, buffers);
+                if (Scan(channel, c, id, ref visitor, cancellationToken, channelErrors.Span)) recorded[i] = channelErrors;
             });
             for (int i = 0; i < scans.Count; i++)
             {
                 learner.Append(batches[i]!);
                 batches[i]!.Dispose();
-                if (recorded[i] is { } channelErrors) errors![scans[i].Channel] = channelErrors;
+                if (errors is null) continue;
+                if (recorded[i] is { } channelErrors) errors[scans[i].Channel] = channelErrors;
+                else errors.Remove(scans[i].Channel);
             }
+
         }
         finally
         {
@@ -112,8 +119,11 @@ internal static class JxlModularTreeEncoder
         return learner.Learn(effort.NodeThreshold, cancellationToken, parallelism);
     }
 
-    private static int[]? NewErrors(JxlChannel channel, Dictionary<JxlChannel, int[]>? errors, JxlBufferScope? buffers) =>
-        errors is null ? null : buffers is null ? new int[channel.Width * channel.Height] : buffers.Rent<int>(channel.Width * channel.Height, clear: false);
+    // The channel's storage from the caller, else a new buffer; none without errors. Workers only read the dictionary.
+    private static Memory<int> NewErrors(JxlChannel channel, Dictionary<JxlChannel, Memory<int>>? errors, JxlBufferScope? buffers) =>
+        errors is null ? default
+        : errors.TryGetValue(channel, out Memory<int> storage) ? storage
+        : buffers is null ? new int[channel.Width * channel.Height] : buffers.Rent<int>(channel.Width * channel.Height, clear: false);
 
     /// <summary>The tree's tokens in breadth-first order (TokenizeTree) and the leaf (context) index of every node.</summary>
     public static (JxlTokens Tokens, int[] LeafOf) Tokenize(List<JxlTreeNode> tree, JxlBufferScope? buffers = null)
@@ -148,23 +158,27 @@ internal static class JxlModularTreeEncoder
     }
 
     /// <summary>The residual tokens of every stream, each in the context of its pixel's leaf.</summary>
-    /// <remarks><paramref name="errors"/> are the weighted errors <see cref="Learn"/> recorded, if any.</remarks>
+    /// <remarks>
+    /// <paramref name="errors"/> are the weighted errors <see cref="Learn"/> recorded, if any. <paramref name="storage"/>
+    /// are the (empty) tokens of every stream when the caller created them for <see cref="JxlTokens.ValueStorage"/>;
+    /// otherwise new ones of <see cref="Capacity"/> are created.
+    /// </remarks>
     public static List<JxlTokens> TokenizeStreams(List<(int Id, List<JxlChannel> Channels)> streams, List<JxlTreeNode> tree, int[] leafOf,
-        CancellationToken cancellationToken, Dictionary<JxlChannel, int[]>? errors = null, JxlBufferScope? buffers = null,
-        int parallelism = JxlParallel.Sequential)
+        CancellationToken cancellationToken, Dictionary<JxlChannel, Memory<int>>? errors = null, JxlBufferScope? buffers = null,
+        int parallelism = JxlParallel.Sequential, IReadOnlyList<JxlTokens>? storage = null)
     {
         // Streams are tokenized on their own and kept in stream order.
         var tokens = new JxlTokens[streams.Count];
         JxlParallel.For(streams.Count, parallelism, cancellationToken, s =>
         {
             (int id, List<JxlChannel> channels) = streams[s];
-            var visitor = new TokenVisitor(tree, leafOf, new JxlTokens(buffers));
+            var visitor = new TokenVisitor(tree, leafOf, storage?[s] ?? new JxlTokens(buffers, Capacity(channels)));
             for (int c = 0; c < channels.Count; c++)
             {
                 visitor.StartChannel(c, id);
-                if (errors is not null && errors.TryGetValue(channels[c], out int[]? channelErrors))
+                if (errors is not null && errors.TryGetValue(channels[c], out Memory<int> channelErrors))
                 {
-                    TokenizeRecorded(channels[c], c, id, channelErrors, visitor.Nodes, visitor.Tokens, cancellationToken);
+                    TokenizeRecorded(channels[c], c, id, channelErrors.Span, visitor.Nodes, visitor.Tokens, cancellationToken);
                 }
                 else if (IsGradientOnly(visitor.Nodes))
                 {
@@ -182,6 +196,10 @@ internal static class JxlModularTreeEncoder
         return [.. tokens];
     }
 
+    /// <summary>The number of tokens of a stream: one per pixel (0.8.6: the storage is sized once instead of doubling).</summary>
+    public static int Capacity(List<JxlChannel> channels) =>
+        (int)Math.Min(channels.Sum(channel => (long)channel.Width * channel.Height), Array.MaxLength);
+
     private interface IPixelVisitor
     {
         /// <summary>Whether the next pixel is visited; every pixel is offered once, in scan order.</summary>
@@ -195,11 +213,12 @@ internal static class JxlModularTreeEncoder
     /// Whether <paramref name="errors"/>, when given, received weighted errors that reproduce every weighted prediction.
     /// </returns>
     private static bool Scan<TVisitor>(JxlChannel channel, int channelIndex, int stream, ref TVisitor visitor, CancellationToken cancellationToken,
-        int[]? errors = null)
+        Span<int> errors = default)
         where TVisitor : struct, IPixelVisitor
     {
         if (channel.IsEmpty) return false;
         bool reproducible = true;
+        bool record = !errors.IsEmpty;
         int width = channel.Width;
         int[] pixels = channel.Pixels;
         Span<int> properties = stackalloc int[JxlMaProperty.Local];
@@ -221,7 +240,7 @@ internal static class JxlModularTreeEncoder
                 }
 
                 int error = weighted.Update(pixels[row + x], x, y);
-                if (errors is not null)
+                if (record)
                 {
                     errors[row + x] = error;
                     reproducible &= JxlWeightedPredictor.FromError(error, pixels[row + x]) == prediction;
@@ -234,10 +253,11 @@ internal static class JxlModularTreeEncoder
 
     /// <summary>
     /// Tokenizes a channel as <see cref="TokenVisitor"/> does, with the weighted errors recorded by an earlier scan
-    /// instead of the predictor. Rows go through the tree together, one level at a time without branches: the steps
+    /// instead of the predictor. The errors may be the storage of the tokens being added: a row's errors are read (and
+    /// kept for the next row) before its tokens replace them. Rows go through the tree together, one level at a time without branches: the steps
     /// of different pixels do not wait for each other, while one pixel's walk is a chain of dependent loads.
     /// </summary>
-    private static void TokenizeRecorded(JxlChannel channel, int channelIndex, int stream, int[] errors, Node[] nodes, JxlTokens tokens,
+    private static void TokenizeRecorded(JxlChannel channel, int channelIndex, int stream, Span<int> errors, Node[] nodes, JxlTokens tokens,
         CancellationToken cancellationToken)
     {
         int width = channel.Width;
@@ -251,15 +271,16 @@ internal static class JxlModularTreeEncoder
         long[] weightedRow = buffers.Rent<long>(width);
         long[] gradientRow = buffers.Rent<long>(width);
         int[] at = buffers.Rent<int>(width);
-        int[] zeros = buffers.Rent<int>(width);
+        int[] previous = buffers.Rent<int>(width);
         Span<int> properties = stackalloc int[Stride];
         for (int y = 0; y < channel.Height; y++)
         {
             cancellationToken.ThrowIfCancellationRequested();
             JxlMaProperty.StartRow(properties, channelIndex, stream, y);
             int row = y * width;
-            ReadOnlySpan<int> rowErrors = errors.AsSpan(row, width);
-            ReadOnlySpan<int> previousErrors = y > 0 ? errors.AsSpan(row - width, width) : zeros.AsSpan(0, width);
+            ReadOnlySpan<int> rowErrors = errors.Slice(row, width);
+            // Row y - 1 as recorded (zeros above the first row), kept before its tokens were added.
+            ReadOnlySpan<int> previousErrors = previous.AsSpan(0, width);
             for (int x = 0; x < width; x++)
             {
                 var neighbours = JxlNeighbours.At(pixels, width, x, y);
@@ -270,6 +291,7 @@ internal static class JxlModularTreeEncoder
                 gradientRow[x] = JxlMaProperty.ClampedGradient((int)neighbours.W, (int)neighbours.N, (int)neighbours.NW);
             }
 
+            rowErrors.CopyTo(previous);
             Array.Clear(at);
             int moved;
             do

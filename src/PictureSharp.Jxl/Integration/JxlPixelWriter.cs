@@ -17,6 +17,7 @@ internal static partial class JxlPixelWriter
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (decoded.IntegerSamples is not null) return WriteInteger(decoded, wide: false, cancellationToken, parallelism);
+        if (decoded.Rows is not null) return WriteRendered(decoded, wide: false, cancellationToken, parallelism);
         JxlPlane? alpha = decoded.Alpha;
         var image = CreateNarrowImage(decoded.Width, decoded.Height, alpha is not null);
         try
@@ -63,6 +64,7 @@ internal static partial class JxlPixelWriter
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (decoded.IntegerSamples is not null) return WriteInteger(decoded, wide: true, cancellationToken, parallelism);
+        if (decoded.Rows is not null) return WriteRendered(decoded, wide: true, cancellationToken, parallelism);
         var image = CreateWideImage(decoded.Width, decoded.Height, decoded.Alpha is not null);
         try
         {
@@ -153,6 +155,40 @@ internal static partial class JxlPixelWriter
                     if (wide) WriteWideRow(fr, fg, fb, fa, widePixels.Span.Slice(y * width, width), gray);
                     else if (gray) WriteGrayRow(fr, fa, narrowPixels.Span.Slice(y * width, width), y);
                     else WriteColorRow(fr, fg, fb, fa, narrowPixels.Span.Slice(y * width, width), y);
+                }
+            });
+            return image;
+        }
+        catch { image.Dispose(); throw; }
+    }
+
+    // Colour rows rendered per band (subsampled YCbCr, 0.8.6): each worker keeps one row per channel and its band's
+    // chroma rows, then writes them as the plane rows would be written.
+    private static Image WriteRendered(JxlDecodedImage decoded, bool wide, CancellationToken cancellationToken, int parallelism)
+    {
+        JxlColorRows rows = decoded.Rows!;
+        JxlPlane? alpha = decoded.Alpha;
+        Image image = wide ? CreateWideImage(decoded.Width, decoded.Height, alpha is not null)
+            : CreateNarrowImage(decoded.Width, decoded.Height, alpha is not null);
+        try
+        {
+            Memory<Rgba64> widePixels = wide ? image.GetPixelMemory<Rgba64>() : default;
+            Memory<Rgba32> narrowPixels = wide ? default : image.GetPixelMemory<Rgba32>();
+            int width = decoded.Width;
+            JxlParallel.ForBands(decoded.Height, MinBandRows, parallelism, cancellationToken, (start, end) =>
+            {
+                using var buffers = new JxlBufferScope();
+                Span<float> r = buffers.Rent<float>(width, clear: false).AsSpan(0, width);
+                Span<float> g = buffers.Rent<float>(width, clear: false).AsSpan(0, width);
+                Span<float> b = buffers.Rent<float>(width, clear: false).AsSpan(0, width);
+                JxlColorRows.Band band = rows.Open();
+                for (int y = start; y < end; y++)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    band.Render(y, r, g, b);
+                    ReadOnlySpan<float> a = alpha is null ? default : alpha.Row(y);
+                    if (wide) WriteWideRow(r, g, b, a, widePixels.Span.Slice(y * width, width), gray: false);
+                    else WriteColorRow(r, g, b, a, narrowPixels.Span.Slice(y * width, width), y);
                 }
             });
             return image;

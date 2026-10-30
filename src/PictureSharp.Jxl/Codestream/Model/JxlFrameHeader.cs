@@ -111,9 +111,17 @@ internal sealed record JxlFrameHeader
     public bool SkipsAdaptiveDcSmoothing => Flags.HasFlag(JxlFrameFlags.SkipAdaptiveDcSmoothing);
 
     // FrameDimensions.
-    public int MaxHShift => ChromaModes.Max(mode => HShifts[(int)mode]);
+    // Indexed loops: these run per block, and LINQ over the list allocates an enumerator per call.
+    public int MaxHShift => MaxShift(HShifts);
 
-    public int MaxVShift => ChromaModes.Max(mode => VShifts[(int)mode]);
+    public int MaxVShift => MaxShift(VShifts);
+
+    private int MaxShift(ReadOnlySpan<byte> shifts)
+    {
+        int max = 0;
+        for (int c = 0; c < ChromaModes.Count; c++) max = Math.Max(max, shifts[(int)ChromaModes[c]]);
+        return max;
+    }
 
     /// <summary>The horizontal subsampling shift of colour channel <paramref name="c"/> (0 = Cb or X, 1 = Y, 2 = Cr or B).</summary>
     public int HShift(int c) => MaxHShift - HShifts[(int)ChromaModes[c]];

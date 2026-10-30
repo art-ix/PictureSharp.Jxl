@@ -8,6 +8,8 @@ internal sealed class JxlDecodedImage(int width, int height, JxlPlane[] color, J
     bool isGrayscale, JxlColorEncoding colorEncoding)
 {
     public JxlIntegerImage? IntegerSamples { get; init; }
+    /// <summary>When set, the colour rows are rendered on demand (0.8.6) and <see cref="Color"/> holds the planes they come from.</summary>
+    public JxlColorRows? Rows { get; init; }
     public int Width { get; } = width;
     public int Height { get; } = height;
     public ReadOnlySpan<JxlPlane> Color => color;

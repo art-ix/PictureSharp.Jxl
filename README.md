@@ -63,7 +63,7 @@ when reading the result too.
 Pixels match djxl (libjxl 0.12.0): lossless images exactly, lossy ones within 1 of 255 in a few samples. Files this
 package writes decode with djxl the same way.
 
-**Status:** early development (0.8.5). Not for production use yet; the API may change. CI runs on Linux, including a Native AOT build.
+**Status:** early development (0.8.6). Not for production use yet; the API may change. CI runs on Linux, including a Native AOT build.
 
 Guides: [decoding](docs/decoding.md) · [encoding](docs/encoding.md) · [JPEG transcoding](docs/transcoding.md) · [metadata](docs/metadata.md) ·
 [architecture](docs/architecture.md) · [release notes](docs/releases)
@@ -77,6 +77,8 @@ Guides: [decoding](docs/decoding.md) · [encoding](docs/encoding.md) · [JPEG tr
   `MaxDegreeOfParallelism` (-1 = all cores, the default; 1 = single-threaded) on `DecoderOptions`,
   `JxlEncoderOptions` or `JxlTranscoderOptions`. The output does not depend on it.
 - **Encoding effort:** lower `Effort` is faster; lossless efforts 1–3 are several times faster than 7.
+- **Memory:** a 12 MP image needs about 180 MiB (JPEG-recompressed decode) to 860 MiB (lossless encode) at its peak,
+  including the 48 MB output or input image.
 
 Measurements: [speed](docs/benchmarks/speed.md).
 

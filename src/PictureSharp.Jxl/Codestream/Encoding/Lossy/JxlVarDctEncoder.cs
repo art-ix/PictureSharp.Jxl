@@ -58,6 +58,9 @@ internal static class JxlVarDctEncoder
         // Each group writes only its own coefficients, quantization and DC; quantizers hold per-worker scratch.
         JxlParallel.ForWorkers((int)header.Groups, settings.Parallelism, cancellationToken, () => new JxlCoefficientQuantizer(frame, image),
             (quantizer, group) => quantizer.ComputeGroup(group));
+        // The coefficients replace the image (0.8.6): its pooled planes go back before the sharpness search, whose
+        // reconstruction rents planes of the same size.
+        image.Release();
 
         using var streams = new JxlModularStreamSet();
         float[][] dequantizedDc = [new float[frame.Dc[0].Length], new float[frame.Dc[0].Length], new float[frame.Dc[0].Length]];
@@ -113,7 +116,8 @@ internal static class JxlVarDctEncoder
         JxlAqMaps maps;
         if (settings.AdaptiveQuantization)
         {
-            maps = JxlAdaptiveQuantization.Compute(settings.Gaborish ? distance : distance * 0.62f, image, cancellationToken, settings.Parallelism);
+            maps = JxlAdaptiveQuantization.Compute(settings.Gaborish ? distance : distance * 0.62f, image, cancellationToken, settings.Parallelism,
+                image.Buffers);
             frame.Quantizer.ComputeGlobalScaleAndQuant(settings.InitialQuantDc, 0.39f / distance, 0);
         }
         else

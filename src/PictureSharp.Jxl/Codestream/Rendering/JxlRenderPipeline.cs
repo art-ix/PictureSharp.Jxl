@@ -18,10 +18,11 @@ internal static partial class JxlRenderPipeline
     public const float InvSigmaNum = -1.1715728752538099024f;
     private const float MinSigma = -3.90524291751269967465540850526868f;
 
-    public static JxlPlane UpsampleChromaHorizontally(JxlPlane input, int width, CancellationToken cancellationToken = default)
+    public static JxlPlane UpsampleChromaHorizontally(JxlPlane input, int width, CancellationToken cancellationToken = default,
+        JxlBufferScope? buffers = null)
     {
         input.Mirror(1, 0, cancellationToken);
-        var output = new JxlPlane(width, input.Height, 2 * input.Width);
+        var output = new JxlPlane(width, input.Height, 2 * input.Width, buffers: buffers);
         float[] src = input.Data;
         float[] dst = output.Data;
         for (int y = 0; y < input.Height; y++)
@@ -40,10 +41,11 @@ internal static partial class JxlRenderPipeline
         return output;
     }
 
-    public static JxlPlane UpsampleChromaVertically(JxlPlane input, int height, CancellationToken cancellationToken = default)
+    public static JxlPlane UpsampleChromaVertically(JxlPlane input, int height, CancellationToken cancellationToken = default,
+        JxlBufferScope? buffers = null)
     {
         input.Mirror(0, 1, cancellationToken);
-        var output = new JxlPlane(input.Width, height, 0, 2 * input.Height);
+        var output = new JxlPlane(input.Width, height, 0, 2 * input.Height, buffers);
         float[] src = input.Data;
         float[] dst = output.Data;
         for (int y = 0; y < input.Height; y++)
@@ -61,6 +63,59 @@ internal static partial class JxlRenderPipeline
         }
 
         return output;
+    }
+
+    /// <summary>
+    /// <see cref="UpsampleChromaHorizontally"/>, then <see cref="UpsampleChromaVertically"/>, without the half-height
+    /// intermediate plane (0.8.6): every band of input rows upsamples its rows and their mirrored neighbours
+    /// horizontally into three row buffers, with the same operations and therefore the same samples.
+    /// </summary>
+    public static JxlPlane UpsampleChroma2x2(JxlPlane input, int width, int height, CancellationToken cancellationToken = default,
+        int parallelism = JxlParallel.Sequential, JxlBufferScope? buffers = null)
+    {
+        input.Mirror(1, 0, cancellationToken);
+        var output = new JxlPlane(width, height, 0, 2 * input.Height, buffers);
+        int rows = input.Height;
+        int span = 2 * input.Width;
+        JxlParallel.ForBands(rows, 16, parallelism, cancellationToken, (start, end) =>
+        {
+            using var scratch = new JxlBufferScope();
+            float[] above = scratch.Rent<float>(span, clear: false);
+            float[] current = scratch.Rent<float>(span, clear: false);
+            float[] below = scratch.Rent<float>(span, clear: false);
+            // Row -1 mirrors to row 0 and row `rows` to the last row.
+            UpsampleRowHorizontally(input, Math.Max(start - 1, 0), above);
+            UpsampleRowHorizontally(input, start, current);
+            for (int y = start; y < end; y++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                UpsampleRowHorizontally(input, Math.Min(y + 1, rows - 1), below);
+                Span<float> top = output.Row(2 * y);
+                Span<float> bottom = output.Data.AsSpan(output.Offset(0, 2 * y + 1), width);
+                for (int x = 0; x < width; x++)
+                {
+                    float middle = current[x] * 0.75f;
+                    top[x] = JxlFastMath.Fma(above[x], 0.25f, middle);
+                    bottom[x] = JxlFastMath.Fma(below[x], 0.25f, middle);
+                }
+
+                (above, current, below) = (current, below, above);
+            }
+        });
+        return output;
+    }
+
+    // One row of UpsampleChromaHorizontally (input mirrored by one column) into output[0, 2 * input.Width).
+    private static void UpsampleRowHorizontally(JxlPlane input, int y, float[] output)
+    {
+        float[] src = input.Data;
+        int i = input.Offset(0, y);
+        for (int x = 0; x < input.Width; x++, i++)
+        {
+            float current = src[i] * 0.75f;
+            output[2 * x] = JxlFastMath.Fma(0.25f, src[i - 1], current);
+            output[2 * x + 1] = JxlFastMath.Fma(0.25f, src[i + 1], current);
+        }
     }
 
     /// <summary>The 3x3 Gaborish convolution of the three colour planes, in place.</summary>

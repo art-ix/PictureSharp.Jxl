@@ -402,10 +402,22 @@ internal sealed class JxlBlockContextMap
     /// <summary>The DC bucket of quantised X, Y and B values (DequantDC).</summary>
     public int DcBucket(int x, int y, int b)
     {
-        int bucketX = dcLimits[0].Count(t => x > t);
-        int bucketY = dcLimits[1].Count(t => y > t);
-        int bucketB = dcLimits[2].Count(t => b > t);
+        int bucketX = CountBelow(dcLimits[0], x);
+        int bucketY = CountBelow(dcLimits[1], y);
+        int bucketB = CountBelow(dcLimits[2], b);
         return (bucketX * (dcLimits[2].Length + 1) + bucketB) * (dcLimits[1].Length + 1) + bucketY;
+    }
+
+    // The number of thresholds below value, without a closure per call (DcBucket runs once per block).
+    private static int CountBelow(int[] thresholds, int value)
+    {
+        int count = 0;
+        foreach (int t in thresholds)
+        {
+            if (value > t) count++;
+        }
+
+        return count;
     }
 
     public int ZeroDensityContextsOffset(int blockContext) => Contexts * NonZeroBuckets + ZeroDensityContextCount * blockContext;

@@ -40,7 +40,9 @@ images, contexts, options or pixels. A compiled boundary test checks signatures,
 6. `JxlFrameRenderer` gets planes, parameters, patches and EPF sigma (not a VarDCT decoder) and keeps libjxl's order
    of filters, patching, upsampling and colour conversion.
 7. After common transform and shape validation, eligible Modular frames expose integer samples directly; other
-   frames expose rendered planes through `JxlDecodedImage`. `JxlPixelWriter` writes the PictureSharp image; `JxlMetadataReader` attaches the
+   frames expose rendered planes through `JxlDecodedImage`; subsampled YCbCr frames without later stages expose the
+   decoded planes with `JxlColorRows` (since 0.8.6), which the pixel writer renders per row band (chroma upsampling
+   and YCbCr to RGB). `JxlPixelWriter` writes the PictureSharp image; `JxlMetadataReader` attaches the
    ICC profile (only when the output is in it), colour description, EXIF/XMP and orientation. On failure the image is
    disposed. PictureSharp applies orientation on request.
 8. `JxlMetadataCodec` (`Image.ReadMetadata`) parses headers and only the ICC stream, without frames.
@@ -84,7 +86,8 @@ streams and row bands run on up to `MaxDegreeOfParallelism` threads (core `Decod
   Initialization follows the previous zero-initialized behavior; algorithms use logical dimensions, not rented capacity.
 - Encoding retains pooled sections until they are written directly to the caller stream; the TOC and box lengths
   are known before writing. A single-group frame still concatenates section bits before padding. Token buffers
-  grow by replacing/returning rentals and are disposed with their stream/frame owners.
+  grow by replacing/returning rentals and are disposed with their stream/frame owners; Modular streams size them once
+  from their pixel count and lend their value storage to the tree learning scan for the weighted errors (0.8.6).
 - Eligible Modular frames return integer samples after common transform/shape validation. Pixel writing normalizes
   samples with the previous float operations and dithering, avoiding intermediate float planes (since 0.8.4 through
   one scaled float row per channel and worker, which the vectorized row writers convert).

@@ -32,15 +32,19 @@ internal sealed class JxlMaTree
     private readonly long[] offset;
     private readonly int[] multiplier;
 
-    private JxlMaTree(List<JxlMaNode> nodes)
+    private JxlMaTree(ReadOnlySpan<JxlMaNode> nodes)
     {
-        property = [.. nodes.Select(n => n.Property)];
-        splitValue = [.. nodes.Select(n => n.Split)];
-        left = [.. nodes.Select(n => n.Left)];
-        right = [.. nodes.Select(n => n.Right)];
-        predictor = [.. nodes.Select(n => n.Predictor)];
-        offset = [.. nodes.Select(n => n.Offset)];
-        multiplier = [.. nodes.Select(n => n.Multiplier)];
+        property = new int[nodes.Length];
+        splitValue = new int[nodes.Length];
+        left = new int[nodes.Length];
+        right = new int[nodes.Length];
+        predictor = new JxlPredictor[nodes.Length];
+        offset = new long[nodes.Length];
+        multiplier = new int[nodes.Length];
+        for (int i = 0; i < nodes.Length; i++)
+        {
+            (property[i], splitValue[i], left[i], right[i], predictor[i], offset[i], multiplier[i]) = nodes[i];
+        }
     }
 
     public int Count => property.Length;
@@ -58,7 +62,8 @@ internal sealed class JxlMaTree
         }
 
         sizeLimit = Math.Min(sizeLimit, MaxSize);
-        var nodes = new List<JxlMaNode>();
+        // Pooled while growing (0.8.6): groups may carry their own trees.
+        using var nodes = new JxlSampleBuffer<JxlMaNode>();
         using (var symbols = new JxlSymbolReader(code, ref reader))
         {
             int leaves = 0;
@@ -95,7 +100,7 @@ internal sealed class JxlMaTree
             }
         }
 
-        var tree = new JxlMaTree(nodes);
+        var tree = new JxlMaTree(nodes.Span);
         tree.Validate();
         return tree;
     }
@@ -182,26 +187,31 @@ internal sealed class JxlMaTree
     /// </summary>
     public FilteredTree Filter(int channel, int stream, byte[] contextMap)
     {
-        var properties = new List<int>();
-        var splits = new List<int>();
-        var lefts = new List<int>();
-        var rights = new List<int>();
-        var leaves = new List<JxlMaLeaf>();
+        // Pooled scratch (0.8.6): this runs per channel of every group, and the filtered tree has at most as many
+        // nodes as the tree, each queued once.
+        int capacity = property.Length;
+        using var scratch = new JxlBufferScope();
+        int[] properties = scratch.Rent<int>(capacity, clear: false);
+        int[] splits = scratch.Rent<int>(capacity, clear: false);
+        int[] lefts = scratch.Rent<int>(capacity, clear: false);
+        int[] rights = scratch.Rent<int>(capacity, clear: false);
+        JxlMaLeaf[] leaves = scratch.Rent<JxlMaLeaf>(capacity, clear: false);
+        // (source node, index of the parent's child slot to patch, which side), first in first out.
+        (int Node, int Parent, bool IsLeft)[] queue = scratch.Rent<(int, int, bool)>(capacity, clear: false);
+        int count = 0, leafCount = 0, head = 0, tail = 0;
         bool weighted = false;
         int maxProperty = -1;
-        // (source node, index of the parent's child slot to patch, which side).
-        var queue = new Queue<(int Node, int Parent, bool IsLeft)>();
-        queue.Enqueue((0, -1, false));
-        while (queue.Count > 0)
+        queue[tail++] = (0, -1, false);
+        while (head < tail)
         {
-            (int node, int parent, bool isLeft) = queue.Dequeue();
+            (int node, int parent, bool isLeft) = queue[head++];
             while (property[node] is >= 0 and < StaticProperties)
             {
                 int value = property[node] == JxlMaProperty.Channel ? channel : stream;
                 node = value > splitValue[node] ? left[node] : right[node];
             }
 
-            int index = properties.Count;
+            int index = count++;
             if (parent >= 0)
             {
                 (isLeft ? lefts : rights)[parent] = index;
@@ -210,29 +220,30 @@ internal sealed class JxlMaTree
             if (property[node] < 0)
             {
                 // Leaves keep their index into Leaves in Left.
-                properties.Add(-1);
-                splits.Add(0);
-                lefts.Add(leaves.Count);
-                rights.Add(0);
-                leaves.Add(new JxlMaLeaf(contextMap[left[node]], predictor[node], offset[node], multiplier[node]));
+                properties[index] = -1;
+                splits[index] = 0;
+                lefts[index] = leafCount;
+                rights[index] = 0;
+                leaves[leafCount++] = new JxlMaLeaf(contextMap[left[node]], predictor[node], offset[node], multiplier[node]);
                 weighted |= predictor[node] == JxlPredictor.Weighted;
                 continue;
             }
 
-            properties.Add(property[node]);
-            splits.Add(splitValue[node]);
-            lefts.Add(0);
-            rights.Add(0);
+            properties[index] = property[node];
+            splits[index] = splitValue[node];
+            lefts[index] = 0;
+            rights[index] = 0;
             maxProperty = Math.Max(maxProperty, property[node]);
             weighted |= property[node] == JxlMaProperty.WeightedMaxError;
-            queue.Enqueue((left[node], index, true));
-            queue.Enqueue((right[node], index, false));
+            queue[tail++] = (left[node], index, true);
+            queue[tail++] = (right[node], index, false);
         }
 
-        int count = maxProperty + 1 > JxlMaProperty.Local
+        int propertyCount = maxProperty + 1 > JxlMaProperty.Local
             ? DivCeil(maxProperty + 1 - JxlMaProperty.Local, ExtraPropertiesPerChannel) * ExtraPropertiesPerChannel + JxlMaProperty.Local
             : JxlMaProperty.Local;
-        return new FilteredTree([.. properties], [.. splits], [.. lefts], [.. rights], [.. leaves], count, weighted);
+        return new FilteredTree(properties.AsSpan(0, count).ToArray(), splits.AsSpan(0, count).ToArray(), lefts.AsSpan(0, count).ToArray(),
+            rights.AsSpan(0, count).ToArray(), leaves.AsSpan(0, leafCount).ToArray(), propertyCount, weighted);
     }
 
     /// <summary>A tree for one channel; leaves hold clusters.</summary>

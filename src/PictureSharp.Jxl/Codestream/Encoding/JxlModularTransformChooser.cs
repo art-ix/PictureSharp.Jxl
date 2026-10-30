@@ -386,23 +386,23 @@ internal static class JxlModularTransformChooser
         return (extra, JxlHistogramClustering.Entropy(histogram));
     }
 
-    /// <summary>Replaces the first three channels of <paramref name="image"/> by their transformed values.</summary>
-    public static void ForwardRct(List<JxlChannel> image, JxlRctType type, CancellationToken cancellationToken)
+    /// <summary>
+    /// Transforms the first three channels of <paramref name="image"/> in place. The channels must be the encoder's
+    /// own copies (0.8.6: the group crops), never input samples.
+    /// </summary>
+    public static void ForwardRctInPlace(IReadOnlyList<JxlChannel> image, JxlRctType type, CancellationToken cancellationToken)
     {
         int[][] planes = [image[0].Pixels, image[1].Pixels, image[2].Pixels];
-        var outputs = new JxlChannel[3];
-        for (int c = 0; c < 3; c++) outputs[c] = new JxlChannel(image[c].Width, image[c].Height);
         var forward = new ForwardRctStep(type);
-        int[] first = outputs[0].Pixels;
-        int[] second = outputs[1].Pixels;
-        int[] third = outputs[2].Pixels;
+        int[] first = planes[0];
+        int[] second = planes[1];
+        int[] third = planes[2];
         for (int i = 0; i < image[0].Width * image[0].Height; i++)
         {
             if ((i & CancellationCheckMask) == 0) cancellationToken.ThrowIfCancellationRequested();
+            // Apply reads the three samples of pixel i before they are replaced.
             (first[i], second[i], third[i]) = forward.Apply(planes, i);
         }
-
-        for (int c = 0; c < 3; c++) image[c] = outputs[c];
     }
 
     // The inverse of JxlRctTransform: permute the input channels, then apply the forward colour transform. The type

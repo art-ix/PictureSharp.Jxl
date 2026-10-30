@@ -369,7 +369,7 @@ internal static class JxlJpegWriter
     {
         private ulong pending;
         private int count;
-        private byte[] buffer = new byte[4096];
+        private byte[] buffer = new byte[output is null ? 4096 : 65536];
         private int length;
 
         public void Symbol(JxlJpegHuffman? table, int symbol)
@@ -384,7 +384,7 @@ internal static class JxlJpegWriter
             pending = (pending << n) | ((uint)value & ((1u << n) - 1));
             count += n;
             if (count < 8) return;
-            if (length > buffer.Length - 6) Array.Resize(ref buffer, buffer.Length * 2);
+            if (length > buffer.Length - 6) Grow(6);
             do
             {
                 count -= 8;
@@ -414,7 +414,7 @@ internal static class JxlJpegWriter
             (int end, int tail, int tailBits) = chunk.segments![index];
             if (count == 0)
             {
-                if (length > buffer.Length - 2 * (end - start)) Array.Resize(ref buffer, Math.Max(buffer.Length * 2, length + 2 * (end - start)));
+                if (length > buffer.Length - 2 * (end - start)) Grow(2 * (end - start));
                 for (int i = start; i < end; i++)
                 {
                     byte b = chunk.buffer[i];
@@ -427,6 +427,20 @@ internal static class JxlJpegWriter
                 for (int i = start; i < end; i++) Write(8, chunk.buffer[i]);
             }
             Write(tailBits, tail);
+        }
+
+        // A writer attached to the output hands over its whole bytes instead of growing (0.8.6): they are final, and
+        // only the bits after them change. Chunks without output keep everything for Append.
+        private void Grow(int needed)
+        {
+            if (output is not null && length > 0)
+            {
+                output.Write(buffer, 0, length);
+                length = 0;
+                if (buffer.Length >= needed) return;
+            }
+
+            Array.Resize(ref buffer, Math.Max(buffer.Length * 2, length + needed));
         }
 
         public void Finish(JxlJpegData jpeg, ref int padding)

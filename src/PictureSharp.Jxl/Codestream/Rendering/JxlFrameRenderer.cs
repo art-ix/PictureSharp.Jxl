@@ -12,7 +12,7 @@ namespace PictureSharp.Formats.Jxl.Codestream.Rendering;
 /// </summary>
 internal sealed class JxlFrameRenderer(JxlFrameHeader frame, JxlHeaders headers, JxlPatch[] patches,
     JxlReferenceFrames references, float[]? epfSigma, CancellationToken cancellationToken, JxlColorTarget? colorTarget = null,
-    int parallelism = JxlParallel.Sequential)
+    int parallelism = JxlParallel.Sequential, JxlBufferScope? buffers = null)
 {
     private JxlImageMetadata Metadata => headers.Metadata;
 
@@ -20,13 +20,28 @@ internal sealed class JxlFrameRenderer(JxlFrameHeader frame, JxlHeaders headers,
 
     private int Height => (int)frame.YSize;
 
+    /// <summary>
+    /// With <c>deferChroma</c> in <see cref="Render"/>: the subsampled YCbCr planes, to be upsampled and converted row
+    /// by row by the consumer, when nothing follows those stages; the returned colour planes are then left as decoded.
+    /// </summary>
+    public JxlYCbCrRows? Rows { get; private set; }
+
     /// <summary>The render pipeline stages of PreparePipeline that this decoder supports, in libjxl's order.</summary>
-    public JxlPlane[] Render(JxlPlane[] color, JxlPlane[] extra, bool colorTransform)
+    public JxlPlane[] Render(JxlPlane[] color, JxlPlane[] extra, bool colorTransform, bool deferChroma = false)
     {
         cancellationToken.ThrowIfCancellationRequested();
         color = ExpandGray(color, colorTransform);
         if (frame.ColorTransform == JxlColorTransform.YCbCr)
         {
+            if (deferChroma && colorTransform && CanDeferChroma(color))
+            {
+                // Chroma upsampling and YCbCr to RGB are the last stages: the consumer renders rows (0.8.6).
+                Rows = new JxlYCbCrRows(color, [frame.HShift(0), frame.HShift(1), frame.HShift(2)],
+                    [frame.VShift(0), frame.VShift(1), frame.VShift(2)], Width, Height, cancellationToken);
+                UpsampleExtraChannels(extra);
+                return color;
+            }
+
             UpsampleChroma(color);
         }
 
@@ -55,6 +70,11 @@ internal sealed class JxlFrameRenderer(JxlFrameHeader frame, JxlHeaders headers,
         return color;
     }
 
+    // Only chroma upsampling and the colour transform remain: no restoration, patches or upsampling.
+    private bool CanDeferChroma(JxlPlane[] color) =>
+        color.Length == 3 && !frame.LoopFilter.Gaborish && frame.LoopFilter.EpfIterations == 0 && patches.Length == 0 && frame.Upsampling == 1
+        && JxlYCbCrRows.Applies([frame.HShift(0), frame.HShift(1), frame.HShift(2)], [frame.VShift(0), frame.VShift(1), frame.VShift(2)]);
+
     // A gray plane becomes three when a later stage works on colour channels.
     private JxlPlane[] ExpandGray(JxlPlane[] color, bool colorTransform)
     {
@@ -67,16 +87,23 @@ internal sealed class JxlFrameRenderer(JxlFrameHeader frame, JxlHeaders headers,
 
     private void UpsampleChroma(JxlPlane[] color)
     {
+        // The upsampled planes belong to the frame's buffers (the decode), like the planes they replace.
         for (int c = 0; c < color.Length; c++)
         {
+            if (frame.HShift(c) != 0 && frame.VShift(c) != 0)
+            {
+                color[c] = JxlRenderPipeline.UpsampleChroma2x2(color[c], Width, Height, cancellationToken, parallelism, buffers);
+                continue;
+            }
+
             if (frame.HShift(c) != 0)
             {
-                color[c] = JxlRenderPipeline.UpsampleChromaHorizontally(color[c], Width, cancellationToken);
+                color[c] = JxlRenderPipeline.UpsampleChromaHorizontally(color[c], Width, cancellationToken, buffers);
             }
 
             if (frame.VShift(c) != 0)
             {
-                color[c] = JxlRenderPipeline.UpsampleChromaVertically(color[c], Height, cancellationToken);
+                color[c] = JxlRenderPipeline.UpsampleChromaVertically(color[c], Height, cancellationToken, buffers);
             }
         }
     }
