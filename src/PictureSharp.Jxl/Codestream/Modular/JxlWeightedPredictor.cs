@@ -78,6 +78,10 @@ internal sealed class JxlWeightedPredictor : IDisposable
         int positionN = ((y & 1) != 0 ? rowStride : 0) + x;
         int positionNe = x < width - 1 ? positionN + 1 : positionN;
         int positionNw = x > 0 ? positionN - 1 : positionN;
+#if JXL_FUZZ_CHECKED
+        CheckIndices(errors, x == 0 ? current : current + x - 1, positionN, positionNe, positionNw);
+        CheckIndices(predictionErrors, positionN * 4 + 3, positionNe * 4 + 3, positionNw * 4 + 3);
+#endif
         ref uint errorsOf = ref MemoryMarshal.GetArrayDataReference(predictionErrors);
         ref uint errorsN = ref Unsafe.Add(ref errorsOf, positionN * 4);
         ref uint errorsNe = ref Unsafe.Add(ref errorsOf, positionNe * 4);
@@ -141,6 +145,10 @@ internal sealed class JxlWeightedPredictor : IDisposable
         int positionNe = ((y & 1) != 0 ? rowStride : 0) + x + 1;
         value = AddBits(value);
         int error = unchecked((int)(prediction - value));
+#if JXL_FUZZ_CHECKED
+        CheckIndices(errors, position);
+        CheckIndices(predictionErrors, position * 4 + 3, positionNe * 4 + 3);
+#endif
         Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(errors), position) = error;
         ref uint errorsOf = ref MemoryMarshal.GetArrayDataReference(predictionErrors);
         ref uint at = ref Unsafe.Add(ref errorsOf, position * 4);
@@ -198,9 +206,20 @@ internal sealed class JxlWeightedPredictor : IDisposable
     {
         int shift = 58 - System.Numerics.BitOperations.LeadingZeroCount(x + 1UL);
         shift &= ~(shift >> 31);
+#if JXL_FUZZ_CHECKED
+        CheckIndices(DivLookup, (int)(x >> shift));
+#endif
         return 4 + ((maxWeight * Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(DivLookup), (int)(x >> shift))) >> shift);
     }
 
+#if JXL_FUZZ_CHECKED
+    // The fuzzing build checks every index the unchecked reads and writes use, so that a wrong one throws.
+    private static void CheckIndices<T>(T[] array, params ReadOnlySpan<int> indices)
+    {
+        foreach (int index in indices) _ = array[index];
+    }
+
+#endif
     // Branch-free helpers; they subtract their arguments, whose difference must not overflow.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static long SmallAbs(long value)

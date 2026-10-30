@@ -1,0 +1,10 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Mutation fuzzer (0.8.7, docs/design/0.8.7-fuzzing.md); BCL and the fuzz targets only. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <RootNamespace>PictureSharp.Formats.Jxl.Fuzz</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup><ProjectReference Include="../PictureSharp.Jxl.FuzzTargets/PictureSharp.Jxl.FuzzTargets.csproj" /></ItemGroup>
+</Project>

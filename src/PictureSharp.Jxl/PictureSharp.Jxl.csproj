@@ -11,7 +11,7 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/art-ix/picturesharp.jxl</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageReleaseNotes>0.8.6: less memory for large images, with identical output: JPEG-recompressed 4:2:0 images are upsampled and converted per row band while writing pixels, lossless encoding transforms group copies and records predictor errors in its token storage, lossy encoding releases its working image early, Modular decoding and JPEG reconstruction no longer allocate per block. Per 12 MP image: JPEG decode peak 332 to 180 MiB (1.9x faster with 16 threads), lossless encode 1192 to 864 MiB and 976 to 576 MB allocated, 16-bit lossless decode allocates half as much. No API changes. See docs/releases/release-0.8.6.md and docs/benchmarks/speed.md.</PackageReleaseNotes>
+    <PackageReleaseNotes>0.8.7: mutation fuzzing of the container, header, entropy, decoding and JPEG transcoding paths (custom mutator and AFL++ on x86 and arm64) and two fixes it found: a VarDCT DC stream with Modular transforms (RCT, palette, squeeze) read stale channels, and invalid colour encoding chromaticities raised a format error wrapping an ArgumentException. Decoded output of all other files and encoded bytes are unchanged. No API changes. See docs/releases/release-0.8.7.md and docs/design/0.8.7-fuzzing.md.</PackageReleaseNotes>
   </PropertyGroup>
   <ItemGroup><PackageReference Include="PictureSharp" Version="$(PictureSharpVersion)" /></ItemGroup>
   <ItemGroup>

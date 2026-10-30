@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Coverage-guided fuzzing harness for AFL++ and libFuzzer (0.8.7, docs/design/0.8.7-fuzzing.md). Only
+       PictureSharp.Jxl.FuzzTargets.dll is instrumented (scripts/fuzz-afl.sh); the plugin keeps no new dependency. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <ServerGarbageCollection>false</ServerGarbageCollection>
+    <RootNamespace>PictureSharp.Formats.Jxl.Fuzz</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup><PackageReference Include="SharpFuzz" Version="2.3.0" /></ItemGroup>
+  <ItemGroup><ProjectReference Include="../PictureSharp.Jxl.FuzzTargets/PictureSharp.Jxl.FuzzTargets.csproj" /></ItemGroup>
+</Project>

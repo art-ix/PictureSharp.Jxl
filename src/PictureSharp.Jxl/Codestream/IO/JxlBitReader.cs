@@ -41,6 +41,10 @@ internal ref struct JxlBitReader
             throw new ArgumentOutOfRangeException(nameof(count));
         }
 
+#if JXL_FUZZ_TRACE
+        // The fuzzing tool records where header fields lie, to mutate them; it defines JxlFuzzTrace.
+        JxlFuzzTrace.Read(BitPosition, count);
+#endif
         if (bufferedBits < count)
         {
             Refill();

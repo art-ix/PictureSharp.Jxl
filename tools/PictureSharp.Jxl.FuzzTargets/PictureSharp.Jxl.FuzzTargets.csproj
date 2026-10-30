@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- The fuzz targets with the plugin sources compiled in (0.8.7, docs/design/0.8.7-fuzzing.md): the internal parsers
+       are reachable, and JXL_FUZZ_CHECKED/JXL_FUZZ_TRACE apply only to this build. Shared by the mutation fuzzer and the
+       SharpFuzz harness, which instruments this assembly alone. -->
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>PictureSharp.Formats.Jxl.Fuzz</RootNamespace>
+    <DefineConstants>$(DefineConstants);JXL_FUZZ_CHECKED;JXL_FUZZ_TRACE</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup><PackageReference Include="PictureSharp" Version="$(PictureSharpVersion)" /></ItemGroup>
+  <ItemGroup>
+    <Compile Include="../../src/PictureSharp.Jxl/**/*.cs" Exclude="../../src/PictureSharp.Jxl/obj/**;../../src/PictureSharp.Jxl/bin/**"
+             Link="Jxl/%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+</Project>

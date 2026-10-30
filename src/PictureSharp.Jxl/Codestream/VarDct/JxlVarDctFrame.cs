@@ -241,6 +241,9 @@ internal sealed partial class JxlVarDctFrame
 
         var image = new JxlModularImage(bitDepth, [.. channels]);
         JxlModularStream.Decode(ref reader, image, JxlFrameHeader.VarDctDcStream(group), tree, undoTransforms: true, cancellationToken: cancellationToken);
+        // Transforms replace and resize channels; Decode has checked that the image's channels have the requested sizes,
+        // the ones created above may not (0.8.7 fuzzing: a squeezed DC stream).
+        channels = [.. image.Channels];
         if (is444)
         {
             float facX = mulDc[0] * mul;

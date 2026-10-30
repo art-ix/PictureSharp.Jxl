@@ -84,7 +84,8 @@ internal static class JxlMetadataReader
         }
         catch (ArgumentException exception)
         {
-            throw new ImageFormatException("The JPEG XL colour encoding has invalid chromaticities.", exception);
+            // The message, not the exception: a decoder failure holds format errors only (0.8.7 fuzzing).
+            throw new ImageFormatException($"The JPEG XL colour encoding has invalid chromaticities: {exception.Message}");
         }
     }
 
