@@ -13,11 +13,25 @@ internal static partial class JxlPixelWriter
 {
     private const int MinBandRows = 16;
 
-    public static Image Write(JxlDecodedImage decoded, CancellationToken cancellationToken, int parallelism = JxlParallel.Sequential)
+    /// <summary>
+    /// How the dither pattern is mirrored: libjxl undoes the orientation while it writes 8-bit output and flips a row
+    /// (X) or the row order (Y) before dithering (stage_write.cc, FlipX and ProcessRow); a transpose comes after it.
+    /// </summary>
+    internal readonly record struct DitherFlip(bool X, bool Y)
+    {
+        /// <summary>The flips of the EXIF <paramref name="orientation"/> that is applied after decoding.</summary>
+        public static DitherFlip For(uint orientation) => new(orientation is 2 or 3 or 7 or 8, orientation is 3 or 4 or 6 or 7);
+    }
+
+    /// <summary>
+    /// The 8-bit image. <paramref name="flip"/> mirrors the dither pattern as libjxl does for the orientation it undoes,
+    /// so that an image whose orientation is applied afterwards gets djxl's samples.
+    /// </summary>
+    public static Image Write(JxlDecodedImage decoded, CancellationToken cancellationToken, int parallelism = JxlParallel.Sequential, DitherFlip flip = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (decoded.IntegerSamples is not null) return WriteInteger(decoded, wide: false, cancellationToken, parallelism);
-        if (decoded.Rows is not null) return WriteRendered(decoded, wide: false, cancellationToken, parallelism);
+        if (decoded.IntegerSamples is not null) return WriteInteger(decoded, wide: false, cancellationToken, parallelism, flip);
+        if (decoded.Rows is not null) return WriteRendered(decoded, wide: false, cancellationToken, parallelism, flip);
         JxlPlane? alpha = decoded.Alpha;
         var image = CreateNarrowImage(decoded.Width, decoded.Height, alpha is not null);
         try
@@ -37,11 +51,11 @@ internal static partial class JxlPixelWriter
                     Span<Rgba32> row = pixels.Span.Slice(y * decoded.Width, decoded.Width);
                     if (gray)
                     {
-                        WriteGrayRow(red.Row(y), a, row, y);
+                        WriteGrayRow(red.Row(y), a, row, DitherRow(y, decoded.Height, flip), flip.X);
                     }
                     else
                     {
-                        WriteColorRow(red.Row(y), green.Row(y), blue.Row(y), a, row, y);
+                        WriteColorRow(red.Row(y), green.Row(y), blue.Row(y), a, row, DitherRow(y, decoded.Height, flip), flip.X);
                     }
                 }
             });
@@ -55,6 +69,8 @@ internal static partial class JxlPixelWriter
         }
     }
 
+    private static int DitherRow(int y, int height, DitherFlip flip) => flip.Y ? height - 1 - y : y;
+
     // Keep image construction out of the row loop's JIT frame when the core's constructors inline.
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static Image CreateNarrowImage(int width, int height, bool alpha) =>
@@ -63,8 +79,8 @@ internal static partial class JxlPixelWriter
     public static Image WriteWide(JxlDecodedImage decoded, CancellationToken cancellationToken, int parallelism = JxlParallel.Sequential)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (decoded.IntegerSamples is not null) return WriteInteger(decoded, wide: true, cancellationToken, parallelism);
-        if (decoded.Rows is not null) return WriteRendered(decoded, wide: true, cancellationToken, parallelism);
+        if (decoded.IntegerSamples is not null) return WriteInteger(decoded, wide: true, cancellationToken, parallelism, default);
+        if (decoded.Rows is not null) return WriteRendered(decoded, wide: true, cancellationToken, parallelism, default);
         var image = CreateWideImage(decoded.Width, decoded.Height, decoded.Alpha is not null);
         try
         {
@@ -116,7 +132,7 @@ internal static partial class JxlPixelWriter
 
     // Preserve the old two-step floating-point conversion (sample × scale, then the float writer) without storing
     // intermediate planes; each worker keeps one scaled row per channel.
-    private static Image WriteInteger(JxlDecodedImage decoded, bool wide, CancellationToken cancellationToken, int parallelism)
+    private static Image WriteInteger(JxlDecodedImage decoded, bool wide, CancellationToken cancellationToken, int parallelism, DitherFlip flip)
     {
         JxlIntegerImage source = decoded.IntegerSamples!;
         bool gray = source.Color.Length == 1;
@@ -153,8 +169,8 @@ internal static partial class JxlPixelWriter
                     }
 
                     if (wide) WriteWideRow(fr, fg, fb, fa, widePixels.Span.Slice(y * width, width), gray);
-                    else if (gray) WriteGrayRow(fr, fa, narrowPixels.Span.Slice(y * width, width), y);
-                    else WriteColorRow(fr, fg, fb, fa, narrowPixels.Span.Slice(y * width, width), y);
+                    else if (gray) WriteGrayRow(fr, fa, narrowPixels.Span.Slice(y * width, width), DitherRow(y, decoded.Height, flip), flip.X);
+                    else WriteColorRow(fr, fg, fb, fa, narrowPixels.Span.Slice(y * width, width), DitherRow(y, decoded.Height, flip), flip.X);
                 }
             });
             return image;
@@ -164,7 +180,7 @@ internal static partial class JxlPixelWriter
 
     // Colour rows rendered per band (subsampled YCbCr, 0.8.6): each worker keeps one row per channel and its band's
     // chroma rows, then writes them as the plane rows would be written.
-    private static Image WriteRendered(JxlDecodedImage decoded, bool wide, CancellationToken cancellationToken, int parallelism)
+    private static Image WriteRendered(JxlDecodedImage decoded, bool wide, CancellationToken cancellationToken, int parallelism, DitherFlip flip)
     {
         JxlColorRows rows = decoded.Rows!;
         JxlPlane? alpha = decoded.Alpha;
@@ -188,7 +204,7 @@ internal static partial class JxlPixelWriter
                     band.Render(y, r, g, b);
                     ReadOnlySpan<float> a = alpha is null ? default : alpha.Row(y);
                     if (wide) WriteWideRow(r, g, b, a, widePixels.Span.Slice(y * width, width), gray: false);
-                    else WriteColorRow(r, g, b, a, narrowPixels.Span.Slice(y * width, width), y);
+                    else WriteColorRow(r, g, b, a, narrowPixels.Span.Slice(y * width, width), DitherRow(y, decoded.Height, flip), flip.X);
                 }
             });
             return image;
@@ -208,20 +224,23 @@ internal static partial class JxlPixelWriter
 
     private static ushort ToUInt16(float value) => (ushort)Math.Clamp(MathF.Floor((value * 65535.0f) + 0.5f), 0, 65535);
 
-    // Without alpha the row has no alpha samples and every pixel is opaque.
-    internal static void WriteGrayRow(ReadOnlySpan<float> v, ReadOnlySpan<float> a, Span<Rgba32> row, int y)
+    // Without alpha the row has no alpha samples and every pixel is opaque. A mirrored row (flipX, orientations 2, 3, 7
+    // and 8 only) takes its dither from column width - 1 - x and is written by the scalar loop.
+    internal static void WriteGrayRow(ReadOnlySpan<float> v, ReadOnlySpan<float> a, Span<Rgba32> row, int y, bool flipX = false)
     {
         ReadOnlySpan<float> dither = JxlDither.Row(y, 0);
         ReadOnlySpan<float> ditherAlpha = JxlDither.Row(y, 1);
-        for (int x = WriteNarrowRowSimd(v, v, v, a, row, true, y); x < row.Length; x++)
+        int last = row.Length - 1;
+        for (int x = flipX ? 0 : WriteNarrowRowSimd(v, v, v, a, row, true, y); x < row.Length; x++)
         {
-            byte value = JxlDither.ToByte(v[x], dither[JxlDither.Column(x, 0)]);
-            row[x] = new Rgba32(value, value, value, a.IsEmpty ? (byte)255 : JxlDither.ToByte(a[x], ditherAlpha[JxlDither.Column(x, 1)]));
+            int column = flipX ? last - x : x;
+            byte value = JxlDither.ToByte(v[x], dither[JxlDither.Column(column, 0)]);
+            row[x] = new Rgba32(value, value, value, a.IsEmpty ? (byte)255 : JxlDither.ToByte(a[x], ditherAlpha[JxlDither.Column(column, 1)]));
         }
     }
 
     internal static void WriteColorRow(ReadOnlySpan<float> r, ReadOnlySpan<float> g, ReadOnlySpan<float> b, ReadOnlySpan<float> a,
-        Span<Rgba32> row, int y)
+        Span<Rgba32> row, int y, bool flipX = false)
     {
         ReadOnlySpan<float> ditherR = JxlDither.Row(y, 0);
         ReadOnlySpan<float> ditherG = JxlDither.Row(y, 1);
@@ -230,10 +249,12 @@ internal static partial class JxlPixelWriter
         r = r[..row.Length];
         g = g[..row.Length];
         b = b[..row.Length];
-        for (int x = WriteNarrowRowSimd(r, g, b, a, row, false, y); x < row.Length; x++)
+        int last = row.Length - 1;
+        for (int x = flipX ? 0 : WriteNarrowRowSimd(r, g, b, a, row, false, y); x < row.Length; x++)
         {
-            row[x] = new Rgba32(JxlDither.ToByte(r[x], ditherR[JxlDither.Column(x, 0)]), JxlDither.ToByte(g[x], ditherG[JxlDither.Column(x, 1)]),
-                JxlDither.ToByte(b[x], ditherB[JxlDither.Column(x, 2)]), a.IsEmpty ? (byte)255 : JxlDither.ToByte(a[x], ditherA[JxlDither.Column(x, 3)]));
+            int column = flipX ? last - x : x;
+            row[x] = new Rgba32(JxlDither.ToByte(r[x], ditherR[JxlDither.Column(column, 0)]), JxlDither.ToByte(g[x], ditherG[JxlDither.Column(column, 1)]),
+                JxlDither.ToByte(b[x], ditherB[JxlDither.Column(column, 2)]), a.IsEmpty ? (byte)255 : JxlDither.ToByte(a[x], ditherA[JxlDither.Column(column, 3)]));
         }
     }
 }

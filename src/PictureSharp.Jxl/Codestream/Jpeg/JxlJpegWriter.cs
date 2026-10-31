@@ -295,8 +295,9 @@ internal static class JxlJpegWriter
             run = 0;
         }
         if (extra > 0) state.Flush();
+        // Extra zero runs may cover more than the remaining zeros; then no end of band follows (libjxl
+        // dec_jpeg_data_writer.cc, which cjxl's files rely on: 0.8.8 differential finding).
         for (int i = 0; i < extra; i++) { bits.Symbol(ac, 0xf0); run -= 16; }
-        if (run < 0) throw JxlDescriptor.Corrupt("Invalid JPEG extra zero runs.");
         if (run > 0)
         {
             state.Buffer(ac, []);

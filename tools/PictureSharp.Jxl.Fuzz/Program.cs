@@ -2,18 +2,26 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.RegularExpressions;
 using PictureSharp;
+using PictureSharp.Formats.Jxl;
 using PictureSharp.Formats.Jxl.Fuzz;
 
-// Mutation fuzzer for 0.8.7 (docs/design/0.8.7-fuzzing.md). Every input is derived from (seed, iteration), so a
+// Mutation fuzzer for 0.8.7 (docs/design/0.8.7-fuzzing.md), with the differential diff-* targets of 0.8.8
+// (docs/design/0.8.8-differential.md). Every input is derived from (seed, iteration), so a
 // finding is reproduced by `generate` from those two numbers as well as by `repro` from the saved file.
 //   fuzz <target> [--seed S] [--time SEC | --iterations N] [--workers W] [--timeout SEC] [--heap-mb M] [--corpus DIR] [--out DIR]
 //   repro <target> <file>...
 //   generate <target> --seed S --iteration I --output FILE [--corpus DIR]
 //   seeds <target> [--corpus DIR]
 //   export-seeds <target> --output DIR [--corpus DIR]   (AFL++ input directory)
+//   render <file.jxl> <out.png> [--srgb 1] [--wide 1]   this library's decode as the diff targets compare it (triage;
+//                                        --wide keeps more than 8 bits)
+//   headers <file.jxl>   the decoded image and frame headers (triage)
+//   transcode <in.jpg> <out.jxl> | transcode <in.jxl> <out.jpg>   FromJpeg or ToJpeg as the diff targets run it
 //   boundary [--output DIR]   SIMD/dimension boundary set: hashes to stdout, files to DIR (scripts/fuzz.sh boundary)
 // --extra DIR adds the *.jxl files of DIR (for example the boundary set) to the seeds of the JPEG XL targets.
+// A diff-* target uses every fourth iteration for an unchanged seed, in turn, so that valid files are compared too.
 // Exit codes of a worker: 0 done, 3 hang (input saved); any other code is a crash, which the supervisor locates.
 string command = args.Length > 0 ? args[0] : "";
 var options = Options(args.Skip(1));
@@ -21,6 +29,9 @@ try
 {
     if (command == "boundary") return Boundary.Run(Console.Out, options.GetValueOrDefault("output")) == 0 ? 0 : 1;
     if (command == "repro") return Repro(Target(), Positional().Skip(1));
+    if (command == "render") return Render([.. Positional()], options.ContainsKey("srgb"), options.ContainsKey("wide"));
+    if (command == "transcode") return Transcode([.. Positional()]);
+    if (command == "headers") return FuzzTargets.PrintHeaders(File.ReadAllBytes(Positional().First()), Console.Out);
     string corpus = options.GetValueOrDefault("corpus") ?? DefaultCorpus();
     return command switch
     {
@@ -41,7 +52,8 @@ catch (ArgumentException exception)
 string Target()
 {
     string target = Positional().FirstOrDefault() ?? throw new ArgumentException("Missing target.");
-    return FuzzTargets.Names.Contains(target) ? target : throw new ArgumentException($"Unknown target {target}; one of {string.Join(", ", FuzzTargets.Names)}.");
+    string[] names = [.. FuzzTargets.Names, .. DiffTargets.Names];
+    return names.Contains(target) ? target : throw new ArgumentException($"Unknown target {target}; one of {string.Join(", ", names)}.");
 }
 
 IEnumerable<string> Positional()
@@ -84,25 +96,32 @@ static string DefaultCorpus()
 
 static int Usage()
 {
-    Console.Error.WriteLine("Usage: fuzz|repro|generate|seeds <target> ...; targets: " + string.Join(", ", FuzzTargets.Names));
+    Console.Error.WriteLine("Usage: fuzz|repro|generate|seeds <target> ...; targets: " + string.Join(", ", [.. FuzzTargets.Names, .. DiffTargets.Names]));
     return 2;
 }
 
 List<FuzzSeed> LoadSeeds(string target, string corpus)
 {
     List<FuzzSeed> seeds;
+    bool jpeg = target is "fromjpeg" or "diff-fromjpeg";
     if (target == "entropy")
     {
         seeds = [.. FuzzTargets.EntropySeeds().Select(s => new FuzzSeed(s.Name, s.Data))];
     }
+    else if (target == "diff-encode")
+    {
+        seeds = [.. EncodeSeeds()];
+    }
     else
     {
-        string pattern = target == "fromjpeg" ? "*.jpg" : "*.jxl";
+        string pattern = jpeg ? "*.jpg" : "*.jxl";
         seeds = [.. Directory.EnumerateFiles(corpus, pattern, SearchOption.AllDirectories)
             .Where(file => new FileInfo(file).Length <= 256 * 1024)
             .Order(StringComparer.Ordinal)
             .Select(file => new FuzzSeed(Path.GetRelativePath(corpus, file), File.ReadAllBytes(file)))];
-        if (target != "fromjpeg" && options.GetValueOrDefault("extra") is { } extra)
+        // JPEG reconstruction is compared only where there is something to reconstruct.
+        if (target == "diff-tojpeg") seeds.RemoveAll(s => s.Data.AsSpan().IndexOf("jbrd"u8) < 0);
+        if (!jpeg && options.GetValueOrDefault("extra") is { } extra)
         {
             seeds.AddRange(Directory.EnumerateFiles(extra, "*.jxl").Where(file => new FileInfo(file).Length <= 256 * 1024)
                 .Order(StringComparer.Ordinal).Select(file => new FuzzSeed("extra/" + Path.GetFileName(file), File.ReadAllBytes(file))));
@@ -110,13 +129,31 @@ List<FuzzSeed> LoadSeeds(string target, string corpus)
     }
 
     if (seeds.Count == 0) throw new ArgumentException($"No seeds for {target} in {corpus}.");
-    if (target != "entropy" && target != "fromjpeg")
+    if (target is not ("entropy" or "diff-encode") && !jpeg)
     {
         foreach (FuzzSeed seed in seeds) seed.TraceFields(() => { using Image _ = Image.Load(seed.Data, FuzzTargets.DecodeOptions(seed.Data)); });
     }
 
     return seeds;
 }
+
+// Encode inputs (DiffTargets.Encode): each flag combination and pattern, a few efforts, distances and sizes.
+static IEnumerable<FuzzSeed> EncodeSeeds()
+{
+    var random = new FuzzRandom(88, 0);
+    for (int flags = 0; flags < 256; flags++)
+    {
+        int width = 1 + random.Below(flags % 3 == 0 ? 40 : 300), height = 1 + random.Below(flags % 5 == 0 ? 40 : 300);
+        byte[] data = [(byte)flags, (byte)random.Below(9), (byte)random.Below(10), (byte)width, (byte)(width >> 8), (byte)height, (byte)(height >> 8),
+            .. Enumerable.Range(0, 64 + random.Below(512)).Select(_ => (byte)random.Next())];
+        yield return new FuzzSeed($"encode-{flags:x2}", data);
+    }
+}
+
+byte[] Input(string target, List<FuzzSeed> seeds, ulong seed, long iteration) =>
+    target.StartsWith("diff-", StringComparison.Ordinal) && iteration % 4 == 0
+        ? seeds[(int)((ulong)(iteration / 4) % (ulong)seeds.Count)].Data
+        : Mutator.Generate(seeds, seed, iteration);
 
 int ListSeeds(string target, string corpus)
 {
@@ -134,13 +171,37 @@ int ExportSeeds(string target, Dictionary<string, string> options, string corpus
 
 int Generate(string target, Dictionary<string, string> options, string corpus)
 {
-    byte[] input = Mutator.Generate(LoadSeeds(target, corpus), (ulong)Number(options, "seed", 1), Number(options, "iteration", 0));
+    byte[] input = Input(target, LoadSeeds(target, corpus), (ulong)Number(options, "seed", 1), Number(options, "iteration", 0));
     File.WriteAllBytes(options.GetValueOrDefault("output") ?? throw new ArgumentException("Missing --output."), input);
+    return 0;
+}
+
+static int Render(string[] files, bool srgb, bool wide)
+{
+    if (files.Length != 2) throw new ArgumentException("render <file.jxl> <out.png>");
+    var formats = ImageConfiguration.Default.ToBuilder().AddFormat(new JxlFormat()).Build();
+    using Image image = Image.Load(files[0], new DecoderOptions
+    {
+        Configuration = formats, ApplyExifOrientation = true, MaxDegreeOfParallelism = 1,
+        ColorConversion = srgb ? ColorConversionMode.ToSrgb : ColorConversionMode.None, PreserveBitDepth = wide,
+    });
+    PictureSharp.Formats.Png.PngImageExtensions.SaveAsPng(image, files[1], new PictureSharp.Formats.Png.PngEncoderOptions { Configuration = formats });
+    return 0;
+}
+
+static int Transcode(string[] files)
+{
+    if (files.Length != 2) throw new ArgumentException("transcode <in> <out>");
+    using FileStream output = File.Create(files[1]);
+    var options = new JxlTranscoderOptions { MaxPixels = FuzzTargets.MaxPixels, MaxDegreeOfParallelism = 1 };
+    if (files[0].EndsWith(".jpg", StringComparison.OrdinalIgnoreCase)) JxlTranscoder.FromJpeg(File.ReadAllBytes(files[0]), output, options);
+    else JxlTranscoder.ToJpeg(File.ReadAllBytes(files[0]), output, options);
     return 0;
 }
 
 static int Repro(string target, IEnumerable<string> files)
 {
+    if (target.StartsWith("diff-", StringComparison.Ordinal)) PrepareDiff(Path.GetTempPath(), DefaultCorpus());
     int findings = 0;
     foreach (string file in files)
     {
@@ -174,6 +235,7 @@ int Worker(string target, Dictionary<string, string> options, string corpus)
     string output = options.GetValueOrDefault("out") ?? throw new ArgumentException("Missing --out.");
     List<FuzzSeed> seeds = LoadSeeds(target, corpus);
     var findings = new Findings(Path.Combine(output, target));
+    PrepareDiff(output, corpus);
 
     // The watchdog saves an input that runs too long and ends the process; the supervisor goes on after it.
     long current = -1;
@@ -202,7 +264,7 @@ int Worker(string target, Dictionary<string, string> options, string corpus)
     long last = start;
     for (long iteration = start; iteration < end && DateTimeOffset.UtcNow.ToUnixTimeSeconds() < deadline; iteration++)
     {
-        byte[] input = Mutator.Generate(seeds, seed, iteration);
+        byte[] input = Input(target, seeds, seed, iteration);
         lock (lockObject) (current, started, running) = (iteration, Stopwatch.GetTimestamp(), input);
         try
         {
@@ -213,7 +275,15 @@ int Worker(string target, Dictionary<string, string> options, string corpus)
         }
         catch (Exception exception)
         {
-            string kind = exception is FuzzMismatchException ? "mismatch" : "exception";
+            string kind = exception switch
+            {
+                FuzzMismatchException => "mismatch",
+                FuzzAcceptanceException => "accept",
+                FuzzLenientException => "lenient",
+                FuzzQualityException => "quality",
+                FuzzToolException => "tool",
+                _ => "exception",
+            };
             findings.Save(kind, Signature(exception), input, $"seed {seed} iteration {iteration}\n{exception}");
         }
 
@@ -240,9 +310,19 @@ static string Signature(Exception exception)
         .Where(line => line.Contains("PictureSharp.Formats.Jxl.", StringComparison.Ordinal) && !line.Contains(".Fuzz.", StringComparison.Ordinal))
         .Select(line => line.Split(" in ")[0])
         .Take(3);
-    string text = inner.GetType().FullName + "|" + string.Join("|", frames) + (inner is FuzzMismatchException ? "|" + inner.Message.Split(':')[0] : "");
+    // Differential findings have no library frames: their message with the numbers left out tells them apart.
+    string message = inner switch
+    {
+        FuzzAcceptanceException or FuzzLenientException or FuzzQualityException or FuzzToolException => "|" + Normalize(inner.Message),
+        FuzzMismatchException => "|" + Normalize(inner.Message.Split(':')[0]),
+        _ => "",
+    };
+    string text = inner.GetType().FullName + "|" + string.Join("|", frames) + message;
     return $"{inner.GetType().Name}-{Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text)))[..12]}";
 }
+
+// Numbers and quoted box types vary between inputs of one finding.
+static string Normalize(string message) => Regex.Replace(Regex.Replace(message, @"'[^']*'", "'?'"), @"\d+([.,]\d+)?", "#");
 
 // A crash has no exception object: the library frames of its stderr, or the input when there are none.
 static string CrashSignature(string stderr, byte[] input)
@@ -261,10 +341,12 @@ int Supervise(string target, Dictionary<string, string> options, string corpus)
     int workers = (int)Number(options, "workers", 1);
     long iterations = Number(options, "iterations", long.MaxValue);
     long deadline = options.ContainsKey("time") ? DateTimeOffset.UtcNow.ToUnixTimeSeconds() + Number(options, "time", 0) : long.MaxValue;
-    string output = Path.GetFullPath(options.GetValueOrDefault("out") ?? Path.Combine("artifacts", "fuzz-0.8.7"));
+    bool diff = target.StartsWith("diff-", StringComparison.Ordinal);
+    string output = Path.GetFullPath(options.GetValueOrDefault("out") ?? Path.Combine("artifacts", diff ? "fuzz-0.8.8" : "fuzz-0.8.7"));
     var findings = new Findings(Path.Combine(output, target));
     List<FuzzSeed> seeds = LoadSeeds(target, corpus);
     Console.WriteLine($"{target}: {seeds.Count} seeds, {seeds.Sum(s => s.Fields.Length)} traced fields, {workers} workers, seed {seed}, out {output}");
+    if (diff) foreach (string version in DiffTargets.Versions()) Console.WriteLine(version);
 
     // A worker that cannot start would turn every iteration into a crash: check one empty run first.
     (int startup, _, _, string startupErrors) = RunWorker(target, seed * 1000, 0, 0, long.MaxValue, options, corpus, output);
@@ -311,7 +393,7 @@ int Supervise(string target, Dictionary<string, string> options, string corpus)
                 else low = middle;
             }
 
-            byte[] input = Mutator.Generate(seeds, workerSeed, low);
+            byte[] input = Input(target, seeds, workerSeed, low);
             findings.Save("crash", CrashSignature(stderr, input), input, $"seed {workerSeed} iteration {low}: exit code {code}\n{stderr}");
             next = low + 1;
         }
@@ -327,6 +409,14 @@ int Supervise(string target, Dictionary<string, string> options, string corpus)
 
     Console.WriteLine($"{target}: {total} execs in {watch.Elapsed:hh\\:mm\\:ss}, findings: {findings.Summary()}");
     return 0;
+}
+
+// Temporary files per worker below the output directory, and the ICC profile encode inputs attach.
+static void PrepareDiff(string output, string corpus)
+{
+    DiffTargets.WorkDirectory = Path.Combine(output, "tmp", Environment.ProcessId.ToString(CultureInfo.InvariantCulture));
+    string icc = Path.Combine(corpus, "icc-profile.jxl");
+    if (File.Exists(icc)) DiffTargets.IccProfile = Image.ReadMetadata(icc, new DecoderOptions { Configuration = ImageConfiguration.Default.ToBuilder().AddFormat(new JxlFormat()).Build() }).IccProfile;
 }
 
 static (int Code, long Reached, long? Hang, string Stderr) RunWorker(string target, ulong seed, long start, long end, long deadline,

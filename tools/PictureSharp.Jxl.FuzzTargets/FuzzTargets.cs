@@ -50,6 +50,7 @@ public static class FuzzTargets
             case "entropy": Entropy(data); break;
             case "tojpeg": ToJpeg(data); break;
             case "fromjpeg": FromJpeg(data); break;
+            case not null when target.StartsWith("diff-", StringComparison.Ordinal): DiffTargets.Run(target, data); break;
             default: throw new ArgumentException($"Unknown target {target}.", nameof(target));
         }
     }
@@ -134,8 +135,17 @@ public static class FuzzTargets
         byte[] jxl = FromJpeg(data, 1);
         byte[] parallel = Single ? jxl : FromJpeg(data, Threads);
         if (!jxl.AsSpan().SequenceEqual(parallel)) throw new FuzzMismatchException($"FromJpeg differs: {jxl.Length} bytes at 1 thread, {parallel.Length} at {Threads}");
-        // Accepted JPEGs are reconstructed byte for byte.
-        byte[] jpeg = ToJpeg(jxl, 1);
+        // Accepted JPEGs are reconstructed byte for byte; a format error there means FromJpeg wrote a file it cannot read.
+        byte[] jpeg;
+        try
+        {
+            jpeg = ToJpeg(jxl, 1);
+        }
+        catch (ImageFormatException exception)
+        {
+            throw new FuzzMismatchException($"reconstruction of the own file fails: {exception.Message}");
+        }
+
         if (!jpeg.AsSpan().SequenceEqual(data)) throw new FuzzMismatchException($"reconstruction differs: {data.Length} bytes in, {jpeg.Length} out");
     }
 
@@ -167,6 +177,24 @@ public static class FuzzTargets
     private static string Sha(ReadOnlyMemory<byte>? bytes) => bytes is { } b ? Sha(b.Span) : "-";
 
     private static string Sha(ReadOnlySpan<byte> bytes) => Convert.ToHexString(SHA256.HashData(bytes))[..16];
+
+    /// <summary>The image header and the frame headers of a file, as their records print (fuzz triage).</summary>
+    public static int PrintHeaders(byte[] data, TextWriter output)
+    {
+        JxlCodestream codestream = JxlContainer.Parse(data).Codestream;
+        Codestream.Model.JxlHeaders headers = JxlHeadersReader.Read(codestream);
+        output.WriteLine(headers);
+        output.WriteLine(headers.Metadata);
+        output.WriteLine(headers.Metadata.Color);
+        foreach (var frame in Codestream.Frames.JxlDecodeSession.ReadFrameHeaders(codestream, headers)) output.WriteLine(frame);
+        // The header reads (codestream bit, width), with the caller of each, to locate a changed bit.
+        foreach ((long bit, int count) in JxlFuzzTrace.Record(() => Codestream.Frames.JxlDecodeSession.ReadFrameHeaders(codestream, JxlHeadersReader.Read(codestream))))
+        {
+            output.WriteLine($"read {bit} {count}");
+        }
+
+        return 0;
+    }
 
     public static uint Hash(ReadOnlySpan<byte> data)
     {

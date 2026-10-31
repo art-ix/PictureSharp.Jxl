@@ -42,7 +42,8 @@ internal sealed class JxlDecoder : IImageFormatDecoder
         JxlDecodedImage decoded = session.Decode();
         Image image = pixelType == PixelType.Rgba64
             ? JxlPixelWriter.WriteWide(decoded, context.CancellationToken, options.MaxDegreeOfParallelism)
-            : JxlPixelWriter.Write(decoded, context.CancellationToken, options.MaxDegreeOfParallelism);
+            : JxlPixelWriter.Write(decoded, context.CancellationToken, options.MaxDegreeOfParallelism,
+                options.ApplyExifOrientation ? JxlPixelWriter.DitherFlip.For(headers.Metadata.Orientation) : default);
         try
         {
             if (!options.IgnoreMetadata)

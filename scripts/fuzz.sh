@@ -1,8 +1,11 @@
 #!/usr/bin/env bash
-# Fuzzing campaigns for 0.8.7 (docs/design/0.8.7-fuzzing.md). Runs over SSH: no hardcoded paths, nohup-friendly.
+# Fuzzing campaigns for 0.8.7 (docs/design/0.8.7-fuzzing.md) and the differential runs of 0.8.8
+# (docs/design/0.8.8-differential.md). Runs over SSH: no hardcoded paths, nohup-friendly.
 #   scripts/fuzz.sh custom   [options]   the mutation fuzzer, targets in parallel batches
 #   scripts/fuzz.sh afl      [options]   AFL++ with SharpFuzz on the same batches
 #   scripts/fuzz.sh campaign [options]   per batch: custom for --custom-time, then AFL++ for --afl-time (Orange Pi plan)
+#   scripts/fuzz.sh diff     [options]   the diff-* targets against cjxl/djxl (JXL_TOOLS or PATH) with the mutation fuzzer;
+#                                        defaults: all four diff targets, --out artifacts/fuzz-0.8.8, --timeout 60
 #   scripts/fuzz.sh status   [--out DIR] findings per target and engine
 #   scripts/fuzz.sh repro    [--out DIR] reruns every saved AFL++ crash/hang through the uninstrumented fuzzer
 #   scripts/fuzz.sh boundary [--out DIR] dimension/SIMD boundary set: identical in native, SSE4.1 and scalar modes (x86;
@@ -19,6 +22,9 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 command="${1:-}"; shift || true
 targets="container headers decode entropy tojpeg fromjpeg"; parallel=6; workers=2; cpus=""; time=3600
 custom_time=3600; afl_time=7200; timeout=10; seed=1; out="$root/artifacts/fuzz-0.8.7"; heap_mb=2048; single=0
+if [[ "$command" == diff ]]; then
+  targets="diff-decode diff-encode diff-tojpeg diff-fromjpeg"; parallel=4; timeout=60; out="$root/artifacts/fuzz-0.8.8"
+fi
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --single) single=1; shift; continue ;;
@@ -166,11 +172,14 @@ boundary() {
 
 case "$command" in
   custom) build_custom; batches custom_one ;;
+  diff)
+    command -v "${JXL_TOOLS:+$JXL_TOOLS/}djxl" > /dev/null || { echo "cjxl/djxl/ssimulacra2 v0.12.0 are required (JXL_TOOLS or PATH)" >&2; exit 1; }
+    build_custom; batches custom_one ;;
   afl) build_custom; build_afl; batches afl_one ;;
   campaign) build_custom; build_afl; batches campaign_one ;;
   status) status ;;
   repro) repro ;;
   boundary) boundary ;;
-  *) sed -n '2,15p' "$0"; exit 2 ;;
+  *) sed -n '2,18p' "$0"; exit 2 ;;
 esac
 log "done"

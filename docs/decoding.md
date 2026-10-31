@@ -32,6 +32,10 @@ Still images, lossy and lossless, as `cjxl` produces them:
 By default `Image` holds `Rgba32`, and samples are reduced as libjxl does for 8-bit output:
 
 - 32×32 blue-noise dither, clamping, round-half-to-even; 10–16-bit integers are first scaled to [0, 1] in single precision.
+  With `ApplyExifOrientation` the dither pattern is mirrored like libjxl's, which undoes the orientation while it
+  writes 8-bit output, so oriented images match `djxl` too.
+- `ToSrgb` of images above 8 bits: PictureSharp decodes them at 16 bits, converts and rounds to 8 bits without
+  dither, so such images differ from `djxl` by 1 in many samples (the 16-bit result matches).
 - Grayscale is replicated to RGB. The first alpha channel becomes alpha; other extra channels are decoded and dropped.
 
 ### Preserving sample precision
@@ -100,6 +104,22 @@ The port follows libjxl v0.12.0 operation by operation (FMAs, polynomial approxi
 - lossless: identical to `djxl`;
 - lossy: at most 1 off in a few samples (< 0.01%), due to libjxl's approximate reciprocals;
 - lossy in an ICC profile, and `ToSrgb`: within 1 of the reference.
+
+## Differences from libjxl
+
+Differential runs against libjxl 0.12.0 (docs/design/0.8.8-differential.md) found no difference on valid files
+beyond the tolerances above. On damaged or unusual input this library is stricter in some places and rejects with
+`ImageFormatException` what libjxl still decodes. This is intended:
+
+- **Container:** a box that runs past the end of the file, or a truncated box after the codestream, which libjxl
+  never reads; an invalid box size; a second signature box, or `ftyp` not second; `jxlp` parts out of order in a
+  file format version 0 file (libjxl ignores the counter), too small for their index, or after the last part.
+- **Codestream:** non-zero padding bits.
+- **Colour:** custom primaries or white points outside the valid chromaticity range.
+
+It is more lenient where it can stay correct: a damaged metadata box (for example a Brotli box that does not
+decompress) is skipped and the image decodes, while `djxl` fails. It also decodes a last box of size 0 (to the end of
+the file, as ISO BMFF allows) after out-of-order `jxlp` parts, which `djxl` rejects.
 
 ## Validation
 

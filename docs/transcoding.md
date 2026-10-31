@@ -75,6 +75,16 @@ Input is fully buffered in memory, and these limits do not bound every temporary
 ## Compatibility
 
 Round trips are verified against libjxl 0.12.0 in both directions (this library → `djxl`, `cjxl` → this library)
-with whole-file comparison. Output is not tuned for size or speed parity with `cjxl -e 7`; see
+with whole-file comparison, also on mutated inputs (docs/design/0.8.8-differential.md). Where the two differ, this
+library is stricter on purpose:
+
+- `FromJpeg` rejects JPEGs it cannot reconstruct exactly: DC values beyond ±2047 (`cjxl` accepts them, but `djxl`
+  then fails or writes other bytes), and some unusual scan scripts or ICC chunk sequences that `cjxl` transcodes.
+- `ToJpeg` rejects reconstruction data that describes an invalid JPEG (undefined tables, scan parameters,
+  coefficients out of range, APP markers that do not match the metadata), where `djxl` writes whatever the data
+  says; and files whose container is damaged (see [decoding](decoding.md#differences-from-libjxl)).
+
+A JPEG this library transcodes always reconstructs byte for byte with both `ToJpeg` and `djxl`, also when `cjxl`
+refuses it. Output is not tuned for size or speed parity with `cjxl -e 7`; see
 [measurements](benchmarks/transcoding.md). Test fixtures are regenerated with
 `python3 tests/assets/generate-transcoding.py`.

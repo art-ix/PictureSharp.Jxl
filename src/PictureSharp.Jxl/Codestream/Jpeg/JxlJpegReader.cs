@@ -130,6 +130,10 @@ internal static class JxlJpegReader
             int index = jpeg.Quant.FindIndex(q => q.Index == component.Quant);
             if (index < 0) throw JxlDescriptor.Corrupt("Missing JPEG quantization table.");
             component.Quant = index;
+            // Reconstruction writes DC values within ±2047 only (JxlVarDctFrame); a larger one would make a file that
+            // neither this library nor libjxl reconstructs (0.8.8 differential finding).
+            for (int block = 0; block < component.Coefficients.Length; block += 64)
+                if (component.Coefficients[block] is < -2047 or > 2047) throw JxlDescriptor.Corrupt("JPEG DC coefficient out of range.");
         }
         for (int i = 0; i < jpeg.Quant.Count; i++)
             if (!jpeg.Components.Any(c => c.Quant == i) && (i == 0 || !jpeg.Quant[i].Values.AsSpan().SequenceEqual(jpeg.Quant[i - 1].Values)))
