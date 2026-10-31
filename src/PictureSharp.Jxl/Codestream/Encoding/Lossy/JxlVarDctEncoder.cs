@@ -39,7 +39,7 @@ internal static class JxlVarDctEncoder
         if (alpha is not null) SimplifyInvisible(xyb, width, height, alpha);
         JxlImage3F image = xyb.PaddedToBlocks(width, height);
         xyb.Release();
-        (uint xQmScale, uint bQmScale) = ChromacityAdjustments(image, settings);
+        (uint xQmScale, uint bQmScale) = ChromacityAdjustments(image, settings, cancellationToken);
         if (settings.Resampling == 2) image = JxlDownsampling.Sharper(image, cancellationToken).PaddedToBlocks(frameWidth, frameHeight);
         JxlImage3F? original = settings.EpfSharpnessSearch ? image.Clone() : null;
         JxlPatchEncoder? patches = settings.Patches ? JxlPatchEncoder.Create(image, frameWidth, frameHeight, settings.Distance, cancellationToken) : null;
@@ -242,7 +242,8 @@ internal static class JxlVarDctEncoder
     }
 
     // ComputeChromacityAdjustments: coarser X and B matrices at high distances and for pixelated chroma.
-    private static (uint XQmScale, uint BQmScale) ChromacityAdjustments(JxlImage3F image, JxlLossySettings settings)
+    private static (uint XQmScale, uint BQmScale) ChromacityAdjustments(JxlImage3F image, JxlLossySettings settings,
+        CancellationToken cancellationToken)
     {
         uint xQmScale = 3;
         foreach (float step in (ReadOnlySpan<float>)[2.5f, 5.5f, 9.5f])
@@ -251,19 +252,20 @@ internal static class JxlVarDctEncoder
         }
 
         if (!settings.ChromacityStatistics) return (Math.Max(xQmScale, 2), 2);
-        float dx = MaxNeighbourDifference(image.Planes[0], image.Width, image.Height);
-        (float db, float exposedBlue) = BlueStatistics(image);
+        float dx = MaxNeighbourDifference(image.Planes[0], image.Width, image.Height, cancellationToken);
+        (float db, float exposedBlue) = BlueStatistics(image, cancellationToken);
         int xPixelized = dx >= 0.026f ? 3 : dx >= 0.022f ? 2 : dx >= 0.015f ? 1 : 0;
         int add = exposedBlue >= 0.13f ? 1 : 0;
         int bPixelized = db > 0.38f ? 2 + add : db > 0.33f ? 1 + add : db > 0.28f ? add : 0;
         return (Math.Max(xQmScale, (uint)(2 + xPixelized)), (uint)(2 + bPixelized));
     }
 
-    private static float MaxNeighbourDifference(float[] plane, int width, int height)
+    private static float MaxNeighbourDifference(float[] plane, int width, int height, CancellationToken cancellationToken)
     {
         float max = 0;
         for (int y = 1; y < height; y++)
         {
+            if ((y & 0xF) == 0) cancellationToken.ThrowIfCancellationRequested();
             for (int x = 1; x < width; x++)
             {
                 float current = plane[y * width + x];
@@ -274,7 +276,7 @@ internal static class JxlVarDctEncoder
         return max;
     }
 
-    private static (float Db, float ExposedBlue) BlueStatistics(JxlImage3F image)
+    private static (float Db, float ExposedBlue) BlueStatistics(JxlImage3F image, CancellationToken cancellationToken)
     {
         float exposed = 0;
         float max = 0;
@@ -283,6 +285,7 @@ internal static class JxlVarDctEncoder
         float[] pb = image.Planes[2];
         for (int y = 1; y < image.Height; y++)
         {
+            if ((y & 0xF) == 0) cancellationToken.ThrowIfCancellationRequested();
             for (int x = 1; x < width; x++)
             {
                 int i = y * width + x;

@@ -34,8 +34,14 @@ internal sealed class JxlChannel
     public bool IsEmpty => Width == 0 || Height == 0;
 
     public int[] Pixels => pixels ??= (long)Width * Height <= Array.MaxLength
-        ? Buffers is null ? new int[Width * Height] : Buffers.Rent<int>(Width * Height)
+        ? Buffers is null ? Allocate(Width * Height) : Buffers.Rent<int>(Width * Height)
         : throw JxlDescriptor.Unsupported($"a {Width}x{Height} channel is too large.");
+
+    private static int[] Allocate(int count)
+    {
+        JxlWorkBudget.Charge((long)count * sizeof(int));
+        return new int[count];
+    }
 
     public Span<int> Row(int y) => Pixels.AsSpan(y * Width, Width);
 

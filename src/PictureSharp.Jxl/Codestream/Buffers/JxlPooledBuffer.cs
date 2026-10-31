@@ -1,4 +1,6 @@
 using System.Buffers;
+using System.Runtime.CompilerServices;
+using PictureSharp.Formats.Jxl.Codestream.Numerics;
 
 namespace PictureSharp.Formats.Jxl.Codestream.Buffers;
 
@@ -10,7 +12,8 @@ internal sealed class JxlPooledBuffer<T> : IDisposable where T : unmanaged
     public JxlPooledBuffer(int length, bool clear = true, ArrayPool<T>? pool = null)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(length);
-        this.pool = pool ?? ArrayPool<T>.Shared;
+        JxlWorkBudget.Charge((long)length * Unsafe.SizeOf<T>());
+        this.pool = pool ?? JxlArrayPool<T>.Shared;
         Length = length;
         array = this.pool.Rent(length);
         if (clear) array.AsSpan(0, length).Clear();

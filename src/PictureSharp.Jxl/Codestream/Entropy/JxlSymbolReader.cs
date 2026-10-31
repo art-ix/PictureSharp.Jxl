@@ -1,5 +1,6 @@
 using System.Buffers;
 using System.Runtime.CompilerServices;
+using PictureSharp.Formats.Jxl.Codestream.Numerics;
 using PictureSharp.Formats.Jxl.Codestream.IO;
 
 namespace PictureSharp.Formats.Jxl.Codestream.Entropy;
@@ -52,7 +53,7 @@ internal sealed class JxlSymbolReader : IDisposable
         aliasTables = code.AliasTables;
         usePrefixCode = code.UsePrefixCode;
         logAlphaSize = code.LogAlphaSize;
-        this.windowPool = windowPool ?? ArrayPool<uint>.Shared;
+        this.windowPool = windowPool ?? JxlArrayPool<uint>.Shared;
         if (!code.UsePrefixCode)
         {
             state = reader.ReadBits(32);

@@ -3,6 +3,7 @@ using PictureSharp.Formats.Jxl.Codestream.Buffers;
 using PictureSharp.Formats.Jxl.Codestream.Entropy;
 using PictureSharp.Formats.Jxl.Codestream.IO;
 using PictureSharp.Formats.Jxl.Codestream.Model;
+using PictureSharp.Formats.Jxl.Codestream.Numerics;
 using static PictureSharp.Formats.Jxl.Codestream.Numerics.JxlIntMath;
 
 namespace PictureSharp.Formats.Jxl.Codestream.Modular;
@@ -417,7 +418,7 @@ internal sealed class JxlMaTree
         int[] pixels = channel.Pixels;
         long multiplier = leaf.Multiplier;
         long offset = leaf.Offset;
-        uint[] residuals = ArrayPool<uint>.Shared.Rent(width);
+        uint[] residuals = JxlArrayPool<uint>.Shared.Rent(width);
         try
         {
             for (int y = 0; y < channel.Height; y++)
@@ -448,7 +449,7 @@ internal sealed class JxlMaTree
         }
         finally
         {
-            ArrayPool<uint>.Shared.Return(residuals);
+            JxlArrayPool<uint>.Shared.Return(residuals);
         }
     }
 

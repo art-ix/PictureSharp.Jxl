@@ -70,7 +70,7 @@ internal static class JxlModularEncoder
         (JxlTokens treeTokens, int[] leafOf) = JxlModularTreeEncoder.Tokenize(tree, tokenBuffers);
         List<JxlTokens> tokens = JxlModularTreeEncoder.TokenizeStreams(streams, tree, leafOf, cancellationToken, errors, tokenBuffers, parallelism,
             storage);
-        JxlEntropyEncoder code = JxlEntropyEncoder.Build(leafOf.Count(leaf => leaf >= 0), tokens);
+        JxlEntropyEncoder code = JxlEntropyEncoder.Build(leafOf.Count(leaf => leaf >= 0), tokens, cancellationToken);
 
         var global = new JxlBitWriter(writer.Buffers);
         global.Write(dcQuant is null);       // default DC quantization
@@ -85,7 +85,7 @@ internal static class JxlModularEncoder
         if (image.Count > 0)
         {
             GroupHeader(global, transforms);
-            if (streams[0].Channels.Any(channel => !channel.IsEmpty)) code.WriteStream(global, tokens[0]);
+            if (streams[0].Channels.Any(channel => !channel.IsEmpty)) code.WriteStream(global, tokens[0], cancellationToken);
         }
 
         // Every group section is coded on its own; they are written in group order.
@@ -96,7 +96,7 @@ internal static class JxlModularEncoder
             if (streams[g + 1].Channels.Count != 0)
             {
                 GroupHeader(section, []);
-                code.WriteStream(section, tokens[g + 1]);
+                code.WriteStream(section, tokens[g + 1], cancellationToken);
             }
 
             groupSections[g] = section;

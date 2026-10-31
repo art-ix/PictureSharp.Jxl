@@ -301,7 +301,7 @@ public static class DiffTargets
     }
 
     /// <summary>Gradients, flat areas, few colours, stripes or noise, with the input bytes as noise.</summary>
-    private static Image Synthetic(int width, int height, bool wide, bool alpha, bool gray, int pattern, ReadOnlySpan<byte> noise)
+    internal static Image Synthetic(int width, int height, bool wide, bool alpha, bool gray, int pattern, ReadOnlySpan<byte> noise)
     {
         var image = new Image(width, height, wide ? PixelType.Rgba64 : PixelType.Rgba32);
         int count = width * height;
@@ -497,7 +497,7 @@ public static class DiffTargets
     private static bool IsLimit(ImageFormatException exception) => exception.Message.Contains("exceeds Max", StringComparison.Ordinal)
         || exception.Message.Contains("exceeds DecoderOptions.Max", StringComparison.Ordinal);
 
-    private static string? Exact(Image actual, Image expected)
+    internal static string? Exact(Image actual, Image expected)
     {
         if ((actual.Width, actual.Height) != (expected.Width, expected.Height)) return $"{actual.Width}x{actual.Height} instead of {expected.Width}x{expected.Height}";
         if (actual.PixelType != expected.PixelType) return $"{actual.PixelType} instead of {expected.PixelType}";

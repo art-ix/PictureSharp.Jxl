@@ -1,6 +1,7 @@
 using System.Buffers;
 using System.Runtime.InteropServices;
 using PictureSharp.Formats.Jxl.Codestream.Buffers;
+using PictureSharp.Formats.Jxl.Codestream.Numerics;
 namespace PictureSharp.Formats.Jxl.Codestream.Encoding;
 
 /// <summary>The values of one entropy-coded stream, each with its (unclustered) context, in decoding order.</summary>
@@ -29,7 +30,7 @@ internal sealed class JxlTokens : IDisposable
     {
         pooled = owner is not null;
         capacity = Math.Max(capacity, 64);
-        values = pooled ? ArrayPool<int>.Shared.Rent(capacity) : new int[capacity];
+        values = pooled ? JxlArrayPool<int>.Shared.Rent(capacity) : new int[capacity];
         try { owner?.Own(this); }
         catch { Dispose(); throw; }
     }
@@ -39,9 +40,9 @@ internal sealed class JxlTokens : IDisposable
         disposed = true;
         if (pooled)
         {
-            if (contexts is not null) ArrayPool<int>.Shared.Return(contexts);
-            if (narrowContexts is not null) ArrayPool<ushort>.Shared.Return(narrowContexts);
-            ArrayPool<int>.Shared.Return(values);
+            if (contexts is not null) JxlArrayPool<int>.Shared.Return(contexts);
+            if (narrowContexts is not null) JxlArrayPool<ushort>.Shared.Return(narrowContexts);
+            JxlArrayPool<int>.Shared.Return(values);
         }
 
         contexts = null; narrowContexts = null; values = []; capacity = 0;
@@ -132,8 +133,8 @@ internal sealed class JxlTokens : IDisposable
         ObjectDisposedException.ThrowIf(disposed, this);
         if (capacity == 0)
         {
-            if (NarrowContexts) narrowContexts = pooled ? ArrayPool<ushort>.Shared.Rent(values.Length) : new ushort[values.Length];
-            else contexts = pooled ? ArrayPool<int>.Shared.Rent(values.Length) : new int[values.Length];
+            if (NarrowContexts) narrowContexts = pooled ? JxlArrayPool<ushort>.Shared.Rent(values.Length) : new ushort[values.Length];
+            else contexts = pooled ? JxlArrayPool<int>.Shared.Rent(values.Length) : new int[values.Length];
             capacity = values.Length;
             if (needed <= capacity - Count) return;
         }
@@ -150,15 +151,15 @@ internal sealed class JxlTokens : IDisposable
         }
         else
         {
-            int[] nextValues = ArrayPool<int>.Shared.Rent(size);
+            int[] nextValues = JxlArrayPool<int>.Shared.Rent(size);
             try
             {
-                if (NarrowContexts) narrowContexts = Grown(ArrayPool<ushort>.Shared, narrowContexts!, size);
-                else contexts = Grown(ArrayPool<int>.Shared, contexts!, size);
+                if (NarrowContexts) narrowContexts = Grown(JxlArrayPool<ushort>.Shared, narrowContexts!, size);
+                else contexts = Grown(JxlArrayPool<int>.Shared, contexts!, size);
             }
-            catch { ArrayPool<int>.Shared.Return(nextValues); throw; }
+            catch { JxlArrayPool<int>.Shared.Return(nextValues); throw; }
             values.AsSpan(0, Count).CopyTo(nextValues);
-            ArrayPool<int>.Shared.Return(values);
+            JxlArrayPool<int>.Shared.Return(values);
             values = nextValues;
         }
 

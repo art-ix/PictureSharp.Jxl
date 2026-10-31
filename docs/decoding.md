@@ -90,6 +90,12 @@ Identify also reports features `Load` rejects. Widths above `int.MaxValue` throw
 
 - `MaxPixels` and `MaxMetadataBytes` are checked before allocating; metadata is charged as it grows, so a
   decompression bomb stops with `ImageFormatException`.
+- Working memory is bounded by `MaxPixels` too (0.8.9): every buffer a decode allocates, released or not, counts
+  against 64 bytes per allowed pixel plus 64 MiB, so a small file cannot declare many extra channels or frames that
+  need far more memory than its image. The largest decode measured needs 36 bytes per pixel. At the default
+  `MaxPixels` (2^28) this allows 16 GiB; lower `MaxPixels` to bound it further. Exceeding it throws
+  `ImageFormatException` ("Decoding needs more working memory than MaxPixels allows").
+- `MaxFrames` counts every frame read, including reference and DC frames that are not displayed.
 - Other `DecoderOptions` work as for built-in formats; `TargetSize` resizes after full decoding.
 - Memory: ~12 bytes per pixel per frame buffer, two buffers while filtering.
 - `MaxDegreeOfParallelism` (default -1, all cores; 1 = single-threaded) limits the threads that decode LF and pass

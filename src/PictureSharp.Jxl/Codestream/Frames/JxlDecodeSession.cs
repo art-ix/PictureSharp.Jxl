@@ -10,11 +10,12 @@ namespace PictureSharp.Formats.Jxl.Codestream.Frames;
 /// Owns the reference/DC frames of one decode; never shared between calls. The ICC profile is limited to
 /// <paramref name="maxIccBytes"/> and charged to <paramref name="reserveIcc"/> before it is allocated. With
 /// <paramref name="renderSrgb"/> XYB frames are rendered as sRGB instead of the image's colour space. Groups and rendering
-/// use up to <paramref name="parallelism"/> threads (1 = single-threaded, -1 = automatic).
+/// use up to <paramref name="parallelism"/> threads (1 = single-threaded, -1 = automatic). At most
+/// <paramref name="maxFrames"/> frames are read, displayed or not.
 /// </summary>
 internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders headers, CancellationToken cancellationToken = default,
     long maxIccBytes = JxlIccStream.MaxProfileSize, Action<long>? reserveIcc = null, bool renderSrgb = false, JxlBufferScope? buffers = null,
-    int parallelism = 1)
+    int parallelism = 1, int maxFrames = int.MaxValue)
 {
     private readonly JxlReferenceFrames references = new();
     private bool started;
@@ -52,9 +53,10 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
         JxlColorTarget target = renderSrgb ? JxlColorTarget.Srgb
             : JxlColorTarget.Profile(icc, metadata.Color.ColorSpace == JxlColorSpace.Gray);
         // Reference frames (patch sources) and DC frames come first; the last frame is the image.
-        while (true)
+        for (int count = 1; ; count++)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (count > maxFrames) throw JxlDescriptor.Corrupt("JPEG XL exceeds MaxFrames.");
             JxlFrameHeader frame = JxlFrameHeaderReader.Read(ref reader, headers, preview: false);
             JxlDecodeSupportPolicy.EnsureFrameSupported(frame, headers, references);
             long start = JxlFrameSectionReader.ReadToc(ref reader, codestream, frame, out JxlToc toc);

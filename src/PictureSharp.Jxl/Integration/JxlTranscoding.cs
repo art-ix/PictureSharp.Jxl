@@ -47,7 +47,8 @@ internal static class JxlTranscoding
         if ((long)headers.Size.Width * headers.Size.Height > options.MaxPixels) throw JxlDescriptor.Corrupt("JPEG XL exceeds MaxPixels.");
         if (container.JpegReconstruction is not { } reconstruction) throw JxlDescriptor.Unsupported("the JPEG XL file has no JPEG reconstruction data.");
         JxlJpegData jpeg = JxlJpegReconstruction.Read(reconstruction, budget.Reserve, cancellationToken);
-        // The coefficients are pooled until the JPEG is written.
+        // The coefficients are pooled until the JPEG is written; working memory is charged as for a decode.
+        using JxlWorkBudget.Scope work = JxlWorkBudget.Begin(options.MaxPixels);
         using var buffers = new JxlBufferScope();
         byte[]? icc = JxlJpegDecoder.Decode(container.Codestream, headers, jpeg, options.MaxMetadataBytes, budget.Reserve, cancellationToken,
             options.MaxDegreeOfParallelism, buffers);

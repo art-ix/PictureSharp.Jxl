@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using PictureSharp.Formats.Jxl.Codestream.Numerics;
 using PictureSharp.Formats.Jxl.Codestream.Encoding;
 using PictureSharp.Formats.Jxl.Codestream.Entropy;
 using PictureSharp.Formats.Jxl.Codestream.IO;
@@ -10,6 +11,9 @@ namespace PictureSharp.Formats.Jxl.Fuzz;
 
 /// <summary>Two runs of one input that should agree did not.</summary>
 public sealed class FuzzMismatchException(string message) : Exception(message);
+
+/// <summary>A run left rentals outstanding, or returned an array twice (0.8.9, docs/design/0.8.9-resilience.md).</summary>
+public sealed class FuzzLeakException(string message) : Exception(message);
 
 /// <summary>
 /// The fuzz targets and their pass rules (docs/design/0.8.7-fuzzing.md). A run passes when it returns or throws an
@@ -28,7 +32,7 @@ public static class FuzzTargets
     // while the mutation fuzzer keeps the 1 vs 4 thread comparison.
     private static readonly bool Single = Environment.GetEnvironmentVariable("JXL_FUZZ_SINGLE") == "1";
 
-    private static readonly ImageConfiguration Configuration = ImageConfiguration.Default.ToBuilder().AddFormat(new JxlFormat()).Build();
+    internal static readonly ImageConfiguration Configuration = ImageConfiguration.Default.ToBuilder().AddFormat(new JxlFormat()).Build();
 
     public static bool IsAllowed(Exception exception)
     {
@@ -40,7 +44,40 @@ public static class FuzzTargets
         return true;
     }
 
+    /// <summary>
+    /// Runs one input. On every exit the counting pool of the checked build must be back where it started: a run that
+    /// leaks hides its own exception behind a <see cref="FuzzLeakException"/> naming it.
+    /// </summary>
     public static void Run(string target, byte[] data)
+    {
+        JxlRentals.Reset();
+        try
+        {
+            Dispatch(target, data);
+        }
+        catch (Exception exception) when (IsAllowed(exception))
+        {
+            CheckRentals(exception);
+            throw;
+        }
+
+        CheckRentals(null);
+    }
+
+    /// <summary>The largest rental of the last run in bytes, for repro.</summary>
+    public static long LargestRental => JxlRentals.Largest;
+
+    private static void CheckRentals(Exception? exception)
+    {
+        string? misuse = JxlRentals.Misuse;
+        long outstanding = JxlRentals.Outstanding;
+        if (misuse is null && outstanding == 0) return;
+        string exit = exception is null ? "success" : exception.GetType().Name;
+        string detail = misuse ?? $"{outstanding} rentals not returned ({string.Join(", ", JxlRentals.Describe().Order(StringComparer.Ordinal).Take(8))})";
+        throw new FuzzLeakException($"After {exit}: {detail}" + (exception is null ? "" : $"\n{exception}"));
+    }
+
+    private static void Dispatch(string target, byte[] data)
     {
         switch (target)
         {
@@ -51,6 +88,8 @@ public static class FuzzTargets
             case "tojpeg": ToJpeg(data); break;
             case "fromjpeg": FromJpeg(data); break;
             case not null when target.StartsWith("diff-", StringComparison.Ordinal): DiffTargets.Run(target, data); break;
+            case not null when ResilienceTargets.Names.Contains(target): ResilienceTargets.Run(target, data); break;
+            case not null when EncodeTargets.Names.Contains(target): EncodeTargets.Run(target, data); break;
             default: throw new ArgumentException($"Unknown target {target}.", nameof(target));
         }
     }
@@ -163,9 +202,9 @@ public static class FuzzTargets
         return output.ToArray();
     }
 
-    private static JxlTranscoderOptions Transcode(int threads) => new() { MaxPixels = MaxPixels, MaxDegreeOfParallelism = threads };
+    internal static JxlTranscoderOptions Transcode(int threads) => new() { MaxPixels = MaxPixels, MaxDegreeOfParallelism = threads };
 
-    private static string Describe(Image image)
+    internal static string Describe(Image image)
     {
         ReadOnlySpan<byte> pixels = image.PixelType == PixelType.Rgba64
             ? MemoryMarshal.AsBytes(image.GetPixelMemory<Rgba64>().Span)

@@ -70,7 +70,8 @@ Nothing is ever silently converted through pixels: if a JPEG cannot be preserved
 | `MaxPixels` | 268,435,456 | Image dimensions, checked before allocation |
 | `MaxMetadataBytes` | 64 MiB | Metadata and reconstruction data, including decompressed Brotli |
 
-Input is fully buffered in memory, and these limits do not bound every temporary allocation.
+Input is fully buffered in memory. `ToJpeg` charges its working memory against `MaxPixels` as decoding does
+([decoding](decoding.md#options-limits-and-errors)); `FromJpeg` is bounded by `MaxPixels` on the JPEG.
 
 ## Compatibility
 

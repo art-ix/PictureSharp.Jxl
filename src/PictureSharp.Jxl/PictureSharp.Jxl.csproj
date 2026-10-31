@@ -11,7 +11,7 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/art-ix/picturesharp.jxl</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageReleaseNotes>0.8.8: differential testing against libjxl 0.12.0 (cjxl, djxl) of decoding, encoding and JPEG transcoding, and three fixes it found: 8-bit dithering with ApplyExifOrientation is mirrored as in libjxl for orientations that flip the image, FromJpeg rejects JPEGs with DC values beyond +-2047 that it could not reconstruct, and ToJpeg reconstructs cjxl files whose extra zero runs cover more than the rest of a block. Encoded bytes and the pixels of all other decodes are unchanged. No API changes. See docs/releases/release-0.8.8.md and docs/design/0.8.8-differential.md.</PackageReleaseNotes>
+    <PackageReleaseNotes>0.8.9: decoding and ToJpeg charge their working memory against MaxPixels (64 bytes per allowed pixel plus 64 MiB), so a small file declaring many extra channels can no longer allocate gigabytes, and MaxFrames counts frames that are not displayed. Cancellation now stops a 12 MP encode within 35 ms (it could take over 100 ms). Fuzzing of cancellation at every allocation, failing streams, returned buffers, the encoder and metadata editing found no other defect. Decoded pixels and encoded bytes are unchanged. No API changes. See docs/releases/release-0.8.9.md and docs/design/0.8.9-resilience.md.</PackageReleaseNotes>
   </PropertyGroup>
   <ItemGroup><PackageReference Include="PictureSharp" Version="$(PictureSharpVersion)" /></ItemGroup>
   <ItemGroup>

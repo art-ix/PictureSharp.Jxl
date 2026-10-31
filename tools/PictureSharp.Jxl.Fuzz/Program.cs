@@ -52,7 +52,7 @@ catch (ArgumentException exception)
 string Target()
 {
     string target = Positional().FirstOrDefault() ?? throw new ArgumentException("Missing target.");
-    string[] names = [.. FuzzTargets.Names, .. DiffTargets.Names];
+    string[] names = [.. FuzzTargets.Names, .. DiffTargets.Names, .. ResilienceTargets.Names, .. EncodeTargets.Names];
     return names.Contains(target) ? target : throw new ArgumentException($"Unknown target {target}; one of {string.Join(", ", names)}.");
 }
 
@@ -96,12 +96,14 @@ static string DefaultCorpus()
 
 static int Usage()
 {
-    Console.Error.WriteLine("Usage: fuzz|repro|generate|seeds <target> ...; targets: " + string.Join(", ", [.. FuzzTargets.Names, .. DiffTargets.Names]));
+    Console.Error.WriteLine("Usage: fuzz|repro|generate|seeds <target> ...; targets: " + string.Join(", ", [.. FuzzTargets.Names, .. DiffTargets.Names, .. ResilienceTargets.Names, .. EncodeTargets.Names]));
     return 2;
 }
 
-List<FuzzSeed> LoadSeeds(string target, string corpus)
+List<FuzzSeed> LoadSeeds(string name, string corpus)
 {
+    // The cancel-* and stream-* targets mutate the seeds of the target they wrap.
+    string target = ResilienceTargets.Names.Contains(name) ? ResilienceTargets.SeedTarget(name) : name == "edit" ? "decode" : name;
     List<FuzzSeed> seeds;
     bool jpeg = target is "fromjpeg" or "diff-fromjpeg";
     if (target == "entropy")
@@ -111,6 +113,10 @@ List<FuzzSeed> LoadSeeds(string target, string corpus)
     else if (target == "diff-encode")
     {
         seeds = [.. EncodeSeeds()];
+    }
+    else if (target == "encode")
+    {
+        seeds = [.. EncodeTargetSeeds()];
     }
     else
     {
@@ -129,7 +135,7 @@ List<FuzzSeed> LoadSeeds(string target, string corpus)
     }
 
     if (seeds.Count == 0) throw new ArgumentException($"No seeds for {target} in {corpus}.");
-    if (target is not ("entropy" or "diff-encode") && !jpeg)
+    if (target is not ("entropy" or "diff-encode" or "encode") && !jpeg)
     {
         foreach (FuzzSeed seed in seeds) seed.TraceFields(() => { using Image _ = Image.Load(seed.Data, FuzzTargets.DecodeOptions(seed.Data)); });
     }
@@ -146,6 +152,19 @@ static IEnumerable<FuzzSeed> EncodeSeeds()
         int width = 1 + random.Below(flags % 3 == 0 ? 40 : 300), height = 1 + random.Below(flags % 5 == 0 ? 40 : 300);
         byte[] data = [(byte)flags, (byte)random.Below(9), (byte)random.Below(10), (byte)width, (byte)(width >> 8), (byte)height, (byte)(height >> 8),
             .. Enumerable.Range(0, 64 + random.Below(512)).Select(_ => (byte)random.Next())];
+        yield return new FuzzSeed($"encode-{flags:x2}", data);
+    }
+}
+
+// encode inputs (EncodeTargets.Encode): every flag combination of byte 0 with a random byte 7, small sizes mostly.
+static IEnumerable<FuzzSeed> EncodeTargetSeeds()
+{
+    var random = new FuzzRandom(89, 0);
+    for (int flags = 0; flags < 256; flags++)
+    {
+        int width = random.Below(flags % 3 == 0 ? 64 : 2048), height = random.Below(flags % 5 == 0 ? 64 : 2048);
+        byte[] data = [(byte)flags, (byte)random.Below(9), (byte)random.Below(13), (byte)width, (byte)(width >> 8), (byte)height, (byte)(height >> 8),
+            (byte)random.Next(), (byte)random.Next(), .. Enumerable.Range(0, 64 + random.Below(512)).Select(_ => (byte)random.Next())];
         yield return new FuzzSeed($"encode-{flags:x2}", data);
     }
 }
@@ -201,7 +220,8 @@ static int Transcode(string[] files)
 
 static int Repro(string target, IEnumerable<string> files)
 {
-    if (target.StartsWith("diff-", StringComparison.Ordinal)) PrepareDiff(Path.GetTempPath(), DefaultCorpus());
+    // The ICC profile that encode inputs attach; diff-* also need their temporary folder.
+    PrepareDiff(Path.GetTempPath(), DefaultCorpus());
     int findings = 0;
     foreach (string file in files)
     {
@@ -209,11 +229,11 @@ static int Repro(string target, IEnumerable<string> files)
         try
         {
             FuzzTargets.Run(target, input);
-            Console.WriteLine($"{file}: pass");
+            Console.WriteLine($"{file}: pass, largest rental {FuzzTargets.LargestRental} bytes");
         }
         catch (Exception exception) when (FuzzTargets.IsAllowed(exception))
         {
-            Console.WriteLine($"{file}: pass ({exception.GetType().Name}: {exception.Message})");
+            Console.WriteLine($"{file}: pass ({exception.GetType().Name}: {exception.Message}), largest rental {FuzzTargets.LargestRental} bytes");
         }
         catch (Exception exception)
         {
@@ -278,6 +298,7 @@ int Worker(string target, Dictionary<string, string> options, string corpus)
             string kind = exception switch
             {
                 FuzzMismatchException => "mismatch",
+                FuzzLeakException => "leak",
                 FuzzAcceptanceException => "accept",
                 FuzzLenientException => "lenient",
                 FuzzQualityException => "quality",
@@ -315,6 +336,8 @@ static string Signature(Exception exception)
     {
         FuzzAcceptanceException or FuzzLenientException or FuzzQualityException or FuzzToolException => "|" + Normalize(inner.Message),
         FuzzMismatchException => "|" + Normalize(inner.Message.Split(':')[0]),
+        // The exit and the leaked element types; the lengths vary between inputs.
+        FuzzLeakException => "|" + Normalize(inner.Message.Split('\n')[0]),
         _ => "",
     };
     string text = inner.GetType().FullName + "|" + string.Join("|", frames) + message;

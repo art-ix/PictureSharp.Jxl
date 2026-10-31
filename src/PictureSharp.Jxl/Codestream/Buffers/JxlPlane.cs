@@ -19,6 +19,7 @@ internal sealed class JxlPlane
         Width = width;
         Height = height;
         Stride = (int)stride;
+        if (buffers is null) JxlWorkBudget.Charge(stride * rows * sizeof(float));
         Data = buffers is null ? new float[stride * rows] : buffers.Rent<float>((int)(stride * rows));
     }
 

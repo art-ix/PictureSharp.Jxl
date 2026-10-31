@@ -5,7 +5,9 @@ using SharpFuzz;
 // <target> --libfuzzer for libfuzzer-dotnet. Allowed exceptions pass; any other one reaches the fuzzer as a crash.
 // The instrumented assembly must not run before the fuzzer maps its coverage memory, so the target names are repeated
 // here instead of read from FuzzTargets.Names (its static constructor would write coverage into unmapped memory).
-string[] targets = ["container", "headers", "decode", "entropy", "tojpeg", "fromjpeg"];
+// The ICC profile of encode inputs is not loaded here: under AFL++ encode runs without the ICC flag.
+string[] targets = ["container", "headers", "decode", "entropy", "tojpeg", "fromjpeg", "encode", "edit",
+    "cancel-decode", "cancel-tojpeg", "cancel-fromjpeg", "stream-tojpeg", "stream-fromjpeg", "stream-encode"];
 if (args.Length is < 1 or > 2 || !targets.Contains(args[0]))
 {
     Console.Error.WriteLine("Usage: <target> [--libfuzzer]; targets: " + string.Join(", ", targets));
