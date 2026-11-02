@@ -245,7 +245,7 @@ def info(path):
 
 # Layered stills from jxl_from_tree (0.8.10): every frame but the last is saved to slot 1 and the next one blends onto
 # it; the image has the first frame's size. The tool cannot give several frames an alpha channel.
-BASE = 'Width 64\nHeight 48\nBitdepth {bits}\n{xyb}NotLast\nif c > 0\n  - Set 100\n  - Gradient +3\n'
+BASE = 'Width 64\nHeight 48\nBitdepth {bits}\n{header}NotLast\nif c > 0\n  - Set 100\n  - Gradient +3\n'
 
 
 def layer(width, height, x, y, mode, last=True, xyb=False):
@@ -254,16 +254,20 @@ def layer(width, height, x, y, mode, last=True, xyb=False):
 
 
 LAYERS = {
-    'layers-replace-crop': BASE.format(bits=8, xyb='') + layer(40, 70, 30, -10, 'kReplace'),
-    'layers-add-negative': BASE.format(bits=8, xyb='') + layer(24, 20, -6, 30, 'kAdd'),
-    'layers-mul': BASE.format(bits=8, xyb='') + layer(40, 30, 10, 10, 'kMul'),
-    'layers-blend-no-alpha': BASE.format(bits=8, xyb='') + layer(40, 30, 10, 10, 'kBlend'),
-    'layers-alpha-weighted-add': BASE.format(bits=8, xyb='') + layer(40, 30, 10, 10, 'kAlphaWeightedAdd'),
-    'layers-outside': BASE.format(bits=8, xyb='') + layer(8, 8, 100, 100, 'kAdd'),
-    'layers-larger': BASE.format(bits=8, xyb='') + layer(100, 80, -10, -12, 'kAdd'),
-    'layers-three': BASE.format(bits=8, xyb='') + layer(30, 20, 5, 5, 'kAdd', last=False) + layer(20, 40, 30, 4, 'kMul'),
-    'layers-16bit': BASE.format(bits=16, xyb='') + layer(40, 30, 10, 10, 'kAdd'),
-    'layers-xyb': BASE.format(bits=8, xyb='XYB\n') + layer(24, 20, 6, 10, 'kAdd', xyb=True),
+    'layers-replace-crop': BASE.format(bits=8, header='') + layer(40, 70, 30, -10, 'kReplace'),
+    'layers-add-negative': BASE.format(bits=8, header='') + layer(24, 20, -6, 30, 'kAdd'),
+    'layers-mul': BASE.format(bits=8, header='') + layer(40, 30, 10, 10, 'kMul'),
+    'layers-blend-no-alpha': BASE.format(bits=8, header='') + layer(40, 30, 10, 10, 'kBlend'),
+    'layers-alpha-weighted-add': BASE.format(bits=8, header='') + layer(40, 30, 10, 10, 'kAlphaWeightedAdd'),
+    'layers-outside': BASE.format(bits=8, header='') + layer(8, 8, 100, 100, 'kAdd'),
+    'layers-larger': BASE.format(bits=8, header='') + layer(100, 80, -10, -12, 'kAdd'),
+    'layers-three': BASE.format(bits=8, header='') + layer(30, 20, 5, 5, 'kAdd', last=False) + layer(20, 40, 30, 4, 'kMul'),
+    'layers-16bit': BASE.format(bits=16, header='') + layer(40, 30, 10, 10, 'kAdd'),
+    'layers-xyb': BASE.format(bits=8, header='XYB\n') + layer(24, 20, 6, 10, 'kAdd', xyb=True),
+    # 0.8.11: layers of oriented images are oriented and their offsets mapped onto the oriented canvas.
+    'layers-orient6': BASE.format(bits=8, header='Orientation 6\n') + layer(30, 20, 5, 5, 'kAdd', last=False)
+    + layer(20, 40, 30, -4, 'kReplace'),
+    'layers-orient3': BASE.format(bits=8, header='Orientation 3\n') + layer(24, 20, -6, 30, 'kAdd'),
 }
 LOSSY_LAYERS = {'layers-xyb'}
 

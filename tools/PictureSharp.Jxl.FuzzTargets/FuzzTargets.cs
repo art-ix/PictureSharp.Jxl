@@ -21,7 +21,7 @@ public sealed class FuzzLeakException(string message) : Exception(message);
 /// </summary>
 public static class FuzzTargets
 {
-    public static readonly string[] Names = ["container", "headers", "decode", "entropy", "tojpeg", "fromjpeg"];
+    public static readonly string[] Names = ["container", "headers", "decode", "entropy", "tojpeg", "fromjpeg", "layers"];
 
     public const long MaxPixels = 1 << 22;
 
@@ -87,6 +87,7 @@ public static class FuzzTargets
             case "entropy": Entropy(data); break;
             case "tojpeg": ToJpeg(data); break;
             case "fromjpeg": FromJpeg(data); break;
+            case "layers": Layers(data); break;
             case not null when target.StartsWith("diff-", StringComparison.Ordinal): DiffTargets.Run(target, data); break;
             case not null when ResilienceTargets.Names.Contains(target): ResilienceTargets.Run(target, data); break;
             case not null when EncodeTargets.Names.Contains(target): EncodeTargets.Run(target, data); break;
@@ -134,6 +135,29 @@ public static class FuzzTargets
         using (Image image = Image.Load(data, DecodeOptions(data, Threads))) second = Describe(image);
         if (first != second) throw new FuzzMismatchException($"1 thread: {first}; {Threads} threads: {second}");
     }
+
+    // 0.8.11: the layers at 1 and 4 threads agree, and the flattened image is Image.Load's whenever layers are read.
+    private static void Layers(byte[] data)
+    {
+        string first = Layers(data, 1, out string flattened);
+        string load;
+        using (Image image = Image.Load(data, LayerOptions(data, 1))) load = Describe(image);
+        if (flattened != load) throw new FuzzMismatchException($"Flatten: {flattened}; Image.Load: {load}");
+        if (Single) return;
+        string second = Layers(data, Threads, out _);
+        if (first != second) throw new FuzzMismatchException($"1 thread: {first}; {Threads} threads: {second}");
+    }
+
+    private static string Layers(byte[] data, int threads, out string flattened)
+    {
+        using JxlLayeredImage layered = JxlLayers.Load(data.AsMemory(), LayerOptions(data, threads));
+        using (Image image = layered.Flatten()) flattened = Describe(image);
+        return string.Join("; ", layered.Layers.Select(layer => $"{layer.Offset} {layer.BlendMode} {layer.Clamp} {Describe(layer.Image)}"));
+    }
+
+    // MaxFrames counts the flattened image and each layer; orientation is applied for half of the inputs.
+    private static DecoderOptions LayerOptions(ReadOnlySpan<byte> data, int threads) =>
+        DecodeOptions(data, threads) with { ApplyExifOrientation = (Hash(data) & 8) != 0 };
 
     private static void Entropy(byte[] data)
     {

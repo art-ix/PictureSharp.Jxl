@@ -123,4 +123,16 @@ foreach (string name in new[] { "gray-1", "metadata-1" })
     JxlTranscoder.ToJpegAsync(encoded, restored).GetAwaiter().GetResult();
     if (!restored.ToArray().AsSpan().SequenceEqual(original)) throw new InvalidOperationException("Async JPEG reconstruction changed original bytes.");
 }
-Console.WriteLine("Package consumer: registration, detection, Identify, decoding, encoding, metadata and JPEG transcoding passed.");
+// Three layers (64×48 Replace, 30×20 Add at (5, 5), 20×40 Multiply at (30, 4)); the flattened image is Image.Load's.
+string layersPath = Path.Combine(AppContext.BaseDirectory, "layers-three.jxl");
+using (JxlLayeredImage layered = JxlLayers.Load(layersPath))
+using (Image flattened = layered.Flatten())
+using (Image loaded = Image.Load(layersPath))
+{
+    if (layered.Layers.Count != 3 || layered.Layers[2].BlendMode != JxlLayerBlendMode.Multiply
+        || layered.Layers[1].Offset != new System.Drawing.Point(5, 5) || layered.Layers[1].Image.Width != 30
+        || !flattened.GetPixelByteSpan().SequenceEqual(loaded.GetPixelByteSpan())
+        || JxlLayers.Identify(layersPath).Layers.Count != 3)
+        throw new InvalidOperationException("Layers were not read as expected.");
+}
+Console.WriteLine("Package consumer: registration, detection, Identify, decoding, encoding, metadata, JPEG transcoding and layers passed.");

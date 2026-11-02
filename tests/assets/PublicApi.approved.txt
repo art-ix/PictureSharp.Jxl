@@ -48,6 +48,79 @@ PictureSharp.Formats.Jxl.JxlImageExtensions
   Void SaveAsJxl(PictureSharp.Image, System.String, PictureSharp.Formats.Jxl.JxlEncoderOptions)
 PictureSharp.Formats.Jxl.JxlImageFormatExtensions
   PictureSharp.ImageFormat get_Jxl()
+PictureSharp.Formats.Jxl.JxlLayer
+  Boolean Clamp
+  Boolean get_Clamp()
+  PictureSharp.Formats.Jxl.JxlLayerBlendMode BlendMode
+  PictureSharp.Formats.Jxl.JxlLayerBlendMode get_BlendMode()
+  PictureSharp.Image Image
+  PictureSharp.Image get_Image()
+  System.Drawing.Point Offset
+  System.Drawing.Point get_Offset()
+  System.String Name
+  System.String get_Name()
+PictureSharp.Formats.Jxl.JxlLayerBlendMode
+PictureSharp.Formats.Jxl.JxlLayerInfo
+  Boolean Clamp
+  Boolean Equals(PictureSharp.Formats.Jxl.JxlLayerInfo)
+  Boolean Equals(System.Object)
+  Boolean get_Clamp()
+  Boolean op_Equality(PictureSharp.Formats.Jxl.JxlLayerInfo, PictureSharp.Formats.Jxl.JxlLayerInfo)
+  Boolean op_Inequality(PictureSharp.Formats.Jxl.JxlLayerInfo, PictureSharp.Formats.Jxl.JxlLayerInfo)
+  Int32 GetHashCode()
+  PictureSharp.Formats.Jxl.JxlLayerBlendMode BlendMode
+  PictureSharp.Formats.Jxl.JxlLayerBlendMode get_BlendMode()
+  PictureSharp.Formats.Jxl.JxlLayerInfo <Clone>$()
+  System.Drawing.Point Offset
+  System.Drawing.Point get_Offset()
+  System.Drawing.Size Size
+  System.Drawing.Size get_Size()
+  System.String Name
+  System.String ToString()
+  System.String get_Name()
+  Void .ctor(System.String, System.Drawing.Point, System.Drawing.Size, PictureSharp.Formats.Jxl.JxlLayerBlendMode, Boolean)
+  Void Deconstruct(System.String ByRef, System.Drawing.Point ByRef, System.Drawing.Size ByRef, PictureSharp.Formats.Jxl.JxlLayerBlendMode ByRef, Boolean ByRef)
+  Void set_BlendMode(PictureSharp.Formats.Jxl.JxlLayerBlendMode)
+  Void set_Clamp(Boolean)
+  Void set_Name(System.String)
+  Void set_Offset(System.Drawing.Point)
+  Void set_Size(System.Drawing.Size)
+PictureSharp.Formats.Jxl.JxlLayeredImage
+  Int32 Height
+  Int32 Width
+  Int32 get_Height()
+  Int32 get_Width()
+  PictureSharp.Image Flatten()
+  PictureSharp.ImageMetadata Metadata
+  PictureSharp.ImageMetadata get_Metadata()
+  System.Collections.Generic.IReadOnlyList`1[PictureSharp.Formats.Jxl.JxlLayer] Layers
+  System.Collections.Generic.IReadOnlyList`1[PictureSharp.Formats.Jxl.JxlLayer] get_Layers()
+  Void Dispose()
+PictureSharp.Formats.Jxl.JxlLayeredImageInfo
+  Boolean Equals(PictureSharp.Formats.Jxl.JxlLayeredImageInfo)
+  Boolean Equals(System.Object)
+  Boolean op_Equality(PictureSharp.Formats.Jxl.JxlLayeredImageInfo, PictureSharp.Formats.Jxl.JxlLayeredImageInfo)
+  Boolean op_Inequality(PictureSharp.Formats.Jxl.JxlLayeredImageInfo, PictureSharp.Formats.Jxl.JxlLayeredImageInfo)
+  Int32 GetHashCode()
+  PictureSharp.Formats.Jxl.JxlLayeredImageInfo <Clone>$()
+  PictureSharp.ImageInfo Image
+  PictureSharp.ImageInfo get_Image()
+  System.Collections.Generic.IReadOnlyList`1[PictureSharp.Formats.Jxl.JxlLayerInfo] Layers
+  System.Collections.Generic.IReadOnlyList`1[PictureSharp.Formats.Jxl.JxlLayerInfo] get_Layers()
+  System.String ToString()
+  Void .ctor(PictureSharp.ImageInfo, System.Collections.Generic.IReadOnlyList`1[PictureSharp.Formats.Jxl.JxlLayerInfo])
+  Void Deconstruct(PictureSharp.ImageInfo ByRef, System.Collections.Generic.IReadOnlyList`1[PictureSharp.Formats.Jxl.JxlLayerInfo] ByRef)
+  Void set_Image(PictureSharp.ImageInfo)
+  Void set_Layers(System.Collections.Generic.IReadOnlyList`1[PictureSharp.Formats.Jxl.JxlLayerInfo])
+PictureSharp.Formats.Jxl.JxlLayers
+  PictureSharp.Formats.Jxl.JxlLayeredImage Load(System.IO.Stream, PictureSharp.DecoderOptions, System.Threading.CancellationToken)
+  PictureSharp.Formats.Jxl.JxlLayeredImage Load(System.ReadOnlyMemory`1[System.Byte], PictureSharp.DecoderOptions, System.Threading.CancellationToken)
+  PictureSharp.Formats.Jxl.JxlLayeredImage Load(System.String, PictureSharp.DecoderOptions, System.Threading.CancellationToken)
+  PictureSharp.Formats.Jxl.JxlLayeredImageInfo Identify(System.IO.Stream, PictureSharp.DecoderOptions)
+  PictureSharp.Formats.Jxl.JxlLayeredImageInfo Identify(System.ReadOnlyMemory`1[System.Byte], PictureSharp.DecoderOptions)
+  PictureSharp.Formats.Jxl.JxlLayeredImageInfo Identify(System.String, PictureSharp.DecoderOptions)
+  System.Threading.Tasks.Task`1[PictureSharp.Formats.Jxl.JxlLayeredImage] LoadAsync(System.IO.Stream, PictureSharp.DecoderOptions, System.Threading.CancellationToken)
+  System.Threading.Tasks.Task`1[PictureSharp.Formats.Jxl.JxlLayeredImage] LoadAsync(System.String, PictureSharp.DecoderOptions, System.Threading.CancellationToken)
 PictureSharp.Formats.Jxl.JxlTranscoder
   System.Threading.Tasks.Task FromJpegAsync(System.IO.Stream, System.IO.Stream, PictureSharp.Formats.Jxl.JxlTranscoderOptions, System.Threading.CancellationToken)
   System.Threading.Tasks.Task FromJpegAsync(System.ReadOnlyMemory`1[System.Byte], System.IO.Stream, PictureSharp.Formats.Jxl.JxlTranscoderOptions, System.Threading.CancellationToken)

@@ -20,7 +20,7 @@ Still images, lossy and lossless, as `cjxl` produces them:
 | Modular | ANS and prefix codes, LZ77, meta-adaptive trees with every predictor, RCT, palette, squeeze; lossless, and lossy with XYB |
 | Recompressed JPEGs | YCbCr incl. 4:2:0, 4:2:2, 4:4:0, rendered as libjxl renders them (not as the reconstructed JPEG) |
 | Frames of one image | reference frames with patches, DC frames (`cjxl -p`); a preview frame is skipped |
-| Layers (0.8.10) | several frames blended into one image as `djxl` does by default (coalescing): cropped frames at any offset, Replace, Add, Blend, AlphaWeightedAdd and Mul for colour and each extra channel |
+| Layers (0.8.10) | several frames blended into one image as `djxl` does by default (coalescing): cropped frames at any offset, Replace, Add, Blend, AlphaWeightedAdd and Mul for colour and each extra channel; read one by one with `JxlLayers` (0.8.11, [below](#layers)) |
 | Rendering | Gaborish, edge-preserving filter, 2×/4×/8× upsampling, XYB and YCbCr to RGB |
 | Colour | RGB and grayscale with alpha; sRGB, linear, gamma, BT.709, DCI and PQ transfer functions |
 | Samples | integers up to 16 bits; lossy images of any declared depth |
@@ -70,6 +70,33 @@ out-of-gamut colours; other images are converted by PictureSharp. PQ and HLG thr
 ```csharp
 using Image srgb = Image.Load("wide-gamut.jxl", new DecoderOptions { ColorConversion = ColorConversionMode.ToSrgb });
 ```
+
+## Layers
+
+`Image.Load` flattens a layered image. `JxlLayers` reads the layers themselves (0.8.11), each as an `Image` of its
+own size, as `djxl --no_coalescing` does, together with the flattened image:
+
+```csharp
+using JxlLayeredImage layered = JxlLayers.Load("drawing.jxl");
+foreach (JxlLayer layer in layered.Layers)                                   // bottom first
+    Console.WriteLine($"{layer.Name} at {layer.Offset}: {layer.Image.Size}, {layer.BlendMode}");
+using Image flattened = layered.Flatten();                                   // exactly Image.Load("drawing.jxl")
+JxlLayeredImageInfo info = JxlLayers.Identify("drawing.jxl");                // layers without decoding pixels
+```
+
+- **Which files:** a simple stack, as image editors and libjxl's encoder write layers: each frame blends onto the
+  result of the frame before it (the first onto an empty canvas) and its extra channels come from the same
+  reference slot. Reference-only, DC and patch frames are not layers; a single-frame image is one layer. Other
+  frame structures and animations throw `NotSupportedException`; `Image.Load` still flattens them.
+- **Pixels:** the frame before blending, in the pixel type `Image.Load` would return, with its colour description;
+  `Offset` may be negative or outside the canvas. `BlendMode` (Replace, Add, Blend, AlphaWeightedAdd, Multiply) and
+  `Clamp` say how it combines with the layers below; blending happens in floating point in the image's encoding, so
+  `Flatten()` is the exact result.
+- **Options:** the file is decoded once through `Image.Load` with the given options and limits. `MaxPixels` covers
+  the flattened image and every layer, and `MaxFrames` counts them all. `ToSrgb` converts every layer.
+  `ApplyExifOrientation` orients every layer and maps its offset onto the oriented canvas, like libjxl; without it
+  layers are in the stored orientation (`layered.Metadata.Orientation`). `TargetSize` is not supported.
+- `Dispose` releases every layer image; `Flatten()` returns a new image the caller owns.
 
 ## Identify
 

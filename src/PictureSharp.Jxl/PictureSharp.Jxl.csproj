@@ -11,7 +11,7 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/art-ix/picturesharp.jxl</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageReleaseNotes>0.8.10: layered images decode. Frames that are cropped (at any offset) or blended with Replace, Add, Blend, AlphaWeightedAdd or Mul are composited into one image as djxl does by default; lossless layers match djxl exactly. With ColorConversion = ToSrgb a blended XYB image is converted to sRGB in floating point. Single-frame images decode exactly as in 0.8.9. No API changes. See docs/releases/release-0.8.10.md and docs/design/0.8.10-blending.md.</PackageReleaseNotes>
+    <PackageReleaseNotes>0.8.11: JxlLayers reads the layers of a layered still image as separate images (as djxl --no_coalescing does), each with its offset, name, blend mode and clamp, plus Flatten(), which is exactly the Image.Load result. Load, LoadAsync and Identify for files, streams and memory; the image is decoded once through Image.Load with the same options and limits, every layer counted against MaxPixels and MaxFrames; ApplyExifOrientation orients layers and offsets like libjxl. Image.Load results are unchanged. See docs/releases/release-0.8.11.md and docs/design/0.8.11-layers.md.</PackageReleaseNotes>
   </PropertyGroup>
   <ItemGroup><PackageReference Include="PictureSharp" Version="$(PictureSharpVersion)" /></ItemGroup>
   <ItemGroup>

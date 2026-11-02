@@ -12,11 +12,13 @@ namespace PictureSharp.Formats.Jxl.Codestream.Frames;
 /// <paramref name="maxIccBytes"/> and charged to <paramref name="reserveIcc"/> before it is allocated. With
 /// <paramref name="renderSrgb"/> XYB frames are rendered as sRGB instead of the image's colour space. Groups and rendering
 /// use up to <paramref name="parallelism"/> threads (1 = single-threaded, -1 = automatic). At most
-/// <paramref name="maxFrames"/> frames are read, displayed or not.
+/// <paramref name="maxFrames"/> frames are read, displayed or not. <paramref name="layerSink"/> receives every displayed
+/// frame that is blended or saved, at its own size before blending (0.8.11 layers); the last frame on the still-image
+/// path is not passed to it.
 /// </summary>
 internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders headers, CancellationToken cancellationToken = default,
     long maxIccBytes = JxlIccStream.MaxProfileSize, Action<long>? reserveIcc = null, bool renderSrgb = false, JxlBufferScope? buffers = null,
-    int parallelism = 1, int maxFrames = int.MaxValue)
+    int parallelism = 1, int maxFrames = int.MaxValue, Action<JxlFrameHeader, JxlDecodedImage>? layerSink = null)
 {
     private readonly JxlReferenceFrames references = new();
     private bool started;
@@ -24,14 +26,16 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
     /// <summary>The image's ICC profile after <see cref="Decode"/>, or null when it has none.</summary>
     public byte[]? IccProfile { get; private set; }
 
-    /// <summary>The headers of every frame after the preview, in codestream order, up to the last one.</summary>
-    public static List<JxlFrameHeader> ReadFrameHeaders(JxlCodestream codestream, JxlHeaders headers, CancellationToken cancellationToken = default)
+    /// <summary>The headers of every frame after the preview, in codestream order, up to the last one (at most <paramref name="maxFrames"/>).</summary>
+    public static List<JxlFrameHeader> ReadFrameHeaders(JxlCodestream codestream, JxlHeaders headers, CancellationToken cancellationToken = default,
+        int maxFrames = int.MaxValue)
     {
         var frames = new List<JxlFrameHeader>();
         var reader = JxlFrameSectionReader.FirstFrame(codestream, headers, cancellationToken, out _);
         while (frames.Count == 0 || !frames[^1].IsLast)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (frames.Count == maxFrames) throw JxlDescriptor.Corrupt("JPEG XL exceeds MaxFrames.");
             JxlFrameHeader frame = JxlFrameHeaderReader.Read(ref reader, headers, preview: false);
             long start = JxlFrameSectionReader.ReadToc(ref reader, codestream, frame, out JxlToc toc);
             frames.Add(frame);
@@ -94,6 +98,10 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
                         parallelism: parallelism);
                     JxlFrameSectionReader.DecodeSections(codestream, frame, start, toc, decoder);
                     (JxlPlane[] color, JxlPlane[] extra) = decoder.RenderColor();
+                    if (layerSink is not null && frame.Type is JxlFrameType.Regular or JxlFrameType.SkipProgressive)
+                    {
+                        layerSink(frame, Layer(frame, color, extra, alpha, original, gray));
+                    }
                     canvas = blend ? Blend(frame, color, extra) : Copy(color, extra);
                 }
 
@@ -135,6 +143,21 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
         JxlPlane[] copies = [.. color.Select(plane => plane.Clone(cancellationToken))];
         JxlPlane[] colorPlanes = copies.Length == 3 ? copies : [copies[0], copies[0], copies[0]];
         return new JxlReferenceFrame(colorPlanes, [.. extra.Select(plane => plane.Clone(cancellationToken))]);
+    }
+
+    // A layer as it is before blending, in the image's encoding or, with renderSrgb, converted to sRGB (on copies, as
+    // the planes are blended afterwards).
+    private JxlDecodedImage Layer(JxlFrameHeader frame, JxlPlane[] color, JxlPlane[] extra, int alpha, JxlColorTarget original, bool gray)
+    {
+        JxlColorEncoding encoding = JxlColorOutput.DescribeOutput(headers.Metadata, frame.ColorTransform, original);
+        if (renderSrgb && headers.Metadata.XybEncoded)
+        {
+            JxlPlane[] copies = [.. color.Select(plane => plane.Clone(cancellationToken))];
+            color = copies.Length == 3 ? copies : [copies[0], copies[0], copies[0]];
+            encoding = JxlCanvasToSrgb.Convert(color, encoding, original.Icc, cancellationToken, parallelism);
+        }
+
+        return new JxlDecodedImage((int)frame.Width, (int)frame.Height, color, alpha < 0 ? null : extra[alpha], gray, encoding);
     }
 
     // The blended canvas as the decoded image, in the image's encoding or, with renderSrgb, converted to sRGB.
