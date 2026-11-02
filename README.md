@@ -48,23 +48,19 @@ when reading the result too.
 
 ## Support
 
-- **Read:** still images as `cjxl` produces them: lossy (VarDCT) and lossless (Modular), recompressed JPEGs,
-  progressive files, patches; layers (cropped and blended frames, flattened into one image as `djxl` does, or read
-  one by one with `JxlLayers.Load`); animations (every frame djxl shows, with durations and loop count, also frame by frame with
-  `Image.OpenFrameReaderAsync`); RGB and
-  grayscale with alpha, up to 16 bits per sample (`Rgba64` with `PreserveBitDepth`, otherwise reduced to 8).
-- **Write:** lossy VarDCT with `Quality`/`Distance` and `Effort` 1–9, about as small as `cjxl` at the same settings
-  (patches included); lossless 8-bit or 16-bit gray or RGB with alpha, with libjxl's effort tiers and about as small
-  as `cjxl -d 0` at the same effort.
-- **Metadata:** ICC, EXIF, XMP (also Brotli-compressed), colour description and orientation; read, written and
-  edited in place (editing files with JPEG reconstruction data is unsupported).
-- **JPEG transcoding:** `JxlTranscoder.FromJpeg` stores sequential or progressive 8-bit Huffman JPEG (gray or
-  YCbCr 4:4:4/4:2:2/4:2:0); `ToJpeg` reconstructs the original JPEG byte for byte, including metadata.
-- **Not supported yet:** photon noise and splines, float samples, CMYK (`NotSupportedException`); writing
-  animations; transcoding RGB, CMYK/YCCK, arithmetic or 12-bit JPEG.
+| | Supported |
+|---|---|
+| **Read** | Lossy (VarDCT) and lossless (Modular) images, including recompressed JPEGs, progressive files and patches. Layers are flattened like `djxl` or read one by one with `JxlLayers.Load`. Animations load whole or frame by frame with `Image.OpenFrameReaderAsync`. |
+| **Write** | Lossy (`Quality`/`Distance`, `Effort` 1–9) and lossless, 8 or 16 bits; files about as small as `cjxl` at the same settings. |
+| **Pixels** | Gray or RGB, with or without alpha, up to 16 bits per sample (`Rgba64` with `PreserveBitDepth`, otherwise 8-bit). |
+| **Metadata** | ICC, EXIF, XMP, colour description and orientation: read, written and edited in place. |
+| **JPEG** | `JxlTranscoder` stores 8-bit Huffman JPEGs (gray or YCbCr) and restores them byte for byte. |
 
-Pixels match djxl (libjxl 0.12.0): lossless images exactly, lossy ones within 1 of 255 in a few samples. Files this
-package writes decode with djxl the same way.
+**Not supported yet:** images with photon noise, splines, float samples or CMYK (decoding throws
+`NotSupportedException`); writing animations; transcoding RGB, CMYK, arithmetic-coded or 12-bit JPEGs.
+
+Output matches djxl (libjxl 0.12.0): lossless exactly, lossy within 1 of 255, and files written here decode the same
+way with djxl.
 
 **Status:** early development (0.8.13). Not for production use yet; the API may change. CI runs on Linux, including a Native AOT build.
 
