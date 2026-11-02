@@ -80,6 +80,7 @@ internal sealed partial class JxlEncoder : IImageFormatEncoder<JxlEncoderOptions
             // Alpha stays lossless at full size, so frames with alpha are not downsampled at high distances.
             var settings = JxlLossySettings.Create(Math.Max(distance, JxlLossySettings.MinDistance), options.Effort, resample: !alpha)
                 with { Parallelism = parallelism };
+            settings = WithNoise(settings, options, width, height);
             JxlCodestreamWriter.WriteLossyTo(new JxlLossyEncodeImage(width, height, xyb, alphaPlane, gray, encoding, icc, orientation, settings, bitDepth), writer,
                 cancellationToken);
         }
@@ -198,6 +199,12 @@ internal sealed partial class JxlEncoder : IImageFormatEncoder<JxlEncoderOptions
         JxlColorEncoding encoding = JxlMetadataWriter.Encoding(metadata, gray);
         uint orientation = JxlMetadataWriter.Orientation(metadata);
         float distance = options.EffectiveDistance;
+        if (options.PhotonNoiseIso is not null && distance == 0)
+        {
+            throw new ArgumentException("PhotonNoiseIso adds noise to lossy output; lossless output (Distance 0, Quality 100) stays exact.",
+                nameof(options));
+        }
+
         // As libjxl for XYB images: a profile an enumerated encoding describes is stored as that encoding, so decoders
         // return pixels in it rather than in linear sRGB. Lossless frames keep the profile.
         if (distance != 0 && icc is not null && JxlIccEncoding.TryEnumerate(icc, gray) is { } enumerated)
@@ -208,8 +215,24 @@ internal sealed partial class JxlEncoder : IImageFormatEncoder<JxlEncoderOptions
         JxlXybInput? xybInput = distance == 0 ? null
             : JxlXybInput.TryCreate(icc is null ? encoding : new JxlColorEncoding { WantIcc = true, ColorSpace = gray ? JxlColorSpace.Gray : JxlColorSpace.Rgb },
                 icc is null ? null : JxlIccTarget.TryCreate(icc, gray), JxlToneMapping.Default.IntensityTarget, bitDepth);
+        if (options.PhotonNoiseIso is not null && xybInput is null)
+        {
+            throw new NotSupportedException("PhotonNoiseIso needs lossy output, but this colour profile is only encoded losslessly.");
+        }
+
         return new EncodePlan(gray, alpha, encoding, icc, orientation, distance, xybInput, bitDepth);
     }
+
+    // PhotonNoiseIso: the noise LUT of a full canvas (decision 3 of docs/design/0.8.15-noise-splines.md), at the frame's
+    // own resolution when it is downsampled, as cjxl computes it for full frames.
+    private static JxlLossySettings WithNoise(JxlLossySettings settings, JxlEncoderOptions options, int width, int height) =>
+        options.PhotonNoiseIso is { } iso
+            ? settings with
+            {
+                NoiseLut = JxlPhotonNoise.Simulate((width + settings.Resampling - 1) / settings.Resampling,
+                    (height + settings.Resampling - 1) / settings.Resampling, iso),
+            }
+            : settings;
 
     private static NotSupportedException GrayProfileMismatch() => new("A gray ICC profile cannot describe an image with colour pixels.");
 

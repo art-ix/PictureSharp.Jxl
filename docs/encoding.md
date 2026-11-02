@@ -26,6 +26,7 @@ Original JPEG bytes can be preserved with the separate [JPEG transcoder](transco
 | `Effort` | `7` | 1–9 as `cjxl -e`; lossless tiers since 0.8.3 ([below](#lossless-frames)); 8 and 9 currently behave as 7 |
 | `Metadata` | `All` | which of ICC, EXIF and XMP are written |
 | `CompressMetadata` | `false` | Brotli-compress EXIF and XMP into `brob` boxes (as `cjxl`); readers without Brotli won't see them |
+| `PhotonNoiseIso` | `null` | film grain as `cjxl --photon_noise_iso` (0.8.15, [below](#photon-noise)); lossy output only |
 
 `EffectiveDistance` reports the distance actually used. Quality maps like `cjxl`: 0.1 + (100 − q) × 0.09 from 30 up,
 quadratically to 25 below. Distances in (0, 0.05) become 0.05.
@@ -122,6 +123,25 @@ Sizes against `cjxl` 0.12.0 (bytes, `--num_threads=1`):
 Encoding times per effort are in the [speed measurements](benchmarks/speed.md#encoder-work-083).
 
 Output is a bare codestream, or a container when EXIF or XMP are written; images beyond level 5 get a `jxll` box.
+
+## Photon noise
+
+`PhotonNoiseIso` asks decoders to add film grain, as `cjxl --photon_noise_iso` does: the frame header gets the noise
+flag and an 8-entry noise LUT simulating a full-frame (36 × 24 mm) sensor at that ISO, about 10 bytes. The pixels are
+encoded as without the option (the encoder does not remove noise), so the grain comes on top of the image; higher ISO
+values give stronger grain, and the grain per pixel depends on the image size like a sensor's. The LUT equals
+`cjxl`'s for the same ISO and size (a flat image decodes to the same pixels).
+
+```csharp
+photo.SaveAsJxl("grain.jxl", new JxlEncoderOptions { Distance = 1, PhotonNoiseIso = 3200 });
+```
+
+- Lossy only: with `Distance = 0` or `Quality = 100` encoding throws `ArgumentException`, so lossless output stays
+  exact (`cjxl` writes noise into lossless files from effort 2 on, and then they are no longer lossless).
+- Images whose profile is only encoded losslessly (lookup tables, HLG) throw `NotSupportedException` with the option.
+- Animations: every frame uses the LUT of the full canvas, also frames cropped to their changed rectangle, so the grain
+  is the same on every frame (`cjxl` uses each frame's own size).
+- Splines are not written; libjxl has no detection for them either.
 
 ## Animations
 

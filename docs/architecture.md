@@ -50,7 +50,13 @@ images, contexts, options or pixels. A compiled boundary test checks signatures,
    group's passes. `JxlFrameProgress` blocks skipped or repeated phases.
 5. Modular transform descriptions are immutable and separate from their execution.
 6. `JxlFrameRenderer` gets planes, parameters, patches and EPF sigma (not a VarDCT decoder) and keeps libjxl's order
-   of filters, patching, upsampling and colour conversion.
+   of filters, patching, splines, upsampling, noise and colour conversion. Since 0.8.15 `JxlFrameDecoder` reads splines
+   (`JxlSplineReader`) and the noise LUT (`JxlNoiseParameters`) from the LF global section and passes them as
+   `JxlRenderFeatures`: `JxlSplines` (dequantized, Catmull-Rom, segments indexed per row, memory charged to the
+   working budget) and `JxlNoise` (a Xorshift128+ field per group seeded with the session's visible and non-visible
+   frame counters, 5×5 convolution, LUT strength; AVX2/FMA kernels in `JxlNoise.Simd.cs` and
+   `JxlXorshift128Plus.Simd.cs`). Frames with either feature skip the integer and deferred-YCbCr
+   shortcuts.
 7. After common transform and shape validation, eligible Modular frames expose integer samples directly; other
    frames expose rendered planes through `JxlDecodedImage`; subsampled YCbCr frames without later stages expose the
    decoded planes with `JxlColorRows` (since 0.8.6), which the pixel writer renders per row band (chroma upsampling

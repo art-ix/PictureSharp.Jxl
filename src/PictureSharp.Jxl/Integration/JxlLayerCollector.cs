@@ -25,11 +25,6 @@ internal sealed class JxlLayerCollector : IDisposable
     {
         int alpha = JxlDecodeSupportPolicy.EnsureImageSupported(headers.Metadata);
         List<JxlFrameHeader> all = JxlDecodeSession.ReadFrameHeaders(codestream, headers, cancellationToken, options.MaxFrames);
-        foreach (JxlFrameHeader frame in all)
-        {
-            if (frame.HasNoise || frame.HasSplines) throw JxlDescriptor.Unsupported("noise and splines are not rendered yet.");
-        }
-
         frames = JxlLayerStack.Select(all, headers.Metadata, alpha);
         canvas = (headers.Size.Width, headers.Size.Height, headers.Metadata.Orientation);
         return frames;

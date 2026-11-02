@@ -19,13 +19,16 @@ PictureSharp.Formats.Jxl.JxlEncoderOptions
   Single get_EffectiveDistance()
   Single get_Quality()
   System.Nullable`1[System.Single] Distance
+  System.Nullable`1[System.Single] PhotonNoiseIso
   System.Nullable`1[System.Single] get_Distance()
+  System.Nullable`1[System.Single] get_PhotonNoiseIso()
   System.String ToString()
   Void .ctor()
   Void set_CompressMetadata(Boolean)
   Void set_Distance(System.Nullable`1[System.Single])
   Void set_Effort(Int32)
   Void set_MaxDegreeOfParallelism(Int32)
+  Void set_PhotonNoiseIso(System.Nullable`1[System.Single])
   Void set_Quality(Single)
 PictureSharp.Formats.Jxl.JxlFormat
   Boolean IsSupported(System.ReadOnlySpan`1[System.Byte])

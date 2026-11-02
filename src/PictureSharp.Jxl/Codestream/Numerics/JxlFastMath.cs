@@ -68,4 +68,42 @@ internal static class JxlFastMath
 
     /// <summary>base^exponent for positive bases, relative error about 3e-5.</summary>
     public static float FastPowf(float value, float exponent) => FastPow2f(FastLog2f(value) * exponent);
+
+    /// <summary>cos(x) for finite x, L1 error about 7e-5 (used by splines).</summary>
+    public static float FastCosf(float x)
+    {
+        // libjxl's kPi is a double: the constants are rounded once from double.
+        const float Pi = (float)Math.PI;
+        const float Pi2 = (float)(Math.PI * 2.0);
+        const float Pi2Inverse = (float)(0.5 / Math.PI);
+        const float PiHalf = (float)(Math.PI / 2.0);
+        // Range reduction to [0, 2pi), then [0, pi], then [0, pi/2].
+        float xModPi2 = x - MathF.Floor(x * Pi2Inverse) * Pi2;
+        float xPi = MathF.Min(xModPi2, Pi2 - xModPi2);
+        bool abovePiHalf = xPi >= PiHalf;
+        float xPiHalf = abovePiHalf ? Pi - xPi : xPi;
+        // Taylor-like approximation on x/4, scaled by 2^0.75, then two angle duplications.
+        float xs = xPiHalf * 0.25f;
+        float x2 = xs * xs;
+        float x4 = x2 * x2;
+        float prescaled = Fma(x4, 0.06960438f, Fma(x2, -0.84087373f, 1.68179268f));
+        float scale1 = Fma(prescaled, prescaled, -1.414213562f);
+        float scale2 = Fma(scale1, scale1, -1.0f);
+        return abovePiHalf ? -scale2 : scale2;
+    }
+
+    /// <summary>erf(x), L1 error about 7e-4 (used by splines).</summary>
+    public static float FastErff(float x)
+    {
+        float absX = MathF.Abs(x);
+        // 1 - 1 / ((((x * a + b) * x + c) * x + d) * x + 1)^4
+        float denom1 = Fma(absX, 7.77394369e-02f, 2.05260015e-04f);
+        float denom2 = Fma(denom1, absX, 2.32120216e-01f);
+        float denom3 = Fma(denom2, absX, 2.77820801e-01f);
+        float denom4 = Fma(denom3, absX, 1.0f);
+        float denom5 = denom4 * denom4;
+        float invDenom5 = 1.0f / denom5;
+        float result = Fma(-invDenom5, invDenom5, 1.0f);
+        return x <= 0 ? -result : result;
+    }
 }

@@ -155,6 +155,12 @@ internal sealed partial class JxlVarDctFrame
 
     public JxlBlockContextMap BlockContexts { get; private set; } = JxlBlockContextMap.Default;
 
+    /// <summary>The colour correlation base YtoXRatio(0) (splines and noise).</summary>
+    public float BaseCorrelationX => baseCorrelationX;
+
+    /// <summary>The colour correlation base YtoBRatio(0) (splines and noise).</summary>
+    public float BaseCorrelationB => baseCorrelationB;
+
     /// <summary>The quantiser of the frame (QuantizerParams), set by <see cref="ReadGlobal"/> or by an encoder.</summary>
     public void SetQuantizer(uint globalScale, uint quantDc)
     {

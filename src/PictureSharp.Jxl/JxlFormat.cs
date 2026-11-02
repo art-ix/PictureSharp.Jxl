@@ -24,8 +24,8 @@ public sealed class JxlFormat : IImageFormatModule
 
     /// <summary>
     /// Identify reads the headers, and for animations every frame header. Decode handles VarDCT and Modular images
-    /// (including patches, DC frames, recompressed JPEGs, layers and animations) and throws NotSupportedException for
-    /// noise, splines, float samples and other features outside that subset. The image carries the ICC profile, EXIF and
+    /// (including patches, DC frames, recompressed JPEGs, layers, animations, photon noise and splines) and throws
+    /// NotSupportedException for float samples and other features outside that subset. The image carries the ICC profile, EXIF and
     /// XMP unless DecoderOptions.IgnoreMetadata is set.
     /// </summary>
     public IImageFormatDecoder Decoder => JxlDecoder.Instance;

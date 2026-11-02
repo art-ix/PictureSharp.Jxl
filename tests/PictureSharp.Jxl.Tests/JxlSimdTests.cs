@@ -450,6 +450,55 @@ public sealed class JxlSimdTests
         return result;
     }
 
+    [Test]
+    public void Noise_ExactAcrossWidthsAndSpecialValues()
+    {
+        // 0.8.15 noise stage: convolution, LUT strength (including NaN, -0, negative and >= 7/6 inputs), RNG and floats.
+        float[] lut = [0.0f, 0.05f, 0.31f, 0.5f, 0.2f, 0.99f, 0.7f, 1.0f];
+        foreach (int width in Widths)
+        {
+            var plane = new JxlPlane(width, 7);
+            float[] samples = Samples(width * 7);
+            for (int y = 0; y < 7; y++) samples.AsSpan(y * width, width).CopyTo(plane.Row(y));
+            plane.Mirror(2, 2);
+            float[] convolvedExpected = new float[3 * width], convolved = new float[3 * width];
+            for (int c = 0; c < 3; c++)
+            {
+                JxlNoiseScalar.Convolve(plane, 2 + c, convolvedExpected.AsSpan(c * width, width));
+                JxlNoise.Convolve(plane, 2 + c, convolved.AsSpan(c * width, width));
+            }
+
+            Exact(convolvedExpected, convolved, $"convolve width={width}");
+            float[][] expected = [Samples(width + 1)[1..], Samples(width + 2)[2..], Samples(width + 3)[3..]];
+            expected[0][0] = float.NaN;
+            if (width > 1) expected[1][1] = 50;
+            if (width > 2) expected[0][2] = -0.0f;
+            float[][] actual = [.. expected.Select(row => (float[])row.Clone())];
+            JxlNoiseScalar.AddNoise(lut, expected[0], expected[1], expected[2], convolved, width, 0.25f, 1.5f);
+            JxlNoise.AddNoise(lut, actual[0], actual[1], actual[2], convolved, width, 0.25f, 1.5f);
+            for (int c = 0; c < 3; c++) Exact(expected[c], actual[c], $"add noise width={width} channel {c}");
+        }
+
+        // The library's generator against the frozen scalar one with the same SplitMix64 seeding, and the floats made
+        // from each batch.
+        var generator = new JxlXorshift128Plus(3, 7, 512, 256);
+        (ulong[] s0, ulong[] s1) = JxlNoiseScalar.Seed(3, 7, 512, 256);
+        ulong[] actualBits = new ulong[8], expectedBits = new ulong[8];
+        for (int step = 0; step < 6; step++)
+        {
+            generator.Fill(actualBits);
+            JxlNoiseScalar.Fill(s0, s1, expectedBits);
+            if (!actualBits.AsSpan().SequenceEqual(expectedBits)) throw new InvalidOperationException($"xorshift step {step}");
+            foreach (int length in new[] { 1, 7, 8, 15, 16 })
+            {
+                float[] e = new float[length], a = new float[length];
+                JxlNoiseScalar.ToFloats(expectedBits, e);
+                JxlNoise.ToFloats(actualBits, a);
+                Exact(e, a, $"random floats length={length}");
+            }
+        }
+    }
+
     internal static float[] Samples(int count)
     {
         var random = new Random(2908);

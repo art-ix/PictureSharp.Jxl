@@ -173,4 +173,15 @@ using (Image animation = Image.Load(animationPath))
         }
     }
 }
-Console.WriteLine("Package consumer: registration, detection, Identify, decoding, encoding, metadata, JPEG transcoding, layers, animation, frame reader and frame writer passed.");
+// Photon noise (0.8.15): PhotonNoiseIso writes grain that decoding renders, the same at 1 and all threads.
+using (var flat = new Image(80, 48))
+{
+    flat.GetPixelMemory<Rgba32>().Span.Fill(new Rgba32(120, 140, 160, 255));
+    byte[] grain = flat.ToJxl(new JxlEncoderOptions { Distance = 1, PhotonNoiseIso = 6400 });
+    using Image single = Image.Load(grain, new DecoderOptions { MaxDegreeOfParallelism = 1 });
+    using Image all = Image.Load(grain);
+    if (single.GetPixelMemory<Rgba32>().ToArray().Distinct().Count() < 10
+        || !single.GetPixelByteSpan().SequenceEqual(all.GetPixelByteSpan()))
+        throw new InvalidOperationException("Photon noise was not rendered as expected.");
+}
+Console.WriteLine("Package consumer: registration, detection, Identify, decoding, encoding, metadata, JPEG transcoding, layers, animation, frame reader, frame writer and photon noise passed.");

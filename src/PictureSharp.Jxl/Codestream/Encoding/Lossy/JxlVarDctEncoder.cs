@@ -52,7 +52,8 @@ internal static class JxlVarDctEncoder
 
         var frame = new JxlLossyFrame(header with
         {
-            XQmScale = xQmScale, BQmScale = bQmScale, Flags = patches is null ? JxlFrameFlags.None : JxlFrameFlags.Patches,
+            XQmScale = xQmScale, BQmScale = bQmScale,
+            Flags = (patches is null ? JxlFrameFlags.None : JxlFrameFlags.Patches) | (settings.NoiseLut is null ? JxlFrameFlags.None : JxlFrameFlags.Noise),
         }, settings, xyb.Buffers);
 
         JxlAqMaps maps = ChooseParameters(frame, image, cancellationToken);
@@ -463,6 +464,7 @@ internal static class JxlVarDctEncoder
         JxlFrameHeader header = frame.Header;
         var global = new JxlBitWriter(writer.Buffers);
         patches?.WriteDictionary(global, metadata.ExtraChannels.Count);
+        if (frame.Settings.NoiseLut is { } noise) JxlPhotonNoise.Write(global, noise);
         global.Write(!frame.Jpeg);                                // DC quantization weights
         if (frame.Jpeg)
             for (int c = 0; c < 3; c++) JxlFieldWriter.F16(global, frame.Matrices.DcQuant[c] * 128);

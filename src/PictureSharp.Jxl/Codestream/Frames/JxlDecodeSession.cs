@@ -25,6 +25,8 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
     private bool finished;
     private int alpha;
     private int count;
+    // libjxl's visible_frame_index and nonvisible_frame_index of the current frame, which seed the noise (InitFrame).
+    private (int Visible, int Nonvisible) frameIndex;
     // The bit position of the next frame header, or -1 before Open.
     private long position = -1;
 
@@ -100,6 +102,8 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
         var reader = JxlFrameSectionReader.FirstFrame(codestream, headers, cancellationToken, out byte[]? icc, maxIccBytes, reserveIcc);
         IccProfile = icc;
         position = reader.BitPosition;
+        // The preview frame counts as a frame that is not displayed.
+        frameIndex = (0, headers.Metadata.Preview is null ? 0 : 1);
     }
 
     /// <summary>
@@ -144,6 +148,7 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
             cancellationToken.ThrowIfCancellationRequested();
             if (++count > maxFrames) throw JxlDescriptor.Corrupt("JPEG XL exceeds MaxFrames.");
             (JxlFrameHeader frame, long start, JxlToc toc) = ReadFrame(position);
+            frameIndex = IsDisplayed(frame) ? (frameIndex.Visible + 1, 0) : (frameIndex.Visible, frameIndex.Nonvisible + 1);
             // The next frame starts after this one's sections; SkipRemaining continues from there after a yield.
             position = (start + toc.TotalSize) * 8;
             finished = frame.IsLast;
@@ -153,7 +158,8 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
             if (!animation && frame.IsLast && !blend)
             {
                 // A full frame that replaces everything: the still-image path, unchanged since 0.8.9.
-                var decoder = new JxlFrameDecoder(frame, headers, references, cancellationToken, target, buffers: buffers, parallelism: parallelism);
+                var decoder = new JxlFrameDecoder(frame, headers, references, cancellationToken, target, buffers: buffers, parallelism: parallelism,
+            frameIndex: frameIndex);
                 JxlFrameSectionReader.DecodeSections(codestream, frame, start, toc, decoder);
                 yield return (frame, decoder.Finish(alpha));
                 yield break;
@@ -172,7 +178,7 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
                 using (var frameBuffers = new JxlBufferScope())
                 {
                     var decoder = new JxlFrameDecoder(frame, headers, references, cancellationToken, target, buffers: frameBuffers,
-                        parallelism: parallelism);
+                        parallelism: parallelism, frameIndex: frameIndex);
                     JxlFrameSectionReader.DecodeSections(codestream, frame, start, toc, decoder);
                     yield return (frame, decoder.Finish(alpha));
                 }
@@ -188,7 +194,7 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
                 using (var frameBuffers = new JxlBufferScope())
                 {
                     var decoder = new JxlFrameDecoder(frame, headers, references, cancellationToken, original, buffers: frameBuffers,
-                        parallelism: parallelism);
+                        parallelism: parallelism, frameIndex: frameIndex);
                     JxlFrameSectionReader.DecodeSections(codestream, frame, start, toc, decoder);
                     (JxlPlane[] color, JxlPlane[] extra) = decoder.RenderColor();
                     if (layerSink is not null && frame.Type is JxlFrameType.Regular or JxlFrameType.SkipProgressive)
@@ -239,7 +245,8 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
     // Saved before the colour transform: decoded with the decode-wide buffers into its slot (or the DC levels).
     private void Store(JxlFrameHeader frame, long start, JxlToc toc, JxlColorTarget target)
     {
-        var decoder = new JxlFrameDecoder(frame, headers, references, cancellationToken, target, buffers: buffers, parallelism: parallelism);
+        var decoder = new JxlFrameDecoder(frame, headers, references, cancellationToken, target, buffers: buffers, parallelism: parallelism,
+            frameIndex: frameIndex);
         JxlFrameSectionReader.DecodeSections(codestream, frame, start, toc, decoder);
         JxlReferenceFrame saved = decoder.Store();
         if (frame.Type == JxlFrameType.Dc) references.StoreDc(frame.DcLevel, saved);

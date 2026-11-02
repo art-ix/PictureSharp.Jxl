@@ -3,7 +3,7 @@ using PictureSharp.Formats.Jxl.Codestream.Model;
 
 namespace PictureSharp.Formats.Jxl.Codestream.Frames;
 
-/// <summary>Current support (still images, layers blended since 0.8.10, animations since 0.8.12) and frame consistency rules.</summary>
+/// <summary>Current support (still images, layers blended since 0.8.10, animations since 0.8.12, noise and splines since 0.8.15) and frame consistency rules.</summary>
 internal static class JxlDecodeSupportPolicy
 {
     /// <summary>Checks the image-level features and returns the index of the alpha extra channel, or -1.</summary>
@@ -49,11 +49,6 @@ internal static class JxlDecodeSupportPolicy
         if (frame.Type is not (JxlFrameType.Regular or JxlFrameType.SkipProgressive) && frame.IsLast)
         {
             throw JxlDescriptor.Corrupt("The last frame is not a displayed frame.");
-        }
-
-        if (frame.HasNoise || frame.HasSplines)
-        {
-            throw JxlDescriptor.Unsupported("noise and splines are not rendered yet.");
         }
 
         if (frame.HasPatches && frame.Upsampling != 1

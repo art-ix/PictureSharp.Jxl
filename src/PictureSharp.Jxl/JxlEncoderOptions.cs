@@ -79,6 +79,21 @@ public sealed record JxlEncoderOptions : EncoderOptions
         init => field = value == -1 || value >= 1 ? value : throw new ArgumentOutOfRangeException(nameof(MaxDegreeOfParallelism), value, "Expected -1 or a positive number.");
     } = -1;
 
+    /// <summary>
+    /// Adds film grain like <c>cjxl --photon_noise_iso</c>: the ISO of a simulated full-frame (36 × 24 mm) sensor whose
+    /// noise JPEG XL decoders synthesize on top of the lossy frames; higher values give stronger grain, and the file grows
+    /// by a few bytes per frame. Every frame of an animation gets the grain of a full canvas. Only for lossy output:
+    /// with <see cref="Distance"/> 0 or <see cref="Quality"/> 100 encoding throws <see cref="ArgumentException"/>. Default:
+    /// null (no noise).
+    /// </summary>
+    public float? PhotonNoiseIso
+    {
+        get;
+        init => field = value is null || (float.IsFinite(value.Value) && value > 0)
+            ? value
+            : throw new ArgumentOutOfRangeException(nameof(PhotonNoiseIso), value, "Use a positive ISO value, or null for no noise.");
+    }
+
     /// <summary>The distance that will be encoded: <see cref="Distance"/>, or <see cref="Quality"/> mapped as cjxl does.</summary>
     public float EffectiveDistance => Distance ?? (float)(Quality >= 100 ? 0
         : Quality >= 30 ? 0.1 + (100 - Quality) * 0.09

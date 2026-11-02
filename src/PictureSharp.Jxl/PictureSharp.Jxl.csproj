@@ -6,12 +6,12 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
     <PackageId>PictureSharp.Jxl</PackageId>
-    <Description>Pure C# JPEG XL plugin for PictureSharp. Detects and identifies JPEG XL files (raw codestream and container), decodes still lossy (VarDCT, XYB) and lossless (Modular) images, including recompressed JPEGs, patches and progressive files, encodes images lossily (VarDCT with quality, distance and effort 1-9, about as small as cjxl, the default) or losslessly (8-bit or 16-bit Modular, about as small as cjxl -d 0 -e 7), losslessly transcodes sequential and progressive 8-bit JPEG with byte-exact original reconstruction, and reads, writes and edits the ICC profile, EXIF and XMP (also Brotli-compressed).</Description>
+    <Description>Pure C# JPEG XL plugin for PictureSharp. Detects and identifies JPEG XL files (raw codestream and container), decodes still lossy (VarDCT, XYB) and lossless (Modular) images, including recompressed JPEGs, patches, progressive files, photon noise and splines, encodes images lossily (VarDCT with quality, distance and effort 1-9, about as small as cjxl, the default) or losslessly (8-bit or 16-bit Modular, about as small as cjxl -d 0 -e 7), losslessly transcodes sequential and progressive 8-bit JPEG with byte-exact original reconstruction, and reads, writes and edits the ICC profile, EXIF and XMP (also Brotli-compressed).</Description>
     <PackageTags>picturesharp;image;jxl;jpegxl</PackageTags>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/art-ix/picturesharp.jxl</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageReleaseNotes>0.8.14: animations are written. SaveAsJxl/ToJxl write every frame of an image with several frames, and Image.CreateFrameWriter writes frame by frame (forward only, one encoded frame and the previous canvas held). Durations in milliseconds, LoopCount as plays, each frame cropped to what changed; identical frames extend the previous one. Lossless round trips are exact, also through djxl; still images are written byte for byte as in 0.8.13. Requires PictureSharp 0.9.1. See docs/releases/release-0.8.14.md and docs/design/0.8.14-animation-encode.md.</PackageReleaseNotes>
+    <PackageReleaseNotes>0.8.15: photon noise and splines are decoded like djxl (Image.Load, Identify, the frame reader and JxlLayers; the same pixels at every thread count), and JxlEncoderOptions.PhotonNoiseIso adds film grain like cjxl --photon_noise_iso to lossy output. Requires PictureSharp 0.9.1. See docs/releases/release-0.8.15.md and docs/design/0.8.15-noise-splines.md.</PackageReleaseNotes>
   </PropertyGroup>
   <ItemGroup><PackageReference Include="PictureSharp" Version="$(PictureSharpVersion)" /></ItemGroup>
   <ItemGroup>

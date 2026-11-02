@@ -22,7 +22,7 @@ public sealed class JxlAnimationTests
         Oracle.EnumerateObject().Where(file => file.Value.GetProperty("animated").GetBoolean()).Select(file => file.Name);
 
     private static IEnumerable<string> ConformanceFiles() =>
-        new[] { "animation_icos4d", "animation_icos4d_5", "animation_newtons_cradle" }
+        new[] { "animation_icos4d", "animation_icos4d_5", "animation_newtons_cradle", "animation_spline", "animation_spline_5" }
             .Select(name => Path.Combine(Conformance, name, "input.jxl")).Where(File.Exists);
 
     private static DecoderOptions Oriented(DecoderOptions? options = null) => Options(options) with { ApplyExifOrientation = true };
@@ -249,17 +249,6 @@ public sealed class JxlAnimationTests
             double[] seconds = [.. test.RootElement.GetProperty("frames").EnumerateArray().Select(frame => frame.GetProperty("duration").GetDouble())];
             using Image image = Image.Load(path, Options());
             await Assert.That(image.Frames.Select(frame => Math.Round(frame.Duration.TotalSeconds, 6))).IsEquivalentTo(seconds.Select(s => Math.Round(s, 6)));
-        }
-    }
-
-    [Test]
-    public async Task Conformance_SplineAnimationsAreNotSupportedYet()
-    {
-        foreach (string name in new[] { "animation_spline", "animation_spline_5" })
-        {
-            string path = Path.Combine(Conformance, name, "input.jxl");
-            if (!File.Exists(path)) continue;
-            await Assert.That(() => Image.Load(path, Options())).Throws<NotSupportedException>().WithMessageContaining("splines");
         }
     }
 }

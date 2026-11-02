@@ -243,6 +243,7 @@ internal sealed partial class JxlEncoder
                         : wide ? AlphaPlane(pixels64.Span, cancellationToken) : AlphaPlane(pixels.Span, cancellationToken);
                     var settings = JxlLossySettings.Create(Math.Max(plan.Distance, JxlLossySettings.MinDistance), options.Effort, resample: !plan.Alpha)
                         with { Parallelism = parallelism };
+                    settings = WithNoise(settings, options, width, height);
                     JxlVarDctEncoder.WriteFrame(writer, xyb, w, h, alphaPlane, codestreamMetadata, settings, cancellationToken, placement);
                 }
                 else

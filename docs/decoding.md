@@ -23,6 +23,7 @@ Still images and animations, lossy and lossless, as `cjxl` produces them:
 | Layers (0.8.10) | several frames blended into one image as `djxl` does by default (coalescing): cropped frames at any offset, Replace, Add, Blend, AlphaWeightedAdd and Mul for colour and each extra channel; read one by one with `JxlLayers` (0.8.11, [below](#layers)) |
 | Animations (0.8.12) | every frame `djxl` shows, as a full canvas with its duration, and the loop count ([below](#animations)) |
 | Rendering | Gaborish, edge-preserving filter, 2×/4×/8× upsampling, XYB and YCbCr to RGB |
+| Image features (0.8.15) | splines (drawn before upsampling) and photon noise (after upsampling), as libjxl draws them; the grain is seeded from the frame's position in the file, so every API and every thread count returns the same pixels |
 | Colour | RGB and grayscale with alpha; sRGB, linear, gamma, BT.709, DCI and PQ transfer functions |
 | Samples | integers up to 16 bits; lossy images of any declared depth |
 
@@ -30,7 +31,7 @@ Layers are blended in the image's colour encoding, as libjxl does. With `ColorCo
 image is then converted to sRGB in floating point (djxl cannot render blended XYB frames in another colour space);
 through an ICC profile a few more samples differ by 1 than for a single frame.
 
-`NotSupportedException`: photon noise and splines; float samples
+`NotSupportedException`: float samples
 (except XYB); HLG with XYB; CMYK and spot colours; premultiplied or float alpha.
 
 ### Conversion to 8 bits

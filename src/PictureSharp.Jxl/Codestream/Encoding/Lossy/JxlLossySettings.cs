@@ -47,6 +47,9 @@ internal sealed record JxlLossySettings
     /// </summary>
     public int Parallelism { get; init; } = JxlParallel.Sequential;
 
+    /// <summary>The noise LUT written with the frame (photon noise), or null for none.</summary>
+    public float[]? NoiseLut { get; init; }
+
     /// <summary>
     /// Settings for <paramref name="distance"/> (0.05–25) and <paramref name="effort"/> (1–9); without
     /// <paramref name="resample"/> the frame keeps its full size at every distance (images with alpha, which extra

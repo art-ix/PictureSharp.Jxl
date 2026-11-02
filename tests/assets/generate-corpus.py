@@ -337,7 +337,30 @@ LAYERS = {
     + layer(20, 40, 30, -4, 'kReplace'),
     'layers-orient3': BASE.format(bits=8, header='Orientation 3\n') + layer(24, 20, -6, 30, 'kAdd'),
 }
-LOSSY_LAYERS = {'layers-xyb'}
+
+
+# 0.8.15: noise and splines from jxl_from_tree (Spline: 3 colour DCTs, a sigma DCT and the control points; Noise: the
+# 8-entry LUT), rendered by djxl into djxl/*.png. noise-layers adds noise to frames that are not shown, which libjxl seeds
+# with nonvisible_frame_index.
+def spline(colors, sigma, points):
+    dct = lambda values: ' '.join(str(v) for v in (list(values) + [0] * 32)[:32])
+    return '\n'.join(['Spline', *[dct(c) for c in colors], dct(sigma), ' '.join(str(p) for p in points), 'EndSpline']) + '\n'
+
+
+SPLINES = (spline([(0.5, 0.1, -0.2), (0.3, 0.05), (0.2,)], (2, 0.5), [5, 10, 60, 80, 133, 20, 90, -3])
+           + spline([(-0.4,), (0.6,), (0.1,)], (1.2,), [5, 90, 40, 40]))
+NOISE = 'Noise 0.1 0.2 0.3 0.35 0.4 0.45 0.5 0.6\n'
+FEATURES = {
+    'splines-xyb': 'Width 140\nHeight 100\nXYB\n' + SPLINES + '- Set 0\n',
+    'splines-rgb': 'Width 140\nHeight 100\n' + SPLINES + 'if c > 0\n  - Set 100\n  - Gradient +3\n',
+    'splines-up2': 'Width 141\nHeight 101\nXYB\nUpsample 2\n' + SPLINES + '- Set 0\n',
+    'splines-noise': 'Width 140\nHeight 100\nXYB\nGaborish\nEPF 2\nSplineQuantizationAdjustment 3\n' + SPLINES + NOISE + '- Set 0\n',
+    'noise-up4': 'Width 37\nHeight 59\nXYB\nUpsample 4\n' + NOISE + '- Set 0\n',
+    'noise-groups': 'Width 300\nHeight 200\nXYB\nGroupShift 0\n' + NOISE + '- Set 0\n',
+    'noise-layers': BASE.format(bits=8, header=NOISE) + layer(30, 20, 5, 5, 'kAdd', last=False) + layer(20, 40, 30, 4, 'kMul'),
+}
+LAYERS.update(FEATURES)
+LOSSY_LAYERS = {'layers-xyb', *FEATURES}
 
 # Animations cjxl cannot write, from jxl_anim_gen (0.8.12; spec format in tests/assets/tools/jxl_anim_gen.cc). The
 # encoder keeps slot 3 for patches, so the specs use slots 0-2.
@@ -398,7 +421,7 @@ frame duration=30 save=1
 frame duration=30 x0=14 y0=2 w=8 h=12 blend=add source=1
 """,
 }
-LOSSY_ANIMATIONS = {'anim-lossy', 'anim-gray', 'anim-vardct-alpha'}
+LOSSY_ANIMATIONS = {'anim-lossy', 'anim-gray', 'anim-vardct-alpha', 'anim-noise'}
 
 
 def main():
@@ -467,6 +490,7 @@ def main():
             # 0.8.12: APNG (ticks 1000/1) and GIF (100/1) through cjxl, cropped frames blending onto slot 1.
             'anim-lossy': ('anim-photo.png', '-d', '1'),
             'anim-gray': ('anim-gray.png', '-d', '1'),
+            'anim-noise': ('anim-photo.png', '-d', '1', '--photon_noise_iso=6400'),
             'anim-crop': ('anim-sprite.png', '-d', '0'),
             'anim-gif': ('anim-sprite.gif', '-d', '0'),
             'container-jxlc': ('rgb.png', '-d', '0', '--container=1'),
@@ -506,8 +530,15 @@ def main():
             'lossy-patches': ('text.png', '-d', '1'),
             'jpeg-420': ('q90-420.jpg', '--lossless_jpeg=1'),
             'jpeg-444': ('q90-444.jpg', '--lossless_jpeg=1'),
-            # Valid but not rendered yet: photon noise.
+            # 0.8.15: photon noise (cjxl --photon_noise_iso), also on alpha, gray, 16-bit, upsampled, Modular and groups.
             'lossy-noise': ('photo.png', '-d', '1', '--photon_noise_iso=3200'),
+            'noise-iso100': ('photo.png', '-d', '1', '--photon_noise_iso=100'),
+            'noise-iso51200': ('groups-lossy.png', '-d', '2', '--photon_noise_iso=51200'),
+            'noise-alpha': ('photo-alpha.png', '-d', '1', '--photon_noise_iso=6400'),
+            'noise-gray': ('photo-gray.png', '-d', '1', '--photon_noise_iso=6400'),
+            'noise-16bit': ('rgb16.png', '-d', '1', '--photon_noise_iso=6400'),
+            'noise-resampling': ('photo.png', '-d', '2', '--resampling=2', '--photon_noise_iso=6400'),
+            'noise-modular': ('photo.png', '-d', '1', '-m', '1', '--photon_noise_iso=6400'),
         }
         cases.update(lossy)
         # XYB with an ICC profile: rendered in the profile's colour space and compared with cms/*.png.

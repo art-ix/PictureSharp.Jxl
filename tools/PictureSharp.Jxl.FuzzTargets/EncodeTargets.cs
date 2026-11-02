@@ -35,7 +35,7 @@ public static class EncodeTargets
     /// Input layout: byte 0 flags as <c>diff-encode</c> (bit 0 lossless, 1 16-bit, 2 alpha, 3 gray, 4 ICC, 5-7
     /// pattern), byte 1 effort, byte 2 distance, bytes 3-6 width and height, byte 7 (bits 0-1 size shift, 2-3 alpha
     /// kind, 4 CompressMetadata, 5 EXIF, 6 XMP, 7 metadata bytes random), byte 8 (bit 0 quality instead of distance,
-    /// the rest the quality), the rest the pixel noise.
+    /// the rest the quality; with a distance, bit 1 PhotonNoiseIso and bits 2-7 its ISO), the rest the pixel noise.
     /// </summary>
     private static void Encode(byte[] data)
     {
@@ -56,16 +56,19 @@ public static class EncodeTargets
         if (exif) source.Metadata.Exif = random ? [.. noise[..Math.Min(noise.Length, 64)]] : Exif(noise);
         if (xmp) source.Metadata.Xmp = random ? [.. noise[..Math.Min(noise.Length, 64)]] : Xmp(noise);
         bool quality = !lossless && (data[8] & 1) != 0;
+        // 0.8.15: photon noise on lossy distance encodes (byte 8 is free unless quality is used).
+        float? iso = !lossless && !quality && (data[8] & 2) != 0 ? 50f * (1 << (data[8] >> 2) % 11) : null;
         JxlEncoderOptions Options(int threads) => new()
         {
             Configuration = FuzzTargets.Configuration, Effort = effort, CompressMetadata = compress, MaxDegreeOfParallelism = threads,
             Distance = lossless ? 0f : quality ? null : Distances[data[2] % Distances.Length],
             Quality = quality ? Math.Min(data[8] >> 1, 100) : JxlEncoderOptions.DefaultQuality,
+            PhotonNoiseIso = iso,
         };
 
         string label = $"{width}x{height} {(wide ? 16 : 8)}-bit{(alpha ? $" alpha{alphaKind}" : "")}{(gray ? " gray" : "")}{(icc ? " icc" : "")}"
             + $"{(exif ? " exif" : "")}{(xmp ? " xmp" : "")}{(random && (exif || xmp) ? " random" : "")} pattern {pattern} e{effort} "
-            + (lossless ? "d0" : quality ? $"q{Options(1).Quality}" : $"d{Options(1).Distance}");
+            + (lossless ? "d0" : quality ? $"q{Options(1).Quality}" : $"d{Options(1).Distance}") + (iso is null ? "" : $" iso{iso}");
         byte[] encoded;
         try
         {
@@ -118,7 +121,7 @@ public static class EncodeTargets
     /// 0.8.14 (docs/design/0.8.14-animation-encode.md): an animation built from a parameter blob is written with
     /// <c>Image.Save</c> at 1 and 4 threads (same bytes) and with the frame writer, and both decode to the frames a decoder
     /// shows: identical neighbours merged, zero-duration frames before others dropped; lossless exactly, lossy with exact
-    /// alpha. Layout: byte 0 (bit 0 lossless, 1 16-bit, 2 alpha, 3 gray, 4-7 effort), byte 1 distance, bytes 2-3 width
+    /// alpha. Layout: byte 0 (bit 0 lossless, 1 16-bit, 2 alpha, 3 gray, 4-7 effort), byte 1 distance (bit 7 PhotonNoiseIso, bits 4-6 its ISO), bytes 2-3 width
     /// and height (1-64), byte 4 frame count (2-9) and loops, then per frame 7 bytes: rectangle x, y, width, height
     /// (0 = unchanged), colour R, G (B and alpha from them) and duration (ms, 0-255).
     /// </summary>
@@ -149,14 +152,17 @@ public static class EncodeTargets
             }
         }
 
+        // 0.8.15: photon noise on lossy animations when the high bit of the distance byte is set.
+        float? iso = !lossless && (data[1] & 0x80) != 0 ? 400f * (1 + (data[1] >> 4 & 7)) : null;
         JxlEncoderOptions Options(int threads) => new()
         {
             Configuration = FuzzTargets.Configuration, Effort = effort, MaxDegreeOfParallelism = threads,
             Distance = lossless ? 0f : Distances[data[1] % Distances.Length],
+            PhotonNoiseIso = iso,
         };
 
         string label = $"{width}x{height}x{count} {(wide ? 16 : 8)}-bit{(alpha ? " alpha" : "")}{(gray ? " gray" : "")} e{effort} "
-            + (lossless ? "d0" : $"d{Options(1).Distance}");
+            + (lossless ? "d0" : $"d{Options(1).Distance}") + (iso is null ? "" : $" iso{iso}");
         byte[] saved = Encoded(source, Options(1), label);
         if (!Encoded(source, Options(4), label).AsSpan().SequenceEqual(saved)) throw new FuzzMismatchException($"{label}: 4 threads write other bytes");
         var written = new MemoryStream();

@@ -37,12 +37,19 @@ internal sealed class JxlFrameDecoder
     private JxlPatch[] patches = [];
     private readonly JxlColorTarget? colorTarget;
     private readonly JxlJpegData? jpeg;
+    private readonly (int Visible, int Nonvisible) frameIndex;
+    private JxlRenderFeatures? features;
 
+    /// <summary>
+    /// <paramref name="frameIndex"/> is libjxl's (visible_frame_index, nonvisible_frame_index) of the frame, which seeds
+    /// its noise.
+    /// </summary>
     public JxlFrameDecoder(JxlFrameHeader frame, JxlHeaders headers, JxlReferenceFrames references,
         CancellationToken cancellationToken, JxlColorTarget? colorTarget = null, JxlJpegData? jpeg = null, JxlBufferScope? buffers = null,
-        int parallelism = JxlParallel.Sequential)
+        int parallelism = JxlParallel.Sequential, (int Visible, int Nonvisible) frameIndex = default)
     {
         this.frame = frame;
+        this.frameIndex = frameIndex;
         Parallelism = parallelism;
         this.buffers = buffers;
         this.jpeg = jpeg;
@@ -80,8 +87,21 @@ internal sealed class JxlFrameDecoder
             patches = JxlPatchReader.Read(ref reader, frame.XSizePadded, frame.YSizePadded, metadata.ExtraChannels.Count, references);
         }
 
+        JxlSplineData? splines = frame.HasSplines ? JxlSplineReader.Read(ref reader, frame.XSize * frame.YSize) : null;
+        JxlNoiseParameters? noise = frame.HasNoise ? ReadNoise(ref reader) : null;
+        // libjxl skips the noise stage when no LUT entry is above 1e-3; such a frame renders as without noise.
+        if (noise is { HasAny: false }) noise = null;
         matrices.ReadDc(ref reader);
         varDct?.ReadGlobal(ref reader);
+        if (splines is not null || noise is not null)
+        {
+            // The colour correlation base of the frame (a Modular frame keeps the defaults 0 and 1).
+            float yToX = varDct?.BaseCorrelationX ?? 0.0f;
+            float yToB = varDct?.BaseCorrelationB ?? 1.0f;
+            JxlSplines? drawn = splines is null ? null : JxlSplines.Prepare(splines, frame.Width, frame.Height, yToX, yToB, cancellationToken);
+            features = new JxlRenderFeatures(noise, drawn, frameIndex.Visible, frameIndex.Nonvisible, yToX, yToB);
+        }
+
         if (varDct is not null && frame.UsesDcFrame)
         {
             varDct.UseDcFrame(references.GetDc(frame.DcLevel));
@@ -324,7 +344,7 @@ internal sealed class JxlFrameDecoder
     public JxlDecodedImage Finish(int alpha)
     {
         FinalizeSamples();
-        if (varDct is null && !metadata.XybEncoded && frame.ColorTransform == JxlColorTransform.None
+        if (varDct is null && !metadata.XybEncoded && frame.ColorTransform == JxlColorTransform.None && features is null
             && !frame.LoopFilter.Gaborish && frame.LoopFilter.EpfIterations == 0 && patches.Length == 0
             && frame.Upsampling == 1 && frame.ExtraChannelUpsampling.All(f => f == 1)
             && metadata.BitDepth.BitsPerSample <= 16 && metadata.ExtraChannels.All(c => c.BitDepth.BitsPerSample <= 16))
@@ -402,7 +422,8 @@ internal sealed class JxlFrameDecoder
             ? JxlEpfSigma.Compute(frame.LoopFilter, (int)frame.XSizeBlocks, (int)frame.YSizeBlocks,
                 varDct.QuantScale, varDct.QuantField, varDct.Sharpness, varDct.Varblocks, cancellationToken)
             : null;
-        var renderer = new JxlFrameRenderer(frame, headers, patches, references, sigma, cancellationToken, colorTarget, Parallelism, buffers);
+        var renderer = new JxlFrameRenderer(frame, headers, patches, references, sigma, cancellationToken, colorTarget, Parallelism, buffers,
+            features);
         color = renderer.Render(color, extraPlanes, colorTransform, deferChroma);
         return (color, extraPlanes, renderer.Rows);
     }
@@ -469,6 +490,14 @@ internal sealed class JxlFrameDecoder
         }
 
         return plane;
+    }
+
+    // DecodeNoise (dec_noise.cc): eight 10-bit LUT entries.
+    private static JxlNoiseParameters ReadNoise(ref JxlBitReader reader)
+    {
+        float[] lut = new float[JxlNoiseParameters.Points];
+        for (int i = 0; i < lut.Length; i++) lut[i] = reader.ReadBits(10) / JxlNoiseParameters.Precision;
+        return new JxlNoiseParameters(lut);
     }
 
     private static int ClampedSize(int begin, int size, int end) => (long)begin + size <= end ? size : end > begin ? end - begin : 0;

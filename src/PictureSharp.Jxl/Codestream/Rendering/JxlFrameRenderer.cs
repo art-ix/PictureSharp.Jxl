@@ -12,7 +12,7 @@ namespace PictureSharp.Formats.Jxl.Codestream.Rendering;
 /// </summary>
 internal sealed class JxlFrameRenderer(JxlFrameHeader frame, JxlHeaders headers, JxlPatch[] patches,
     JxlReferenceFrames references, float[]? epfSigma, CancellationToken cancellationToken, JxlColorTarget? colorTarget = null,
-    int parallelism = JxlParallel.Sequential, JxlBufferScope? buffers = null)
+    int parallelism = JxlParallel.Sequential, JxlBufferScope? buffers = null, JxlRenderFeatures? features = null)
 {
     private JxlImageMetadata Metadata => headers.Metadata;
 
@@ -57,9 +57,16 @@ internal sealed class JxlFrameRenderer(JxlFrameHeader frame, JxlHeaders headers,
             JxlPatches.Apply(patches, color, extra, references, Metadata.ExtraChannels, cancellationToken);
         }
 
+        features?.Splines?.Draw(color, parallelism, cancellationToken);
         if (frame.Upsampling != 1)
         {
             UpsampleAll(color, lateExtraUpsampling ? extra : []);
+        }
+
+        if (features?.Noise is { } noise)
+        {
+            JxlNoise.Apply(color, frame, noise, features.VisibleIndex, features.NonvisibleIndex, features.YToX, features.YToB, parallelism,
+                cancellationToken, buffers);
         }
 
         if (colorTransform && color.Length == 3)
@@ -70,9 +77,9 @@ internal sealed class JxlFrameRenderer(JxlFrameHeader frame, JxlHeaders headers,
         return color;
     }
 
-    // Only chroma upsampling and the colour transform remain: no restoration, patches or upsampling.
+    // Only chroma upsampling and the colour transform remain: no restoration, patches, splines, upsampling or noise.
     private bool CanDeferChroma(JxlPlane[] color) =>
-        color.Length == 3 && !frame.LoopFilter.Gaborish && frame.LoopFilter.EpfIterations == 0 && patches.Length == 0 && frame.Upsampling == 1
+        color.Length == 3 && features?.Any != true && !frame.LoopFilter.Gaborish && frame.LoopFilter.EpfIterations == 0 && patches.Length == 0 && frame.Upsampling == 1
         && JxlYCbCrRows.Applies([frame.HShift(0), frame.HShift(1), frame.HShift(2)], [frame.VShift(0), frame.VShift(1), frame.VShift(2)]);
 
     // A gray plane becomes three when a later stage works on colour channels.
@@ -80,7 +87,7 @@ internal sealed class JxlFrameRenderer(JxlFrameHeader frame, JxlHeaders headers,
     {
         JxlLoopFilter filter = frame.LoopFilter;
         bool restore = filter.Gaborish || filter.EpfIterations > 0;
-        return color.Length == 1 && (restore || frame.Upsampling != 1 || patches.Length > 0 || !colorTransform)
+        return color.Length == 1 && (restore || frame.Upsampling != 1 || patches.Length > 0 || features?.Any == true || !colorTransform)
             ? [color[0], color[0].Clone(cancellationToken), color[0].Clone(cancellationToken)]
             : color;
     }

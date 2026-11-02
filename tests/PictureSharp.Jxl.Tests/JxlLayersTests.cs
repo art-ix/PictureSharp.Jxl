@@ -139,7 +139,8 @@ public sealed class JxlLayersTests
     {
         string? djxl = JxlDecodeOracleTests.Tool("djxl");
         Skip.Unless(djxl is not null, "djxl v0.12.0 is not available (PATH or JXL_TOOLS).");
-        var files = LayeredFiles.Select(CorpusPath).ToList();
+        // 0.8.15: layers with noise, including frames that are not shown (seeded by nonvisible_frame_index).
+        var files = LayeredFiles.Append("noise-layers.jxl").Select(CorpusPath).ToList();
         foreach (string name in new[] { "blendmodes", "mul_no_extra_channels", "sunset_logo" })
         {
             string path = Path.Combine(Conformance, name, "input.jxl");
@@ -154,7 +155,8 @@ public sealed class JxlLayersTests
             try
             {
                 await Assert.That(layered.Layers.Count).IsEqualTo(expected.Count);
-                bool lossy = JxlHeadersReader.Read(JxlContainer.Parse(File.ReadAllBytes(path)).Codestream).Metadata.XybEncoded;
+                bool lossy = JxlHeadersReader.Read(JxlContainer.Parse(File.ReadAllBytes(path)).Codestream).Metadata.XybEncoded
+                    || path.Contains("noise", StringComparison.Ordinal);
                 for (int i = 0; i < expected.Count; i++)
                 {
                     Image layer = layered.Layers[i].Image;
@@ -188,7 +190,6 @@ public sealed class JxlLayersTests
         await Assert.That(load!.Message).Contains("Image.Load");
         Assert.Throws<NotSupportedException>(() => JxlLayers.Identify(data.AsMemory(), Options()));
         Assert.Throws<NotSupportedException>(() => JxlLayers.Load(CorpusPath("animation.jxl"), Options()));
-        Assert.Throws<NotSupportedException>(() => JxlLayers.Identify(CorpusPath("lossy-noise.jxl"), Options()));
     }
 
     [Test]

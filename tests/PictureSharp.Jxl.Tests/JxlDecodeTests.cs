@@ -16,8 +16,8 @@ namespace PictureSharp.Formats.Jxl.Tests;
 /// </summary>
 public sealed class JxlDecodeTests
 {
-    // Valid files outside this version's subset: float samples and photon noise.
-    private static readonly string[] Unsupported = ["float32.jxl", "lossy-noise.jxl"];
+    // Valid files outside this version's subset: float samples.
+    private static readonly string[] Unsupported = ["float32.jxl"];
 
     public static IEnumerable<string> CorpusFiles()
     {
@@ -257,13 +257,6 @@ public sealed class JxlDecodeTests
         using var canceled = new CancellationTokenSource();
         await canceled.CancelAsync();
         await Assert.That(() => Image.Load(data, Options(), canceled.Token)).Throws<OperationCanceledException>();
-    }
-
-    [Test]
-    public async Task Decode_RejectsNoiseAsUnsupported()
-    {
-        await Assert.That(() => Image.Load(CorpusPath("lossy-noise.jxl"), Options())).Throws<NotSupportedException>()
-            .WithMessageContaining("noise");
     }
 
     [Test]

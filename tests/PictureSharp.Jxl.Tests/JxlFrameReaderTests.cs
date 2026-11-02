@@ -8,7 +8,7 @@ namespace PictureSharp.Formats.Jxl.Tests;
 /// </summary>
 public sealed class JxlFrameReaderTests
 {
-    private static readonly string[] Unsupported = ["float32.jxl", "lossy-noise.jxl"];
+    private static readonly string[] Unsupported = ["float32.jxl"];
 
     public static IEnumerable<string> Files() =>
         Directory.GetFiles(CorpusPath("")).Where(file => file.EndsWith(".jxl", StringComparison.Ordinal)).Select(Path.GetFileName)
