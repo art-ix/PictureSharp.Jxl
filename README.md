@@ -62,7 +62,7 @@ when reading the result too.
 Output matches djxl (libjxl 0.12.0): lossless exactly, lossy within 1 of 255, and files written here decode the same
 way with djxl.
 
-**Status:** early development (0.8.15). Not for production use yet; the API may change. CI runs on Linux, including a Native AOT build.
+CI runs on Linux, including a Native AOT build.
 
 Guides: [decoding](docs/decoding.md) · [encoding](docs/encoding.md) · [JPEG transcoding](docs/transcoding.md) · [metadata](docs/metadata.md) ·
 [architecture](docs/architecture.md) · [release notes](docs/releases)
