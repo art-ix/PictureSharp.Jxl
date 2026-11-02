@@ -37,6 +37,8 @@ PictureSharp.Formats.Jxl.JxlFormat
   PictureSharp.Formats.IImageFormatEncoder get_Encoder()
   PictureSharp.Formats.IImageFormatFrameDecoder FrameDecoder
   PictureSharp.Formats.IImageFormatFrameDecoder get_FrameDecoder()
+  PictureSharp.Formats.IImageFormatFrameEncoder FrameEncoder
+  PictureSharp.Formats.IImageFormatFrameEncoder get_FrameEncoder()
   PictureSharp.Formats.IImageFormatMetadataCodec MetadataCodec
   PictureSharp.Formats.IImageFormatMetadataCodec get_MetadataCodec()
   PictureSharp.ImageFormat Format

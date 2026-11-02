@@ -5,8 +5,8 @@ namespace PictureSharp.Formats.Jxl;
 /// <summary>
 /// The JPEG XL format plugin. It detects signatures, identifies raw codestreams and box containers (dimensions, colour
 /// description, alpha, orientation, frame count), decodes lossy and lossless still images, layered images and
-/// animations (also frame by frame), encodes still images lossily (VarDCT, the default) or losslessly and reads and
-/// edits the ICC profile, EXIF and XMP.
+/// animations (also frame by frame), encodes still images and animations (also frame by frame) lossily (VarDCT, the
+/// default) or losslessly and reads and edits the ICC profile, EXIF and XMP.
 /// </summary>
 public sealed class JxlFormat : IImageFormatModule
 {
@@ -37,8 +37,20 @@ public sealed class JxlFormat : IImageFormatModule
     /// </summary>
     public IImageFormatFrameDecoder FrameDecoder => JxlFrameReader.Instance;
 
-    /// <summary>Writes still images lossily or losslessly, with their metadata, as described on <see cref="JxlEncoderOptions"/>.</summary>
+    /// <summary>
+    /// Writes still images and animations lossily or losslessly, with their metadata, as described on
+    /// <see cref="JxlEncoderOptions"/>. An image with several frames becomes an animation: durations in milliseconds,
+    /// <c>LoopCount</c> as the number of plays, each frame cropped to what changed since the previous one.
+    /// </summary>
     public IImageFormatEncoder Encoder => JxlEncoder.Instance;
+
+    /// <summary>
+    /// Writes animations frame by frame for <c>Image.CreateFrameWriter</c>, as <see cref="Encoder"/> does, holding one
+    /// encoded frame and the previous canvas. The output is written forward only, so it needs no seekable stream. Later
+    /// frames are not known in advance, so the frames are stored as RGB (gray only with a gray ICC profile) with an alpha
+    /// channel; the decoded pixels are the same.
+    /// </summary>
+    public IImageFormatFrameEncoder FrameEncoder => JxlFrameWriter.Instance;
 
     /// <summary>
     /// Reads the ICC profile (or the enumerated colour as a colour description), EXIF and XMP, including

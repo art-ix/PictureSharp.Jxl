@@ -21,7 +21,7 @@ internal static class JxlVarDctEncoder
     /// alpha channel. The writer must be at a byte boundary and stays at one.
     /// </summary>
     public static void WriteFrame(JxlBitWriter writer, JxlImage3F xyb, int width, int height, int[]? alpha, JxlImageMetadata metadata,
-        JxlLossySettings settings, CancellationToken cancellationToken)
+        JxlLossySettings settings, CancellationToken cancellationToken, JxlFramePlacement? placement = null)
     {
         var header = new JxlFrameHeader
         {
@@ -33,6 +33,7 @@ internal static class JxlVarDctEncoder
             ExtraChannelUpsampling = alpha is null ? [] : [(uint)settings.Resampling],
             LoopFilter = new JxlLoopFilter { Gaborish = settings.Gaborish, EpfIterations = (uint)settings.EpfIterations },
         };
+        if (placement is not null) header = placement.ApplyTo(header);
         if (header.TocEntries > JxlToc.MaxEntries) throw JxlDescriptor.Unsupported("the image has too many groups to encode.");
         int frameWidth = (int)header.XSize;
         int frameHeight = (int)header.YSize;

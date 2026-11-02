@@ -61,7 +61,7 @@ images, contexts, options or pixels. A compiled boundary test checks signatures,
 
 ## Encode flow
 
-1. `JxlEncoder` reads the root frame directly and separates its samples into integer planes (gray if R = G = B, alpha if any pixel isn't opaque);
+1. `JxlEncoder` reads the frame directly and separates its samples into integer planes (gray if R = G = B, alpha if any pixel isn't opaque);
    `JxlMetadataWriter` maps ICC or colour description to `JxlColorEncoding` and EXIF orientation to the codestream.
 2. `JxlCodestreamWriter` writes signature, SizeHeader, ImageMetadata, transform data and ICC stream;
    `JxlModularEncoder` writes the frame: palette or RCT, 256×256 group layout, samples for `JxlTreeLearner`, tokens,
@@ -80,6 +80,15 @@ adaptive quantization, inverse Gaborish, chroma-from-luma, transform search, qua
 orders, tokens), writing AC metadata, DC and alpha via `JxlModularStreamSet`. Patches come first as a reference-only
 Modular frame (`JxlPatchEncoder`). The EPF search reconstructs with the decoder's `JxlVarDctFrame` and
 `JxlFrameRenderer`, so both sides share dequantization, transforms and filters.
+
+Animations (0.8.14) go through `JxlEncoder.AnimationWriter`, used by `Image.Save` for several frames and by
+`JxlFrameWriter`/`JxlFrameSink` for `Image.CreateFrameWriter`. It writes the headers with an animation header at the
+first frame, crops every later frame to the rectangle that differs from a copy of the previous canvas
+(`JxlFramePlacement`: origin, replace over slot 1, saved to slot 1, duration) and encodes it with the still-image frame
+encoders into its own buffers. The last encoded frame is held back; when the next frame arrives or the sequence
+completes it is written as is, or `JxlFrameHeaderReader`/`JxlTocReader` read its header back and `JxlHeaderWriter`
+writes it again with `is_last` or a longer duration (identical frames) before the unchanged sections. Pieces go to the
+output raw or as `jxlp` boxes.
 
 Encoder and public decoder are stateless (the decoder can be shared); sessions and frame decoders are single-use.
 Kernels are static; Modular transforms use their shared execution interface. Since 0.8.1 independent groups, tiles,
@@ -125,8 +134,8 @@ its ICC profile via `JxlIccTarget`) or sRGB for `ToSrgb`.
   The per-call integration budget accounts for reconstruction header fields and expanded auxiliary data before
   corresponding payload allocations. Streams are buffered; the limits are not a bound on all temporary memory.
 - **Animation (0.8.12):** displayed frames become `ImageFrame`s with durations and the loop count
-  (docs/design/0.8.12-animation.md); 0.8.13 reads them frame by frame (docs/design/0.8.13-frame-reader.md); writing
-  animations follows in 0.8.14.
+  (docs/design/0.8.12-animation.md); 0.8.13 reads them frame by frame (docs/design/0.8.13-frame-reader.md); 0.8.14
+  writes them, whole or frame by frame (docs/design/0.8.14-animation-encode.md).
 - **Performance:** benchmark before pooling, SIMD or parallel groups; keep scalar results unchanged.
 - **Parallelism (0.8.1):** `JxlParallel.For`/`ForWorkers`/`ForBands` is the only primitive: degree 1 is a plain loop
   on the calling thread; otherwise the exception of the lowest failed item is rethrown unchanged after the join.

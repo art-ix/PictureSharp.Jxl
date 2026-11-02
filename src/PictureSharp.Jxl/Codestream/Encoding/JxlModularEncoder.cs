@@ -14,7 +14,7 @@ namespace PictureSharp.Formats.Jxl.Codestream.Encoding;
 /// </summary>
 internal static class JxlModularEncoder
 {
-    private const int GroupSizeShift = 1;
+    internal const int GroupSizeShift = 1;
 
     /// <summary>
     /// Writes the frame header, TOC and sections of <paramref name="channels"/> (colour channels, then extra channels,

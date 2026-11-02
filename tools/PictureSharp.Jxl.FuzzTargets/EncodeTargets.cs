@@ -10,7 +10,7 @@ namespace PictureSharp.Formats.Jxl.Fuzz;
 /// </summary>
 public static class EncodeTargets
 {
-    public static readonly string[] Names = ["encode", "edit"];
+    public static readonly string[] Names = ["encode", "edit", "encode-frames"];
 
     public static void Run(string target, byte[] data)
     {
@@ -18,6 +18,7 @@ public static class EncodeTargets
         {
             case "encode": Encode(data); break;
             case "edit": Edit(data); break;
+            case "encode-frames": EncodeFrames(data); break;
             default: throw new ArgumentException($"Unknown target {target}.", nameof(target));
         }
     }
@@ -110,6 +111,101 @@ public static class EncodeTargets
             byte[]? decodedExif = decoded.Metadata.Exif;
             if (exif && !Same(decodedExif, source.Metadata.Exif) && !(random && decodedExif is null)) throw new FuzzMismatchException($"{label}: EXIF differs");
             if (xmp && !Same(decoded.Metadata.Xmp, source.Metadata.Xmp)) throw new FuzzMismatchException($"{label}: XMP differs");
+        }
+    }
+
+    /// <summary>
+    /// 0.8.14 (docs/design/0.8.14-animation-encode.md): an animation built from a parameter blob is written with
+    /// <c>Image.Save</c> at 1 and 4 threads (same bytes) and with the frame writer, and both decode to the frames a decoder
+    /// shows: identical neighbours merged, zero-duration frames before others dropped; lossless exactly, lossy with exact
+    /// alpha. Layout: byte 0 (bit 0 lossless, 1 16-bit, 2 alpha, 3 gray, 4-7 effort), byte 1 distance, bytes 2-3 width
+    /// and height (1-64), byte 4 frame count (2-9) and loops, then per frame 7 bytes: rectangle x, y, width, height
+    /// (0 = unchanged), colour R, G (B and alpha from them) and duration (ms, 0-255).
+    /// </summary>
+    private static void EncodeFrames(byte[] data)
+    {
+        if (data.Length < 5) return;
+        bool lossless = (data[0] & 1) != 0, wide = (data[0] & 2) != 0, alpha = (data[0] & 4) != 0, gray = (data[0] & 8) != 0;
+        int effort = 1 + (data[0] >> 4) % 7;
+        int width = 1 + data[2] % 64, height = 1 + data[3] % 64;
+        int count = 2 + data[4] % 8;
+        int loops = data[4] >> 3;
+        using Image source = DiffTargets.Synthetic(width, height, wide, alpha, gray, 0, data.AsSpan(5));
+        source.LoopCount = loops;
+        for (int i = 0, at = 5; i < count; i++, at += 7)
+        {
+            ReadOnlySpan<byte> step = at + 7 <= data.Length ? data.AsSpan(at, 7) : [0, 0, 0, 0, 0, 0, 40];
+            ImageFrame frame = i == 0 ? source.Frames.RootFrame : source.Frames.AddClone(source.Frames[i - 1]);
+            frame.Duration = TimeSpan.FromMilliseconds(step[6]);
+            int x0 = step[0] % width, y0 = step[1] % height, w = step[2] % (width - x0 + 1), h = step[3] % (height - y0 + 1);
+            byte r = step[4], g = gray ? r : step[5], b = gray ? r : (byte)(step[4] ^ step[5]), a = alpha ? (byte)(step[5] * 37) : (byte)255;
+            for (int y = y0; y < y0 + h; y++)
+            {
+                for (int x = x0; x < x0 + w; x++)
+                {
+                    if (wide) frame.SetPixel(x, y, new Rgba64((ushort)(r * 257 + (x & 1)), (ushort)(g * 257), (ushort)(b * 257), (ushort)(a * 257)));
+                    else frame.SetPixel(x, y, new Rgba32(r, g, b, a));
+                }
+            }
+        }
+
+        JxlEncoderOptions Options(int threads) => new()
+        {
+            Configuration = FuzzTargets.Configuration, Effort = effort, MaxDegreeOfParallelism = threads,
+            Distance = lossless ? 0f : Distances[data[1] % Distances.Length],
+        };
+
+        string label = $"{width}x{height}x{count} {(wide ? 16 : 8)}-bit{(alpha ? " alpha" : "")}{(gray ? " gray" : "")} e{effort} "
+            + (lossless ? "d0" : $"d{Options(1).Distance}");
+        byte[] saved = Encoded(source, Options(1), label);
+        if (!Encoded(source, Options(4), label).AsSpan().SequenceEqual(saved)) throw new FuzzMismatchException($"{label}: 4 threads write other bytes");
+        var written = new MemoryStream();
+        using (ImageFrameWriter writer = Image.CreateFrameWriter(written, source.Size, Options(1), new ImageFrameWriterOptions { LoopCount = loops }))
+        {
+            foreach (ImageFrame frame in source.Frames) writer.WriteAsync(frame).AsTask().GetAwaiter().GetResult();
+            writer.CompleteAsync().AsTask().GetAwaiter().GetResult();
+        }
+
+        // The frames a decoder shows.
+        var shown = new List<(ImageFrame Frame, double Ms)>();
+        foreach (ImageFrame frame in source.Frames)
+        {
+            if (shown.Count > 0 && shown[^1].Frame.GetPixelByteSpan().SequenceEqual(frame.GetPixelByteSpan()))
+                shown[^1] = (shown[^1].Frame, shown[^1].Ms + frame.Duration.TotalMilliseconds);
+            else shown.Add((frame, frame.Duration.TotalMilliseconds));
+        }
+
+        shown = [.. shown.Where((frame, index) => frame.Ms > 0 || index == shown.Count - 1)];
+        foreach ((string how, byte[] encoded) in new[] { ("Save", saved), ("frame writer", written.ToArray()) })
+        {
+            Image decoded;
+            try
+            {
+                decoded = Image.Load(encoded, new DecoderOptions { Configuration = FuzzTargets.Configuration, PreserveBitDepth = wide, MaxDegreeOfParallelism = 1 });
+            }
+            catch (Exception exception) when (FuzzTargets.IsAllowed(exception))
+            {
+                throw new FuzzMismatchException($"{label}: {how} output does not decode: {exception.Message}");
+            }
+
+            using (decoded)
+            {
+                if (decoded.FrameCount != shown.Count) throw new FuzzMismatchException($"{label}: {how}: {decoded.FrameCount} frames instead of {shown.Count}");
+                if (shown.Count > 1 && decoded.LoopCount != loops) throw new FuzzMismatchException($"{label}: {how}: loop count {decoded.LoopCount}");
+                for (int i = 0; i < shown.Count; i++)
+                {
+                    if (decoded.Frames[i].Duration.TotalMilliseconds != (shown.Count == 1 && count == 1 ? 0 : shown[i].Ms))
+                        throw new FuzzMismatchException($"{label}: {how} frame {i}: {decoded.Frames[i].Duration.TotalMilliseconds} ms instead of {shown[i].Ms}");
+                    ReadOnlySpan<byte> a = decoded.Frames[i].GetPixelByteSpan(), e = shown[i].Frame.GetPixelByteSpan();
+                    int sample = wide ? 2 : 1;
+                    for (int k = 0; k < a.Length; k++)
+                    {
+                        // Lossy frames keep alpha exactly; colour is checked by diff-encode against libjxl.
+                        bool alphaSample = k / sample % 4 == 3;
+                        if ((lossless || alphaSample) && a[k] != e[k]) throw new FuzzMismatchException($"{label}: {how} frame {i}: byte {k} is {a[k]}, not {e[k]}");
+                    }
+                }
+            }
         }
     }
 

@@ -218,13 +218,14 @@ internal static class JxlHeaderWriter
 
     /// <summary>
     /// A frame header as <see cref="IO.JxlFrameHeaderReader"/> reads it, for the frames this encoder writes: regular
-    /// or reference-only, one pass, no animation, replace blending, an optional custom size without an origin, and
-    /// loop filters with default parameters.
+    /// or reference-only, one pass, replace blending (from a reference slot when the frame is partial), an optional
+    /// custom size and origin, an animation duration without timecode, and loop filters with default parameters.
     /// </summary>
     public static void Frame(JxlBitWriter writer, JxlFrameHeader frame, JxlImageMetadata metadata)
     {
-        if (frame.Type is not (JxlFrameType.Regular or JxlFrameType.ReferenceOnly) || frame.Passes.Count != 1 || frame.X0 != 0 || frame.Y0 != 0
-            || metadata.Animation is not null || frame.Name.Length != 0)
+        if (frame.Type is not (JxlFrameType.Regular or JxlFrameType.ReferenceOnly) || frame.Passes.Count != 1
+            || (frame.Type != JxlFrameType.Regular && (frame.X0 != 0 || frame.Y0 != 0)) || metadata.Animation is { HaveTimecodes: true }
+            || frame.Name.Length != 0 || frame.Blending.Mode != JxlBlendMode.Replace || frame.ExtraChannelBlending.Any(b => b.Mode != JxlBlendMode.Replace))
         {
             throw new ArgumentException("The frame header cannot be written.", nameof(frame));
         }
@@ -256,8 +257,8 @@ internal static class JxlHeaderWriter
         {
             if (positioned)
             {
-                FrameCoordinate(writer, 0);
-                FrameCoordinate(writer, 0);
+                FrameCoordinate(writer, PackSigned(frame.X0));
+                FrameCoordinate(writer, PackSigned(frame.Y0));
             }
 
             FrameCoordinate(writer, frame.Width);
@@ -266,13 +267,18 @@ internal static class JxlHeaderWriter
 
         if (positioned)
         {
-            for (int i = 0; i <= metadata.ExtraChannels.Count; i++) writer.Write(2, 0);   // blend mode: replace
+            // Replace blending; a partial frame names the slot it is placed over.
+            BlendReplace(writer, frame.Blending, frame.IsPartial);
+            for (int i = 0; i < metadata.ExtraChannels.Count; i++) BlendReplace(writer, frame.ExtraChannelBlending.Count > i ? frame.ExtraChannelBlending[i] : frame.Blending, frame.IsPartial);
+            if (metadata.Animation is not null) JxlFieldWriter.U32(writer, frame.Duration, Val(0), Val(1), Bits32(8), Bits32(32));
             writer.Write(frame.IsLast);
         }
 
         bool last = positioned && frame.IsLast;
         if (!last) writer.Write(2, frame.SaveAsReference);
-        if (!last && (positioned ? !frame.IsPartial : frame.Type == JxlFrameType.ReferenceOnly))
+        // As the reader: a referenced full replace frame, or any reference-only frame, says where it is saved.
+        bool referenced = !last && (frame.Duration == 0 || frame.SaveAsReference != 0);
+        if (positioned ? referenced && !frame.IsPartial : frame.Type == JxlFrameType.ReferenceOnly)
         {
             writer.Write(frame.SaveBeforeColorTransform);
         }
@@ -280,6 +286,12 @@ internal static class JxlHeaderWriter
         writer.Write(2, 0);                                       // name: empty
         LoopFilter(writer, frame.LoopFilter, frame.Encoding == JxlFrameEncoding.Modular);
         JxlFieldWriter.NoExtensions(writer);
+    }
+
+    private static void BlendReplace(JxlBitWriter writer, JxlBlendingInfo blending, bool partial)
+    {
+        writer.Write(2, 0);                                       // blend mode: replace
+        if (partial) writer.Write(2, blending.Source);
     }
 
     private static uint UpsamplingSelector(uint upsampling) => upsampling switch

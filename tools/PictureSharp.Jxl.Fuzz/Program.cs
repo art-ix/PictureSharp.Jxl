@@ -118,6 +118,10 @@ List<FuzzSeed> LoadSeeds(string name, string corpus)
     {
         seeds = [.. EncodeTargetSeeds()];
     }
+    else if (target == "encode-frames")
+    {
+        seeds = [.. EncodeFramesSeeds()];
+    }
     else
     {
         string pattern = jpeg ? "*.jpg" : "*.jxl";
@@ -135,7 +139,7 @@ List<FuzzSeed> LoadSeeds(string name, string corpus)
     }
 
     if (seeds.Count == 0) throw new ArgumentException($"No seeds for {target} in {corpus}.");
-    if (target is not ("entropy" or "diff-encode" or "encode") && !jpeg)
+    if (target is not ("entropy" or "diff-encode" or "encode" or "encode-frames") && !jpeg)
     {
         foreach (FuzzSeed seed in seeds) seed.TraceFields(() => { using Image _ = Image.Load(seed.Data, FuzzTargets.DecodeOptions(seed.Data)); });
     }
@@ -166,6 +170,17 @@ static IEnumerable<FuzzSeed> EncodeTargetSeeds()
         byte[] data = [(byte)flags, (byte)random.Below(9), (byte)random.Below(13), (byte)width, (byte)(width >> 8), (byte)height, (byte)(height >> 8),
             (byte)random.Next(), (byte)random.Next(), .. Enumerable.Range(0, 64 + random.Below(512)).Select(_ => (byte)random.Next())];
         yield return new FuzzSeed($"encode-{flags:x2}", data);
+    }
+}
+
+// encode-frames inputs (EncodeTargets.EncodeFrames): every flag combination of byte 0, random frames.
+static IEnumerable<FuzzSeed> EncodeFramesSeeds()
+{
+    var random = new FuzzRandom(90, 0);
+    for (int flags = 0; flags < 256; flags++)
+    {
+        byte[] data = [(byte)flags, .. Enumerable.Range(0, 4 + 7 * 9).Select(_ => (byte)random.Next())];
+        yield return new FuzzSeed($"encode-frames-{flags:x2}", data);
     }
 }
 

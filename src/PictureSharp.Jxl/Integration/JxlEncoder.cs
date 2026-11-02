@@ -45,6 +45,12 @@ internal sealed partial class JxlEncoder : IImageFormatEncoder<JxlEncoderOptions
 
     private static void EncodeTo(Image image, Stream output, JxlEncoderOptions options, CancellationToken cancellationToken)
     {
+        if (image.FrameCount > 1)
+        {
+            EncodeAnimation(image, output, options, cancellationToken);
+            return;
+        }
+
         using var buffers = new JxlBufferScope();
         using var workingBuffers = new JxlBufferScope();
         var writer = new JxlBitWriter(buffers, segmented: true);
@@ -56,30 +62,11 @@ internal sealed partial class JxlEncoder : IImageFormatEncoder<JxlEncoderOptions
         ReadOnlySpan<Rgba64> pixels64 = wide ? image.Frames.RootFrame.GetPixelSpan<Rgba64>() : default;
         int bitDepth = wide ? 16 : 8;
         ImageMetadata metadata = image.Metadata;
-        byte[]? icc = options.Metadata.HasFlag(MetadataKinds.Icc) ? metadata.IccProfile : null;
-        JxlColorSpace? iccSpace = icc is null ? null
-            : JxlMetadataWriter.RequireIccColorSpace(icc, "JPEG XL images can only carry RGB or gray ICC profiles without CMYK samples.");
         bool grayPixels = wide ? IsGray(pixels64) : IsGray(pixels);
-        bool gray = iccSpace switch
-        {
-            null => grayPixels,
-            JxlColorSpace.Gray => grayPixels ? true : throw new NotSupportedException("A gray ICC profile cannot describe an image with colour pixels."),
-            _ => false,
-        };
         bool alpha = !image.Frames.RootFrame.IsOpaque();
-        JxlColorEncoding encoding = JxlMetadataWriter.Encoding(metadata, gray);
-        uint orientation = JxlMetadataWriter.Orientation(metadata);
-        float distance = options.EffectiveDistance;
-        // As libjxl for XYB images: a profile an enumerated encoding describes is stored as that encoding, so decoders
-        // return pixels in it rather than in linear sRGB. Lossless frames keep the profile.
-        if (distance != 0 && icc is not null && JxlIccEncoding.TryEnumerate(icc, gray) is { } enumerated)
-        {
-            (encoding, icc) = (enumerated, null);
-        }
-
-        JxlXybInput? xybInput = distance == 0 ? null
-            : JxlXybInput.TryCreate(icc is null ? encoding : new JxlColorEncoding { WantIcc = true, ColorSpace = gray ? JxlColorSpace.Gray : JxlColorSpace.Rgb },
-                icc is null ? null : JxlIccTarget.TryCreate(icc, gray), JxlToneMapping.Default.IntensityTarget, bitDepth);
+        EncodePlan plan = Plan(metadata, options, grayPixels, alpha, bitDepth);
+        (bool gray, JxlColorEncoding encoding, byte[]? icc, uint orientation, float distance, JxlXybInput? xybInput) =
+            (plan.Gray, plan.Encoding, plan.Icc, plan.Orientation, plan.Distance, plan.XybInput);
 
         if (xybInput is not null)
         {
@@ -106,10 +93,7 @@ internal sealed partial class JxlEncoder : IImageFormatEncoder<JxlEncoderOptions
         }
 
         workingBuffers.Dispose();
-        JxlBox[] boxes = JxlMetadataWriter.DescriptiveBoxes(
-            options.Metadata.HasFlag(MetadataKinds.Exif) ? metadata.Exif : null,
-            options.Metadata.HasFlag(MetadataKinds.Xmp) ? metadata.Xmp : null,
-            options.CompressMetadata);
+        JxlBox[] boxes = DescriptiveBoxes(metadata, options);
         int level = ConformanceLevel(width, height);
         JxlCodestream codestream = writer.AsCodestream();
         if (boxes.Length > 0 || level != JxlContainer.DefaultLevel) JxlContainerWriter.Write(output, codestream, boxes, level, cancellationToken);
@@ -119,6 +103,11 @@ internal sealed partial class JxlEncoder : IImageFormatEncoder<JxlEncoderOptions
             output.Write(segment.Span);
         }
     }
+
+    private static JxlBox[] DescriptiveBoxes(ImageMetadata metadata, JxlEncoderOptions options) => JxlMetadataWriter.DescriptiveBoxes(
+        options.Metadata.HasFlag(MetadataKinds.Exif) ? metadata.Exif : null,
+        options.Metadata.HasFlag(MetadataKinds.Xmp) ? metadata.Xmp : null,
+        options.CompressMetadata);
 
     // The XYB planes of the pixels; gray pixels have equal channels.
     private static JxlImage3F ToXyb(ReadOnlyMemory<Rgba32> pixels, int width, int height, JxlXybInput input, CancellationToken cancellationToken,
@@ -186,6 +175,43 @@ internal sealed partial class JxlEncoder : IImageFormatEncoder<JxlEncoderOptions
 
         return (color, alphaPlane);
     }
+
+    /// <summary>
+    /// The colour description every frame shares: gray or RGB, alpha, the colour encoding or ICC profile, the
+    /// orientation, the distance and, for lossy frames, the conversion to XYB (null: the frames are lossless).
+    /// </summary>
+    private sealed record EncodePlan(bool Gray, bool Alpha, JxlColorEncoding Encoding, byte[]? Icc, uint Orientation, float Distance,
+        JxlXybInput? XybInput, int BitDepth);
+
+    // grayPixels null: the pixels are not known yet, so the frames are gray only with a gray ICC profile.
+    private static EncodePlan Plan(ImageMetadata metadata, JxlEncoderOptions options, bool? grayPixels, bool alpha, int bitDepth)
+    {
+        byte[]? icc = options.Metadata.HasFlag(MetadataKinds.Icc) ? metadata.IccProfile : null;
+        JxlColorSpace? iccSpace = icc is null ? null
+            : JxlMetadataWriter.RequireIccColorSpace(icc, "JPEG XL images can only carry RGB or gray ICC profiles without CMYK samples.");
+        bool gray = iccSpace switch
+        {
+            null => grayPixels ?? false,
+            JxlColorSpace.Gray => (grayPixels ?? true) ? true : throw GrayProfileMismatch(),
+            _ => false,
+        };
+        JxlColorEncoding encoding = JxlMetadataWriter.Encoding(metadata, gray);
+        uint orientation = JxlMetadataWriter.Orientation(metadata);
+        float distance = options.EffectiveDistance;
+        // As libjxl for XYB images: a profile an enumerated encoding describes is stored as that encoding, so decoders
+        // return pixels in it rather than in linear sRGB. Lossless frames keep the profile.
+        if (distance != 0 && icc is not null && JxlIccEncoding.TryEnumerate(icc, gray) is { } enumerated)
+        {
+            (encoding, icc) = (enumerated, null);
+        }
+
+        JxlXybInput? xybInput = distance == 0 ? null
+            : JxlXybInput.TryCreate(icc is null ? encoding : new JxlColorEncoding { WantIcc = true, ColorSpace = gray ? JxlColorSpace.Gray : JxlColorSpace.Rgb },
+                icc is null ? null : JxlIccTarget.TryCreate(icc, gray), JxlToneMapping.Default.IntensityTarget, bitDepth);
+        return new EncodePlan(gray, alpha, encoding, icc, orientation, distance, xybInput, bitDepth);
+    }
+
+    private static NotSupportedException GrayProfileMismatch() => new("A gray ICC profile cannot describe an image with colour pixels.");
 
     private static int ConformanceLevel(int width, int height) =>
         width > Level5MaxDimension || height > Level5MaxDimension || (long)width * height > Level5MaxPixels

@@ -10,8 +10,8 @@ image.SaveAsJxl("exact.jxl", new JxlEncoderOptions { Distance = 0 });     // los
 byte[] data = image.ToJxl(new JxlEncoderOptions { CompressMetadata = true });
 ```
 
-`SaveAsJxl`, `SaveAsJxlAsync`, `ToJxl` and `image.Save("photo.jxl")` write the root frame (first frame of an
-animation) with ICC, EXIF and XMP. The default is lossy VarDCT in XYB at distance 1.0, effort 7, like `cjxl`.
+`SaveAsJxl`, `SaveAsJxlAsync`, `ToJxl` and `image.Save("photo.jxl")` write the image with ICC, EXIF and XMP; an
+image with several frames becomes an animation ([below](#animations)). The default is lossy VarDCT in XYB at distance 1.0, effort 7, like `cjxl`.
 `Quality = 100` or `Distance = 0` is lossless. The stream is left open.
 
 Original JPEG bytes can be preserved with the separate [JPEG transcoder](transcoding.md). Loading a JPEG into an
@@ -122,6 +122,37 @@ Sizes against `cjxl` 0.12.0 (bytes, `--num_threads=1`):
 Encoding times per effort are in the [speed measurements](benchmarks/speed.md#encoder-work-083).
 
 Output is a bare codestream, or a container when EXIF or XMP are written; images beyond level 5 get a `jxll` box.
+
+## Animations
+
+Since 0.8.14 every frame is written, and `Image.CreateFrameWriter` writes one frame at a time:
+
+```csharp
+using Image clip = Image.Load("clip.gif");
+clip.SaveAsJxl("clip.jxl", new JxlEncoderOptions { Distance = 0 });   // all frames, durations and LoopCount
+
+await using ImageFrameWriter writer = Image.CreateFrameWriter("long.jxl", new Size(640, 360), new JxlEncoderOptions(),
+    new ImageFrameWriterOptions { LoopCount = 0 });                   // 0 = forever
+foreach (Image frame in frames) await writer.WriteAsync(frame, TimeSpan.FromMilliseconds(40));
+await writer.CompleteAsync();
+```
+
+- **Timing:** 1000 ticks per second, so durations are rounded to milliseconds (up to 2^32 − 1 ms per frame, otherwise
+  `NotSupportedException`). `LoopCount` is the number of plays, 0 forever.
+- **Changed rectangle:** the first frame covers the canvas; each later frame holds only the rectangle that differs
+  from the previous frame and replaces that part of the previous canvas (reference slot 1), like the frame rectangles
+  `cjxl` keeps from APNG and GIF input. Lossy frames are compared on the source pixels, so the unchanged area shows the
+  earlier decoded frame.
+- **Identical frames** add their duration to the previous frame instead of being written again (as the GIF encoder
+  of PictureSharp does), and a **zero-duration frame** other than the last is merged into the next one by every JPEG XL
+  decoder. In both cases `Image.Load` returns fewer frames than were written; the animation looks the same.
+- **Options** (distance, effort, lossless, parallelism, metadata) apply to every frame as for still images. A
+  single-frame image is written as a still image, byte for byte as before.
+- **Frame writer:** later frames are not known when the headers are written, so frames are stored as RGB with an
+  alpha channel (gray only with a gray ICC profile, then every frame must be gray); the decoded pixels are the same,
+  an opaque alpha plane costs a few bytes per frame. The bit depth is that of the first frame (8 or 16 bits). The output
+  is written forward only and needs no seekable stream; the writer holds one encoded frame and the previous canvas.
+  Exif and XMP go into a container with one `jxlp` box per frame (at most 2^20 boxes).
 
 ## Exactness
 

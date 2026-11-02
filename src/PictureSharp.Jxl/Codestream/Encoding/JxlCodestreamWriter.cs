@@ -39,23 +39,8 @@ internal static class JxlCodestreamWriter
             throw new ArgumentException("The colour encoding does not match the number of colour channels.", nameof(image));
         }
 
-        var metadata = new JxlImageMetadata
-        {
-            Orientation = image.Orientation,
-            Modular16BitBufferSufficient = image.BitDepth <= 12,
-            BitDepth = new JxlBitDepth(false, (uint)image.BitDepth, 0),
-            ExtraChannels = image.Alpha is null ? [] :
-                [image.BitDepth == 8 ? JxlExtraChannelInfo.Default : JxlExtraChannelInfo.Default with { BitDepth = new JxlBitDepth(false, (uint)image.BitDepth, 0) }],
-            XybEncoded = false,
-            Color = color,
-        };
-
-        JxlHeaderWriter.Signature(writer);
-        JxlHeaderWriter.Size(writer, new JxlSizeHeader((uint)image.Width, (uint)image.Height));
-        JxlHeaderWriter.ImageMetadata(writer, metadata);
-        JxlHeaderWriter.DefaultTransformData(writer);
-        if (image.Icc is not null) Icc(writer, image.Icc);
-        writer.ZeroPadToByte();
+        JxlImageMetadata metadata = Metadata(color, image.Alpha is not null, image.BitDepth, image.Orientation, xyb: false);
+        Headers(writer, image.Width, image.Height, metadata, image.Icc);
 
         var channels = new List<JxlChannel>();
         foreach (int[] plane in image.Alpha is null ? image.Color : [.. image.Color, image.Alpha])
@@ -87,24 +72,37 @@ internal static class JxlCodestreamWriter
             throw new ArgumentException("The colour encoding does not match the image.", nameof(image));
         }
 
-        var metadata = new JxlImageMetadata
-        {
-            Orientation = image.Orientation,
-            Modular16BitBufferSufficient = image.BitDepth <= 12,
-            BitDepth = new JxlBitDepth(false, (uint)image.BitDepth, 0),
-            ExtraChannels = image.Alpha is null ? [] :
-                [image.BitDepth == 8 ? JxlExtraChannelInfo.Default : JxlExtraChannelInfo.Default with { BitDepth = new JxlBitDepth(false, (uint)image.BitDepth, 0) }],
-            XybEncoded = true,
-            Color = color,
-        };
+        JxlImageMetadata metadata = Metadata(color, image.Alpha is not null, image.BitDepth, image.Orientation, xyb: true);
+        Headers(writer, image.Width, image.Height, metadata, image.Icc);
+        JxlVarDctEncoder.WriteFrame(writer, image.Xyb, image.Width, image.Height, image.Alpha, metadata, image.Settings, cancellationToken);
+    }
 
+    /// <summary>
+    /// The image metadata of the frames this encoder writes: <paramref name="color"/>, an optional alpha channel of the
+    /// same bit depth, the orientation and, for animations, the animation header.
+    /// </summary>
+    public static JxlImageMetadata Metadata(JxlColorEncoding color, bool alpha, int bitDepth, uint orientation, bool xyb,
+        JxlAnimationHeader? animation = null) => new()
+    {
+        Orientation = orientation,
+        Animation = animation,
+        Modular16BitBufferSufficient = bitDepth <= 12,
+        BitDepth = new JxlBitDepth(false, (uint)bitDepth, 0),
+        ExtraChannels = !alpha ? [] :
+            [bitDepth == 8 ? JxlExtraChannelInfo.Default : JxlExtraChannelInfo.Default with { BitDepth = new JxlBitDepth(false, (uint)bitDepth, 0) }],
+        XybEncoded = xyb,
+        Color = color,
+    };
+
+    /// <summary>The signature, size header, image metadata and ICC profile; the writer is byte-aligned afterwards.</summary>
+    public static void Headers(JxlBitWriter writer, int width, int height, JxlImageMetadata metadata, byte[]? icc)
+    {
         JxlHeaderWriter.Signature(writer);
-        JxlHeaderWriter.Size(writer, new JxlSizeHeader((uint)image.Width, (uint)image.Height));
+        JxlHeaderWriter.Size(writer, new JxlSizeHeader((uint)width, (uint)height));
         JxlHeaderWriter.ImageMetadata(writer, metadata);
         JxlHeaderWriter.DefaultTransformData(writer);
-        if (image.Icc is not null) Icc(writer, image.Icc);
+        if (icc is not null) Icc(writer, icc);
         writer.ZeroPadToByte();
-        JxlVarDctEncoder.WriteFrame(writer, image.Xyb, image.Width, image.Height, image.Alpha, metadata, image.Settings, cancellationToken);
     }
 
     /// <summary>

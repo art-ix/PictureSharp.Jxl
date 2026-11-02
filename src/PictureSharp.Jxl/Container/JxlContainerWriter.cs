@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using PictureSharp.Formats.Jxl.Codestream.IO;
 using System.IO.Compression;
 
@@ -36,16 +37,35 @@ internal static class JxlContainerWriter
 
     public static void Write(Stream output, JxlCodestream codestream, IEnumerable<JxlBox> metadata, int level = JxlContainer.DefaultLevel, CancellationToken cancellationToken = default)
     {
-        output.Write(JxlDescriptor.ContainerSignature);
-        WriteBox(output, new JxlBox(JxlBoxType.FileType, FileTypeContent));
-        if (level != JxlContainer.DefaultLevel) WriteBox(output, new JxlBox(JxlBoxType.Level, new[] { (byte)level }));
-        foreach (JxlBox box in metadata) WriteBox(output, box);
+        WriteStart(output, metadata, level);
         JxlBoxHeader.Write(output, JxlBoxType.Codestream, codestream.Length);
         foreach (ReadOnlyMemory<byte> segment in codestream.Segments)
         {
             cancellationToken.ThrowIfCancellationRequested();
             output.Write(segment.Span);
         }
+    }
+
+    /// <summary>The signature, ftyp, the jxll box for a level other than 5 and the metadata boxes: everything before the codestream.</summary>
+    public static void WriteStart(Stream output, IEnumerable<JxlBox> metadata, int level)
+    {
+        output.Write(JxlDescriptor.ContainerSignature);
+        WriteBox(output, new JxlBox(JxlBoxType.FileType, FileTypeContent));
+        if (level != JxlContainer.DefaultLevel) WriteBox(output, new JxlBox(JxlBoxType.Level, new[] { (byte)level }));
+        foreach (JxlBox box in metadata) WriteBox(output, box);
+    }
+
+    /// <summary>
+    /// A jxlp box of <paramref name="length"/> codestream bytes, which the caller writes next: its header and its
+    /// counter, with the high bit on the last part.
+    /// </summary>
+    public static void WritePartHeader(Stream output, int counter, bool last, long length)
+    {
+        if ((uint)counter >= JxlContainer.MaxParts) throw JxlDescriptor.Unsupported($"a file holds at most {JxlContainer.MaxParts} jxlp boxes.");
+        JxlBoxHeader.Write(output, JxlBoxType.CodestreamPart, 4 + length);
+        Span<byte> index = stackalloc byte[4];
+        BinaryPrimitives.WriteUInt32BigEndian(index, (uint)counter | (last ? 0x8000_0000u : 0));
+        output.Write(index);
     }
 
     /// <summary>Writes one box; a compressed box becomes "brob" with the type in front of the Brotli stream.</summary>

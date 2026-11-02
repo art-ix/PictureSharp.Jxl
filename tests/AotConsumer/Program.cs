@@ -152,5 +152,25 @@ using (Image animation = Image.Load(animationPath))
     }
 
     if (reader.FramesRead != 3 || reader.LoopCount != 3) throw new InvalidOperationException("The frame reader did not read the animation.");
+    // Writing (0.8.14): Save and the frame writer give the same lossless frames, durations in milliseconds and loops.
+    var written = new MemoryStream();
+    using (ImageFrameWriter writer = Image.CreateFrameWriter(written, animation.Size, new JxlEncoderOptions { Distance = 0 },
+               new ImageFrameWriterOptions { LoopCount = animation.LoopCount }))
+    {
+        foreach (ImageFrame frame in animation.Frames) writer.WriteAsync(frame).AsTask().GetAwaiter().GetResult();
+        writer.CompleteAsync().AsTask().GetAwaiter().GetResult();
+    }
+
+    foreach (byte[] encoded in new[] { animation.ToJxl(new JxlEncoderOptions { Distance = 0 }), written.ToArray() })
+    {
+        using Image copy = Image.Load(encoded);
+        if (copy.FrameCount != 3 || copy.LoopCount != 3 || copy.Frames[1].Duration != TimeSpan.FromMilliseconds(33_400))
+            throw new InvalidOperationException("The written animation was not read back as expected.");
+        for (int i = 0; i < 3; i++)
+        {
+            if (!copy.Frames[i].GetPixelByteSpan().SequenceEqual(animation.Frames[i].GetPixelByteSpan()))
+                throw new InvalidOperationException($"Frame {i} of the written animation differs.");
+        }
+    }
 }
-Console.WriteLine("Package consumer: registration, detection, Identify, decoding, encoding, metadata, JPEG transcoding, layers, animation and frame reader passed.");
+Console.WriteLine("Package consumer: registration, detection, Identify, decoding, encoding, metadata, JPEG transcoding, layers, animation, frame reader and frame writer passed.");
