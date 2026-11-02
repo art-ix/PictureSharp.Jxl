@@ -5,8 +5,8 @@ namespace PictureSharp.Formats.Jxl;
 /// <summary>
 /// The JPEG XL format plugin. It detects signatures, identifies raw codestreams and box containers (dimensions, colour
 /// description, alpha, orientation, frame count), decodes lossy and lossless still images, layered images and
-/// animations, encodes still images lossily (VarDCT, the default) or losslessly and reads and edits the ICC profile,
-/// EXIF and XMP.
+/// animations (also frame by frame), encodes still images lossily (VarDCT, the default) or losslessly and reads and
+/// edits the ICC profile, EXIF and XMP.
 /// </summary>
 public sealed class JxlFormat : IImageFormatModule
 {
@@ -29,6 +29,13 @@ public sealed class JxlFormat : IImageFormatModule
     /// XMP unless DecoderOptions.IgnoreMetadata is set.
     /// </summary>
     public IImageFormatDecoder Decoder => JxlDecoder.Instance;
+
+    /// <summary>
+    /// Reads frame by frame for <c>Image.OpenFrameReaderAsync</c>: the displayed frames, durations, loop count and
+    /// metadata of <see cref="Decoder"/>, one canvas at a time, so <c>MaxPixels</c> needs to allow only one canvas. The
+    /// input is buffered in memory within <c>MaxInputBytes</c>.
+    /// </summary>
+    public IImageFormatFrameDecoder FrameDecoder => JxlFrameReader.Instance;
 
     /// <summary>Writes still images lossily or losslessly, with their metadata, as described on <see cref="JxlEncoderOptions"/>.</summary>
     public IImageFormatEncoder Encoder => JxlEncoder.Instance;

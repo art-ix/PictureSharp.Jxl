@@ -11,7 +11,7 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/art-ix/picturesharp.jxl</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageReleaseNotes>0.8.12: Image.Load decodes JPEG XL animations into multi-frame images: every frame djxl shows with its default coalescing, as a full canvas after blending, with its duration (ticks converted exactly to TimeSpan) and the loop count. Identify reports the number of frames. Every frame is reserved before it is allocated (MaxPixels sums them), MaxFrames counts every stored frame (also with FirstFrameOnly, which decodes only the first frame), and working memory stays that of one layered image. Frames match djxl (lossless exactly, lossy within 1 of 255), identical at 1 and many threads. Still images are unchanged. See docs/releases/release-0.8.12.md and docs/design/0.8.12-animation.md.</PackageReleaseNotes>
+    <PackageReleaseNotes>0.8.13: Image.OpenFrameReaderAsync reads JPEG XL frame by frame through the frame reader SPI of PictureSharp 0.9.1 (now the minimum version). Frames, durations, pixel type, loop count and metadata equal those of Image.Load; MaxPixels needs to allow only one canvas, MaxFrames counts every stored frame, the compressed input is buffered within MaxInputBytes, and working memory stays a few canvases. FirstFrameOnly, cancellation between and inside frames and disposal at any point are supported. Image.Load is unchanged. See docs/releases/release-0.8.13.md and docs/design/0.8.13-frame-reader.md.</PackageReleaseNotes>
   </PropertyGroup>
   <ItemGroup><PackageReference Include="PictureSharp" Version="$(PictureSharpVersion)" /></ItemGroup>
   <ItemGroup>

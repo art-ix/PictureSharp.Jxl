@@ -21,7 +21,7 @@ public sealed class FuzzLeakException(string message) : Exception(message);
 /// </summary>
 public static class FuzzTargets
 {
-    public static readonly string[] Names = ["container", "headers", "decode", "entropy", "tojpeg", "fromjpeg", "layers"];
+    public static readonly string[] Names = ["container", "headers", "decode", "entropy", "tojpeg", "fromjpeg", "layers", "frames"];
 
     public const long MaxPixels = 1 << 22;
 
@@ -88,6 +88,7 @@ public static class FuzzTargets
             case "tojpeg": ToJpeg(data); break;
             case "fromjpeg": FromJpeg(data); break;
             case "layers": Layers(data); break;
+            case "frames": Frames(data); break;
             case not null when target.StartsWith("diff-", StringComparison.Ordinal): DiffTargets.Run(target, data); break;
             case not null when ResilienceTargets.Names.Contains(target): ResilienceTargets.Run(target, data); break;
             case not null when EncodeTargets.Names.Contains(target): EncodeTargets.Run(target, data); break;
@@ -161,6 +162,66 @@ public static class FuzzTargets
     private static DecoderOptions LayerOptions(ReadOnlySpan<byte> data, int threads) =>
         DecodeOptions(data, threads) with { ApplyExifOrientation = (Hash(data) & 8) != 0 };
 
+    // 0.8.13: the frame reader returns Image.Load's frames whenever Image.Load succeeds (it may succeed alone: MaxPixels
+    // limits one canvas there). A second read stops after a frame chosen by the input and disposes the source; the
+    // rental check of Run covers both.
+    private static void Frames(byte[] data)
+    {
+        DecoderOptions options = FrameOptions(data);
+        string? load = null;
+        try
+        {
+            using Image image = Image.Load(data, options);
+            load = Describe(image);
+        }
+        catch (Exception exception) when (IsAllowed(exception))
+        {
+        }
+
+        string frames;
+        try
+        {
+            frames = ReadFrames(data, options, int.MaxValue);
+        }
+        catch (Exception exception) when (load is not null && IsAllowed(exception))
+        {
+            throw new FuzzMismatchException($"Image.Load: {load}; frame reader: {exception.GetType().Name}: {exception.Message}");
+        }
+
+        if (load is not null && frames != load) throw new FuzzMismatchException($"Image.Load: {load}; frame reader: {frames}");
+        ReadFrames(data, options, 1 + (int)(Hash(data) >> 8 & 3));
+    }
+
+    /// <summary>The decode options of an input for the frame reader, which converts no colours.</summary>
+    internal static DecoderOptions FrameOptions(ReadOnlySpan<byte> data, int threads = 1) =>
+        DecodeOptions(data, threads) with { ColorConversion = ColorConversionMode.None };
+
+    /// <summary>The frame reader's frames as one image, described like <see cref="Describe(Image)"/> ("" when stopped early).</summary>
+    internal static string ReadFrames(byte[] data, DecoderOptions options, int stopAfter, CancellationToken cancellationToken = default)
+    {
+        // The core passes the plugin a forward-only stream whatever the caller gives it.
+        using var input = new MemoryStream(data, writable: false);
+        using ImageFrameReader reader = Image.OpenFrameReaderAsync(input, options, cancellationToken).GetAwaiter().GetResult();
+        Image? image = null;
+        try
+        {
+            while (image is null || image.FrameCount < stopAfter)
+            {
+                if (!reader.MoveNextAsync(cancellationToken).AsTask().GetAwaiter().GetResult()) break;
+                if (image is null) image = reader.CloneCurrent();
+                else image.Frames.AddClone(reader.Current);
+            }
+
+            if (image is null || stopAfter != int.MaxValue) return "";
+            image.LoopCount = reader.LoopCount;
+            return Describe(image, reader.Metadata);
+        }
+        finally
+        {
+            image?.Dispose();
+        }
+    }
+
     private static void Entropy(byte[] data)
     {
         if (data.Length < 2) return;
@@ -230,12 +291,13 @@ public static class FuzzTargets
 
     internal static JxlTranscoderOptions Transcode(int threads) => new() { MaxPixels = MaxPixels, MaxDegreeOfParallelism = threads };
 
-    internal static string Describe(Image image)
+    internal static string Describe(Image image) => Describe(image, image.Metadata);
+
+    private static string Describe(Image image, ImageMetadata m)
     {
         ReadOnlySpan<byte> pixels = image.PixelType == PixelType.Rgba64
             ? MemoryMarshal.AsBytes(image.GetPixelMemory<Rgba64>().Span)
             : MemoryMarshal.AsBytes(image.GetPixelMemory<Rgba32>().Span);
-        ImageMetadata m = image.Metadata;
         string frames = "";
         for (int i = 1; i < image.FrameCount; i++)
         {

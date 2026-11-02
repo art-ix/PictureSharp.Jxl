@@ -142,5 +142,15 @@ using (Image animation = Image.Load(animationPath))
     if (animation.FrameCount != 3 || animation.LoopCount != 3 || animation.Frames[0].Duration.Ticks != 1_668_333
         || animation.Frames[1].Duration.Ticks != 334_000_333 || Image.Identify(animationPath).FrameCount != 3)
         throw new InvalidOperationException("The animation was not read as expected.");
+    // Frame by frame (0.8.13): the same frames, with MaxPixels of one canvas.
+    using ImageFrameReader reader = Image.OpenFrameReaderAsync(animationPath, new DecoderOptions { MaxPixels = 40 * 24 }).GetAwaiter().GetResult();
+    for (int i = 0; reader.MoveNextAsync().AsTask().GetAwaiter().GetResult(); i++)
+    {
+        if (i >= animation.FrameCount || reader.Current.Duration != animation.Frames[i].Duration
+            || !reader.Current.GetPixelByteSpan().SequenceEqual(animation.Frames[i].GetPixelByteSpan()))
+            throw new InvalidOperationException($"Frame {i} of the frame reader differs from Image.Load.");
+    }
+
+    if (reader.FramesRead != 3 || reader.LoopCount != 3) throw new InvalidOperationException("The frame reader did not read the animation.");
 }
-Console.WriteLine("Package consumer: registration, detection, Identify, decoding, encoding, metadata, JPEG transcoding, layers and animation passed.");
+Console.WriteLine("Package consumer: registration, detection, Identify, decoding, encoding, metadata, JPEG transcoding, layers, animation and frame reader passed.");

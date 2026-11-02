@@ -35,14 +35,34 @@ internal sealed class JxlWorkBudget
 #endif
 
     /// <summary>Starts the budget of an operation allowed <paramref name="maxPixels"/> pixels; dispose it when done.</summary>
-    public static Scope Begin(long maxPixels)
+    public static Scope Begin(long maxPixels) => Create(maxPixels).Enter(report: true);
+
+    /// <summary>
+    /// The budget of an operation that spans several calls (0.8.13 frame readers): each call makes it current with
+    /// <see cref="Enter"/>, and what stays charged between calls (reference slots) stays charged.
+    /// </summary>
+    public static JxlWorkBudget Create(long maxPixels)
     {
         const long bytesPerPixel = SamplesPerPixel * sizeof(int);
         long limit = maxPixels > (long.MaxValue - FixedBytes) / bytesPerPixel ? long.MaxValue : FixedBytes + maxPixels * bytesPerPixel;
-        var scope = new Scope(Current.Value);
-        Current.Value = new JxlWorkBudget(limit);
+        return new JxlWorkBudget(limit);
+    }
+
+    /// <summary>
+    /// Makes this budget current until the scope is disposed, which restores the previous one; with
+    /// <paramref name="report"/> the checked build reports the charged bytes then (the end of the operation).
+    /// </summary>
+    public Scope Enter(bool report = false)
+    {
+        var scope = new Scope(Current.Value, report ? this : null);
+        Current.Value = this;
         return scope;
     }
+
+#if JXL_FUZZ_CHECKED
+    /// <summary>Reports the bytes this budget charged, at the end of an operation that spans calls.</summary>
+    public void Report() => Completed?.Invoke(Volatile.Read(ref used));
+#endif
 
     /// <summary>Charges <paramref name="bytes"/> against the current operation's budget, if any.</summary>
     /// <exception cref="ImageFormatException">The operation would exceed its budget.</exception>
@@ -72,12 +92,14 @@ internal sealed class JxlWorkBudget
         Volatile.Write(ref budget.used, bytes);
     }
 
-    internal readonly struct Scope(JxlWorkBudget? previous) : IDisposable
+    internal readonly struct Scope(JxlWorkBudget? previous, JxlWorkBudget? reported) : IDisposable
     {
         public void Dispose()
         {
 #if JXL_FUZZ_CHECKED
-            if (Current.Value is { } budget) Completed?.Invoke(Volatile.Read(ref budget.used));
+            reported?.Report();
+#else
+            _ = reported;
 #endif
             Current.Value = previous;
         }

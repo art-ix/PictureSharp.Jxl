@@ -22,6 +22,18 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
 {
     private readonly JxlReferenceFrames references = new();
     private bool started;
+    private bool finished;
+    private int alpha;
+    private int count;
+    // The bit position of the next frame header, or -1 before Open.
+    private long position = -1;
+
+    /// <summary>The token of the current step; frame readers set it before every call (0.8.13).</summary>
+    public CancellationToken CancellationToken
+    {
+        get => cancellationToken;
+        set => cancellationToken = value;
+    }
 
     /// <summary>The image's ICC profile after <see cref="Decode"/>, or null when it has none.</summary>
     public byte[]? IccProfile { get; private set; }
@@ -46,14 +58,26 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
     }
 
     /// <summary>The image: the last frame, blended onto the frames before it (a still image).</summary>
-    public JxlDecodedImage Decode() => Run(displayed: null)!;
+    public JxlDecodedImage Decode()
+    {
+        foreach ((_, JxlDecodedImage image) in Frames(animation: false)) return image;
+        throw new InvalidOperationException("A still image has a last frame.");
+    }
 
     /// <summary>
     /// Decodes an animation: every displayed frame (libjxl's coalescing: the last frame and every frame with a duration)
     /// goes to <paramref name="displayed"/> as a full canvas, which must consume it before returning. When it returns
     /// false no further frame is decoded, but the remaining frame headers are still read (MaxFrames, corrupt headers).
     /// </summary>
-    public void DecodeAnimation(Func<JxlFrameHeader, JxlDecodedImage, bool> displayed) => Run(displayed);
+    public void DecodeAnimation(Func<JxlFrameHeader, JxlDecodedImage, bool> displayed)
+    {
+        foreach ((JxlFrameHeader frame, JxlDecodedImage image) in Frames(animation: true))
+        {
+            if (displayed(frame, image)) continue;
+            SkipRemaining();
+            return;
+        }
+    }
 
     /// <summary>A frame libjxl returns when coalescing: the last one, and in animations every frame with a duration.</summary>
     public static bool IsDisplayed(JxlFrameHeader frame) =>
@@ -63,40 +87,76 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
     private static bool CanBeReferenced(JxlFrameHeader frame) =>
         !frame.IsLast && frame.Type != JxlFrameType.Dc && (frame.Duration == 0 || frame.SaveAsReference != 0);
 
-    private JxlDecodedImage? Run(Func<JxlFrameHeader, JxlDecodedImage, bool>? displayed)
+    /// <summary>
+    /// Checks the image and reads the ICC profile (<see cref="IccProfile"/>); <see cref="Frames"/> calls it when it was not
+    /// called before. Frame readers (0.8.13) call it first to describe the sequence.
+    /// </summary>
+    public void Open()
+    {
+        if (position >= 0) return;
+        cancellationToken.ThrowIfCancellationRequested();
+        headers.Size.Validate();
+        alpha = JxlDecodeSupportPolicy.EnsureImageSupported(headers.Metadata);
+        var reader = JxlFrameSectionReader.FirstFrame(codestream, headers, cancellationToken, out byte[]? icc, maxIccBytes, reserveIcc);
+        IccProfile = icc;
+        position = reader.BitPosition;
+    }
+
+    /// <summary>
+    /// The displayed frames in order (0.8.13: resumable, so frame readers can pull them one at a time). Still images
+    /// (<paramref name="animation"/> false) yield only the last frame. A yielded image is valid until the next
+    /// <c>MoveNext</c> or disposal of the enumerator, which return its buffers; the reference slots, the retained charge
+    /// and the position of the next frame are kept between calls. <see cref="CancellationToken"/> is read at every step.
+    /// </summary>
+    public IEnumerable<(JxlFrameHeader Frame, JxlDecodedImage Image)> Frames(bool animation)
     {
         if (started) throw new InvalidOperationException("A decode session can only be consumed once.");
         started = true;
-        cancellationToken.ThrowIfCancellationRequested();
-        headers.Size.Validate();
+        Open();
+        return Iterate(animation);
+    }
+
+    /// <summary>
+    /// After the enumeration of <see cref="Frames"/> stopped early (FirstFrameOnly): reads the headers and TOCs of the
+    /// remaining frames without decoding them, as MaxFrames still applies to every stored frame.
+    /// </summary>
+    public void SkipRemaining()
+    {
+        if (finished) return;
+        finished = true;
+        var reader = Reader(position);
+        SkipFrames(reader, count);
+    }
+
+    private IEnumerable<(JxlFrameHeader Frame, JxlDecodedImage Image)> Iterate(bool animation)
+    {
         JxlImageMetadata metadata = headers.Metadata;
-        int alpha = JxlDecodeSupportPolicy.EnsureImageSupported(metadata);
-        var reader = JxlFrameSectionReader.FirstFrame(codestream, headers, cancellationToken, out byte[]? icc, maxIccBytes, reserveIcc);
-        IccProfile = icc;
         bool gray = metadata.Color.ColorSpace == JxlColorSpace.Gray;
-        JxlColorTarget original = JxlColorTarget.Profile(icc, gray);
+        JxlColorTarget original = JxlColorTarget.Profile(IccProfile, gray);
         JxlColorTarget target = renderSrgb ? JxlColorTarget.Srgb : original;
         // Reference, DC and layer frames come first; the last frame is the image. Like libjxl, frames are blended in
         // the image's colour encoding; with renderSrgb the blended canvas is converted to sRGB afterwards. In an
         // animation every frame with a duration is displayed as well (frames without one are layers of the next).
+        // The bit reader is a ref struct: between frames (and yields) only its position is kept.
         long retained = 0;
-        for (int count = 1; ; count++)
+        while (!finished)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (count > maxFrames) throw JxlDescriptor.Corrupt("JPEG XL exceeds MaxFrames.");
-            JxlFrameHeader frame = JxlFrameHeaderReader.Read(ref reader, headers, preview: false);
-            JxlDecodeSupportPolicy.EnsureFrameSupported(frame, references);
-            long start = JxlFrameSectionReader.ReadToc(ref reader, codestream, frame, out JxlToc toc);
+            if (++count > maxFrames) throw JxlDescriptor.Corrupt("JPEG XL exceeds MaxFrames.");
+            (JxlFrameHeader frame, long start, JxlToc toc) = ReadFrame(position);
+            // The next frame starts after this one's sections; SkipRemaining continues from there after a yield.
+            position = (start + toc.TotalSize) * 8;
+            finished = frame.IsLast;
             bool blend = JxlBlending.NeedsBlending(frame);
-            bool shown = displayed is null ? frame.IsLast : IsDisplayed(frame);
+            bool shown = animation ? IsDisplayed(frame) : frame.IsLast;
             bool referenced = CanBeReferenced(frame);
-            bool more = true;
-            if (displayed is null && frame.IsLast && !blend)
+            if (!animation && frame.IsLast && !blend)
             {
                 // A full frame that replaces everything: the still-image path, unchanged since 0.8.9.
                 var decoder = new JxlFrameDecoder(frame, headers, references, cancellationToken, target, buffers: buffers, parallelism: parallelism);
                 JxlFrameSectionReader.DecodeSections(codestream, frame, start, toc, decoder);
-                return decoder.Finish(alpha);
+                yield return (frame, decoder.Finish(alpha));
+                yield break;
             }
 
             if (frame.Type == JxlFrameType.Dc || (frame.SaveBeforeColorTransform && !shown))
@@ -114,7 +174,7 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
                     var decoder = new JxlFrameDecoder(frame, headers, references, cancellationToken, target, buffers: frameBuffers,
                         parallelism: parallelism);
                     JxlFrameSectionReader.DecodeSections(codestream, frame, start, toc, decoder);
-                    more = displayed!(frame, decoder.Finish(alpha));
+                    yield return (frame, decoder.Finish(alpha));
                 }
 
                 JxlWorkBudget.Rewind(mark + retained);
@@ -139,33 +199,41 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
                 }
 
                 bool store = referenced && !frame.SaveBeforeColorTransform;
-                if (displayed is null && frame.IsLast)
+                if (!animation && frame.IsLast)
                 {
                     JxlWorkBudget.Rewind(mark + references.RetainedBytes(canvas));
-                    return Output(canvas, frame, alpha, original, gray, copy: false);
+                    yield return (frame, Output(canvas, frame, alpha, original, gray, copy: false));
+                    yield break;
                 }
 
-                if (shown) more = displayed!(frame, Output(canvas, frame, alpha, original, gray, copy: store));
+                if (shown) yield return (frame, Output(canvas, frame, alpha, original, gray, copy: store));
                 if (store) references.StoreReference(frame.SaveAsReference, canvas, beforeColorTransform: false);
                 retained = references.RetainedBytes();
                 JxlWorkBudget.Rewind(mark + retained);
             }
 
-            if (shown && referenced && frame.SaveBeforeColorTransform && more)
+            if (shown && referenced && frame.SaveBeforeColorTransform)
             {
                 // Displayed and saved before the colour transform: decoded once more for the slot.
                 Store(frame, start, toc, target);
             }
-
-            reader = JxlFrameSectionReader.After(codestream, start, toc);
-            if (frame.IsLast) return null;
-            if (!more)
-            {
-                // FirstFrameOnly: the rest is not decoded, but MaxFrames still applies to every stored frame.
-                SkipFrames(reader, count);
-                return null;
-            }
         }
+    }
+
+    private JxlBitReader Reader(long bitPosition)
+    {
+        var reader = new JxlBitReader(codestream);
+        reader.SkipBits((ulong)bitPosition);
+        return reader;
+    }
+
+    private (JxlFrameHeader Frame, long Start, JxlToc Toc) ReadFrame(long bitPosition)
+    {
+        var reader = Reader(bitPosition);
+        JxlFrameHeader frame = JxlFrameHeaderReader.Read(ref reader, headers, preview: false);
+        JxlDecodeSupportPolicy.EnsureFrameSupported(frame, references);
+        long start = JxlFrameSectionReader.ReadToc(ref reader, codestream, frame, out JxlToc toc);
+        return (frame, start, toc);
     }
 
     // Saved before the colour transform: decoded with the decode-wide buffers into its slot (or the DC levels).

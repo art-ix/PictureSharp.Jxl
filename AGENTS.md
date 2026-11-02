@@ -33,9 +33,10 @@ keep it at most 600 lines by condensing the oldest entries.
 - Roadmap (user decision, 2026-10-29): 0.8.0 SIMD, 0.8.1 group parallelism,
   0.8.2–0.8.5 further improvements, 0.8.6 memory use (user decision, 2026-10-30), 0.8.7–0.8.9 fuzzing and resilience.
   Then (user decision, 2026-11-01): 0.8.10 frame blending and flattened layers, 0.8.11 plugin layer API (read only,
-  no core layer model), 0.8.12 animation decode, 0.8.13 animation encode, 0.8.14 photon noise and splines (+
-  `PhotonNoiseIso`), 0.8.15 extra channels (premultiplied alpha, spot colours), 0.8.16 the former 0.8.10 hardening
-  (long campaigns, concurrency stress, overflow audit) plus fuzzing of the new paths, 0.9.0 stabilization. Float
+  no core layer model), 0.8.12 animation decode, 0.8.13 frame-by-frame reading (core 0.9.1 `FrameDecoder`; user
+  decision 2026-11-02 shifted the rest by one), 0.8.14 animation encode (+ `FrameEncoder`), 0.8.15 photon noise and
+  splines (+ `PhotonNoiseIso`), 0.8.16 extra channels (premultiplied alpha, spot colours), 0.8.17 the former 0.8.10
+  hardening (long campaigns, concurrency stress, overflow audit) plus fuzzing of the new paths, 0.9.0 stabilization. Float
   samples/HLG wait for core `Rgba128`, CMYK for a core CMS for CMYK profiles; until then they stay NotSupportedException.
   Each feature version needs its own design doc in docs/design and djxl oracle tests; no core SPI change is needed.
   Follow docs/design/0.8.0-simd.md (AVX2/SSE4.1, FMA checked separately). Vector implementations belong in sibling `*.Simd.cs`

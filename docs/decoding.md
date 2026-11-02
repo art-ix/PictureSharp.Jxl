@@ -122,8 +122,33 @@ foreach (ImageFrame frame in animation.Frames)
   twice); `MaxFrames` counts every frame stored in the file. `FirstFrameOnly` decodes only the first frame, but still
   reads the remaining frame headers, so `MaxFrames` and `Identify` reject the same files. Working memory is that of
   one layered image (the frame being decoded and the canvases kept in reference slots), not of the whole animation.
-- `Image.OpenFrameReaderAsync` does not read JPEG XL (the core has no plugin interface for frame readers);
-  `JxlLayers` rejects animations.
+- `JxlLayers` rejects animations.
+
+### Frame by frame
+
+`Image.OpenFrameReaderAsync` (PictureSharp 0.9.1, plugin 0.8.13) reads the same frames one at a time, so a long
+animation needs memory and `MaxPixels` for one canvas instead of all of them:
+
+```csharp
+await using ImageFrameReader reader = await Image.OpenFrameReaderAsync("clip.jxl");
+await foreach (ImageFrame frame in reader.ReadFramesAsync())
+    Console.WriteLine($"{frame.Duration.TotalMilliseconds} ms");   // borrowed: Clone() it to keep it
+Console.WriteLine($"loops: {reader.LoopCount}");
+```
+
+- **Same result as `Image.Load`:** the frames, durations, pixel type, loop count and metadata (ICC, EXIF, XMP, colour
+  description and orientation, all in `reader.Metadata` before the first frame) equal those of `Image.Load` with the
+  same options. Still and layered images give one frame. `ColorConversion`, `TargetSize` and
+  `ApplyExifOrientation` are not available in frame readers (the core rejects them); convert or orient each frame
+  yourself.
+- **Limits:** `MaxPixels` limits one canvas (16-bit twice), `MaxFrames` every frame stored in the file, as for
+  `Image.Load`. The compressed input is buffered in memory and counts against `MaxInputBytes`. Working memory is the
+  input, the canvases in reference slots, the frame being decoded and the one output frame, which the reader overwrites
+  for every frame.
+- **FirstFrameOnly** returns the first frame, then reads the remaining frame headers before ending, as `Image.Load`.
+  The frame count comes from every frame header, so a damaged later header fails when the reader opens.
+- One call at a time per reader; cancellation is checked between frames and inside them, and disposing the reader at
+  any point returns its buffers.
 
 ## Identify
 

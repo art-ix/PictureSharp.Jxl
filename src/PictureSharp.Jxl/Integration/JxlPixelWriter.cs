@@ -52,9 +52,25 @@ internal static partial class JxlPixelWriter
     {
         cancellationToken.ThrowIfCancellationRequested();
         var frame = new ImageFrame(decoded.Width, decoded.Height, pixelType);
-        if (pixelType == PixelType.Rgba64) WriteWidePixels(decoded, frame.GetPixelMemory<Rgba64>(), cancellationToken, parallelism);
-        else WriteNarrowPixels(decoded, frame.GetPixelMemory<Rgba32>(), cancellationToken, parallelism, flip);
+        WriteInto(decoded, frame, cancellationToken, parallelism, flip);
         return frame;
+    }
+
+    /// <summary>
+    /// Overwrites every pixel of <paramref name="frame"/> (of the decoded size, in its own pixel type) as
+    /// <see cref="WriteFrame"/> writes a new one; the frame readers reuse one frame (0.8.13).
+    /// </summary>
+    public static void WriteInto(JxlDecodedImage decoded, ImageFrame frame, CancellationToken cancellationToken,
+        int parallelism = JxlParallel.Sequential, DitherFlip flip = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        if (frame.Width != decoded.Width || frame.Height != decoded.Height)
+        {
+            throw new InvalidOperationException("The frame does not have the decoded size.");
+        }
+
+        if (frame.PixelType == PixelType.Rgba64) WriteWidePixels(decoded, frame.GetPixelMemory<Rgba64>(), cancellationToken, parallelism);
+        else WriteNarrowPixels(decoded, frame.GetPixelMemory<Rgba32>(), cancellationToken, parallelism, flip);
     }
 
     private static bool HasAlpha(JxlDecodedImage decoded) =>

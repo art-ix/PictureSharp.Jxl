@@ -42,9 +42,7 @@ internal sealed class JxlDecoder : IImageFormatDecoder
             throw JxlDescriptor.Unsupported("image dimensions exceed the largest supported size.");
 
         JxlMetadataReader.EnsureConvertible(headers.Metadata.Color, options);
-        PixelType pixelType = options.PreserveBitDepth && (headers.Metadata.BitDepth.BitsPerSample > 8
-            || headers.Metadata.ExtraChannels.Any(channel => channel.Type == JxlExtraChannelType.Alpha && channel.BitDepth.BitsPerSample > 8))
-            ? PixelType.Rgba64 : PixelType.Rgba32;
+        PixelType pixelType = PixelTypeFor(headers, options);
         context.ReservePixels((int)headers.Size.Width, (int)headers.Size.Height, pixelType);
         IReadOnlyList<JxlFrameHeader>? frames = null;
         if (layers is not null)
@@ -153,6 +151,12 @@ internal sealed class JxlDecoder : IImageFormatDecoder
             throw;
         }
     }
+
+    /// <summary>Rgba64 for samples or alpha above 8 bits with PreserveBitDepth, otherwise Rgba32.</summary>
+    internal static PixelType PixelTypeFor(JxlHeaders headers, DecoderOptions options) =>
+        options.PreserveBitDepth && (headers.Metadata.BitDepth.BitsPerSample > 8
+            || headers.Metadata.ExtraChannels.Any(channel => channel.Type == JxlExtraChannelType.Alpha && channel.BitDepth.BitsPerSample > 8))
+            ? PixelType.Rgba64 : PixelType.Rgba32;
 
     /// <summary>
     /// <paramref name="ticks"/> × tps_den / tps_num seconds, rounded to the nearest 100 ns and saturated at

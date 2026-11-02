@@ -10,7 +10,7 @@ namespace PictureSharp.Formats.Jxl.Fuzz;
 /// </summary>
 public static class ResilienceTargets
 {
-    public static readonly string[] Names = ["cancel-decode", "cancel-tojpeg", "cancel-fromjpeg", "stream-tojpeg", "stream-fromjpeg", "stream-encode"];
+    public static readonly string[] Names = ["cancel-decode", "cancel-frames", "cancel-tojpeg", "cancel-fromjpeg", "stream-tojpeg", "stream-fromjpeg", "stream-encode"];
 
     /// <summary>The corpus target whose seeds a target uses.</summary>
     public static string SeedTarget(string target) => target switch
@@ -24,6 +24,8 @@ public static class ResilienceTargets
         switch (target)
         {
             case "cancel-decode": Cancel(data, (input, threads, token) => Decode(input, threads, token)); break;
+            // 0.8.13: cancelled at any point of a frame reader, between frames or inside one.
+            case "cancel-frames": Cancel(data, (input, threads, token) => FuzzTargets.ReadFrames(input, FuzzTargets.FrameOptions(input, threads), int.MaxValue, token)); break;
             case "cancel-tojpeg": Cancel(data, (input, threads, token) => Transcode(input, threads, toJpeg: true, token)); break;
             case "cancel-fromjpeg": Cancel(data, (input, threads, token) => Transcode(input, threads, toJpeg: false, token)); break;
             case "stream-tojpeg": Streams(data, toJpeg: true); break;

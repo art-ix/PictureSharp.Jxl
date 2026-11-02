@@ -39,7 +39,11 @@ images, contexts, options or pixels. A compiled boundary test checks signatures,
    duration, and the last, is displayed: passed to `JxlDecoder` as a canvas, or through the still-image path with its
    own buffer scope when it covers the image, replaces and is not saved; a frame is saved only when libjxl's
    `CanBeReferenced` allows it. `JxlDecoder` reserves, writes (`JxlPixelWriter.WriteFrame`) and appends each frame
-   before the next one is decoded.
+   before the next one is decoded. Since 0.8.13 the frame loop is the resumable iterator `Frames`: it yields one
+   displayed frame and keeps the slots, the retained charge and the bit position of the next frame between calls
+   (`JxlBitReader` is a `ref struct`, so only its position survives a yield); `Decode` and `DecodeAnimation` loop over
+   it, and `JxlFrameSource` (the `Image.OpenFrameReaderAsync` source) pulls one frame per call into one reused
+   `ImageFrame` (`JxlPixelWriter.WriteInto`), entering its own `JxlWorkBudget` object for each call.
 3. `JxlDecodeSupportPolicy` rejects unsupported valid features and checks cross-frame consistency; readers still
    validate syntax.
 4. `JxlFrameSectionReader` drives one `JxlFrameDecoder`: LF global, LF groups, LF completion, HF global, then each
@@ -121,7 +125,8 @@ its ICC profile via `JxlIccTarget`) or sRGB for `ToSrgb`.
   The per-call integration budget accounts for reconstruction header fields and expanded auxiliary data before
   corresponding payload allocations. Streams are buffered; the limits are not a bound on all temporary memory.
 - **Animation (0.8.12):** displayed frames become `ImageFrame`s with durations and the loop count
-  (docs/design/0.8.12-animation.md); writing animations follows in 0.8.13.
+  (docs/design/0.8.12-animation.md); 0.8.13 reads them frame by frame (docs/design/0.8.13-frame-reader.md); writing
+  animations follows in 0.8.14.
 - **Performance:** benchmark before pooling, SIMD or parallel groups; keep scalar results unchanged.
 - **Parallelism (0.8.1):** `JxlParallel.For`/`ForWorkers`/`ForBands` is the only primitive: degree 1 is a plain loop
   on the calling thread; otherwise the exception of the lowest failed item is rethrown unchanged after the join.

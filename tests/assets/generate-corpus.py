@@ -386,6 +386,11 @@ frame duration=40 save=1 seed=1
 frame duration=40 x0=8 y0=8 w=24 h=16 blend=blend source=1 save=1 opacity=140
 frame duration=40 x0=20 y0=4 w=24 h=24 blend=blend source=1 opacity=60
 """,
+    # 0.8.13 frame reader: 120 shown frames, each blended onto the previous canvas in slot 1, a few internal frames of
+    # duration 0 in between; a reader needs MaxPixels of one canvas, Image.Load of all of them.
+    'anim-long': 'size 16 12\nalpha\nloops 2\nframe duration=10 save=1 seed=0\n' + ''.join(
+        f'frame duration={0 if i % 10 == 5 else 10} x0={i * 3 % 13 - 2} y0={i * 5 % 9 - 1} w=6 h=5 blend=blend source=1 save=1 '
+        f'seed={i} opacity={40 + i * 7 % 200}\n' for i in range(1, 132)),
     # Orientation 6: every frame is oriented like a still.
     'anim-orient6': """size 24 16
 orientation 6

@@ -90,7 +90,12 @@ internal static class JxlMetadataReader
     }
 
     /// <summary>The first Exif and xml boxes. Malformed Exif boxes and corrupt Brotli streams are skipped.</summary>
-    public static void ApplyDescriptive(ImageMetadata metadata, IReadOnlyList<JxlMetadataBox> boxes, ImageDecodeContext context)
+    public static void ApplyDescriptive(ImageMetadata metadata, IReadOnlyList<JxlMetadataBox> boxes, ImageDecodeContext context) =>
+        ApplyDescriptive(metadata, boxes, context.Options.MaxMetadataBytes, context.ReserveMetadata, context.CancellationToken);
+
+    /// <summary>The first Exif and xml boxes, charged to <paramref name="reserve"/> (frame readers, 0.8.13).</summary>
+    public static void ApplyDescriptive(ImageMetadata metadata, IReadOnlyList<JxlMetadataBox> boxes, long maxBytes, Action<long> reserve,
+        CancellationToken cancellationToken)
     {
         bool exif = false;
         bool xmp = false;
@@ -102,7 +107,7 @@ internal static class JxlMetadataReader
                 continue;
             }
 
-            if (box.Read(context.Options.MaxMetadataBytes, context.ReserveMetadata, context.CancellationToken) is not { } content)
+            if (box.Read(maxBytes, reserve, cancellationToken) is not { } content)
             {
                 continue;
             }
