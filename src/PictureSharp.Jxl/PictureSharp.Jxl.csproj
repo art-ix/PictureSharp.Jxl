@@ -11,7 +11,7 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/art-ix/picturesharp.jxl</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageReleaseNotes>0.8.11: JxlLayers reads the layers of a layered still image as separate images (as djxl --no_coalescing does), each with its offset, name, blend mode and clamp, plus Flatten(), which is exactly the Image.Load result. Load, LoadAsync and Identify for files, streams and memory; the image is decoded once through Image.Load with the same options and limits, every layer counted against MaxPixels and MaxFrames; ApplyExifOrientation orients layers and offsets like libjxl. Image.Load results are unchanged. See docs/releases/release-0.8.11.md and docs/design/0.8.11-layers.md.</PackageReleaseNotes>
+    <PackageReleaseNotes>0.8.12: Image.Load decodes JPEG XL animations into multi-frame images: every frame djxl shows with its default coalescing, as a full canvas after blending, with its duration (ticks converted exactly to TimeSpan) and the loop count. Identify reports the number of frames. Every frame is reserved before it is allocated (MaxPixels sums them), MaxFrames counts every stored frame (also with FirstFrameOnly, which decodes only the first frame), and working memory stays that of one layered image. Frames match djxl (lossless exactly, lossy within 1 of 255), identical at 1 and many threads. Still images are unchanged. See docs/releases/release-0.8.12.md and docs/design/0.8.12-animation.md.</PackageReleaseNotes>
   </PropertyGroup>
   <ItemGroup><PackageReference Include="PictureSharp" Version="$(PictureSharpVersion)" /></ItemGroup>
   <ItemGroup>

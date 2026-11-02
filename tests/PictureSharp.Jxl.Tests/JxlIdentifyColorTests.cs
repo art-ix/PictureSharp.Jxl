@@ -93,10 +93,10 @@ public sealed class JxlIdentifyColorTests
     }
 
     [Test]
-    public async Task Identify_Animation_HasUnknownFrameCount()
+    public async Task Identify_Animation_CountsTheDisplayedFrames()
     {
         ImageInfo info = Identify("animation.jxl");
         await Assert.That(info.IsAnimated).IsTrue();
-        await Assert.That(info.FrameCount).IsNull();
+        await Assert.That(info.FrameCount).IsEqualTo(3);
     }
 }

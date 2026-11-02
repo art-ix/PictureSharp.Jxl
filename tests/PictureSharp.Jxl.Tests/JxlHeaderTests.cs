@@ -245,9 +245,8 @@ public sealed class JxlHeaderTests
         await Assert.That(metadata.Animation).IsEqualTo(new JxlAnimationHeader(1000, 1, 5, true));
         await Assert.That(metadata.ToneMapping).IsEqualTo(new JxlToneMapping(1000, 0.5f, true, 0.25f));
         await Assert.That(metadata.Extensions).IsEqualTo(0b1000_0001UL);
-        ImageInfo info = Image.Identify(data, Options());
-        await Assert.That(info.IsAnimated).IsTrue();
-        await Assert.That(info.FrameCount).IsNull();
+        // Identify counts an animation's frames from their headers (0.8.12), which this header-only codestream lacks.
+        await Assert.That(() => Image.Identify(data, Options())).Throws<ImageFormatException>().WithMessageContaining("Truncated");
 
         foreach (Action<BitWriter> invalid in new Action<BitWriter>[]
         {

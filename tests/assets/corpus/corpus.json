@@ -1,6 +1,351 @@
 {
  "generator": "cjxl v0.12.0 4128790 [_AVX2_,SSE4,SSE2] {Clang 18.1.3}",
  "files": {
+  "anim-16bit.jxl": {
+   "width": 32,
+   "height": 20,
+   "bits": 16,
+   "float": false,
+   "alpha": true,
+   "animated": true,
+   "extraChannels": 1,
+   "orientation": 1,
+   "colorSpace": "RGB",
+   "whitePoint": "D65",
+   "primaries": "sRGB",
+   "transferFunction": "sRGB",
+   "renderingIntent": "Relative",
+   "icc": false,
+   "intensityTarget": 255.0,
+   "boxes": [
+    "JXL ",
+    "ftyp",
+    "jxll",
+    "jxlp",
+    "jxlp",
+    "jxlp"
+   ],
+   "ticks": [
+    100,
+    1
+   ],
+   "loops": 0,
+   "durationsMs": [
+    42949672960.0,
+    70.0,
+    30.0
+   ],
+   "rgba8Sha256": "6e9ce3bd716a98baf1eb3892e2efc414328287bd392030b38d1d5ed813ac19c0",
+   "frameSha256": [
+    "6e9ce3bd716a98baf1eb3892e2efc414328287bd392030b38d1d5ed813ac19c0",
+    "73cb6a22b539a742704d3041961693640e54b12744e7a13a3d0c6eb7aa75580a",
+    "4292c2e09b6640e3e1f7bc34f59e5fa21c876cf2c7e0ab97305bfbfe0a52eae7"
+   ]
+  },
+  "anim-crop.jxl": {
+   "width": 32,
+   "height": 24,
+   "bits": 8,
+   "float": false,
+   "alpha": true,
+   "animated": true,
+   "extraChannels": 1,
+   "orientation": 1,
+   "colorSpace": "RGB",
+   "whitePoint": "D65",
+   "primaries": "sRGB",
+   "transferFunction": "sRGB",
+   "renderingIntent": "Relative",
+   "icc": false,
+   "intensityTarget": 255.0,
+   "boxes": [],
+   "ticks": [
+    1000,
+    1
+   ],
+   "loops": 0,
+   "durationsMs": [
+    60.0,
+    70.0,
+    80.0,
+    90.0
+   ],
+   "rgba8Sha256": "a203b6ba8769c048ccc31b3c0993a4c56707c030559548dd75ffee4d81b1060e",
+   "frameSha256": [
+    "a203b6ba8769c048ccc31b3c0993a4c56707c030559548dd75ffee4d81b1060e",
+    "30307f8421985a5be41d4b6c5699102a8305de7985541817edd852b551889d2a",
+    "8f5eeaa37efef62e3ec43728df3dc59085af6fc73878138206efff630ae94642",
+    "c1cbbb95c998b6a7ea2c4217a62d6a396229c7b5dd57ac0d68c133831fbdcc48"
+   ]
+  },
+  "anim-gif.jxl": {
+   "width": 32,
+   "height": 24,
+   "bits": 8,
+   "float": false,
+   "alpha": true,
+   "animated": true,
+   "extraChannels": 1,
+   "orientation": 1,
+   "colorSpace": "RGB",
+   "whitePoint": "D65",
+   "primaries": "sRGB",
+   "transferFunction": "sRGB",
+   "renderingIntent": "Perceptual",
+   "icc": false,
+   "intensityTarget": 255.0,
+   "boxes": [],
+   "ticks": [
+    100,
+    1
+   ],
+   "loops": 0,
+   "durationsMs": [
+    50.0,
+    100.0,
+    70.0,
+    30.0
+   ],
+   "rgba8Sha256": "bb8e89f366a81ff6e782fb8cb83a3af4207d383b431338adef0eaef93c4ef524",
+   "frameSha256": [
+    "bb8e89f366a81ff6e782fb8cb83a3af4207d383b431338adef0eaef93c4ef524",
+    "eba36bc308d067ea0fd04fed4fbe615c0fc01a3dde24e11e4b30a9c39719fbe4",
+    "18d3749ec21ea56d7c8aca6646c44db364fadd3443381b8f60585277c4c39c2c",
+    "db043640a404e248f5d6cdfc22b5ae041244cd95084a09c22436339dd0422872"
+   ]
+  },
+  "anim-gray.jxl": {
+   "width": 48,
+   "height": 32,
+   "bits": 8,
+   "float": false,
+   "alpha": false,
+   "animated": true,
+   "extraChannels": 0,
+   "orientation": 1,
+   "colorSpace": "Grayscale",
+   "whitePoint": "D65",
+   "primaries": null,
+   "transferFunction": "sRGB",
+   "renderingIntent": "Relative",
+   "icc": false,
+   "intensityTarget": 255.0,
+   "boxes": [],
+   "ticks": [
+    1000,
+    1
+   ],
+   "loops": 0,
+   "durationsMs": [
+    80.0,
+    120.0,
+    40.0
+   ],
+   "rgba8Sha256": "cbe9e5de3f10d0bf0734a44add57b6ef15a6dcbc873a23346d9e89e67eaa6f36",
+   "frameSha256": [
+    "cbe9e5de3f10d0bf0734a44add57b6ef15a6dcbc873a23346d9e89e67eaa6f36",
+    "ccb2324ac9f7804747bb5eb4d29da6110318c8e870c730541f177d09b96ee271",
+    "32dad0f4b266c43d6b9a5982bcc67bb198fcd7b07cf72a077591a6df92ba9c5a"
+   ]
+  },
+  "anim-lossy.jxl": {
+   "width": 48,
+   "height": 32,
+   "bits": 8,
+   "float": false,
+   "alpha": false,
+   "animated": true,
+   "extraChannels": 0,
+   "orientation": 1,
+   "colorSpace": "RGB",
+   "whitePoint": "D65",
+   "primaries": "sRGB",
+   "transferFunction": "sRGB",
+   "renderingIntent": "Relative",
+   "icc": false,
+   "intensityTarget": 255.0,
+   "boxes": [],
+   "ticks": [
+    1000,
+    1
+   ],
+   "loops": 0,
+   "durationsMs": [
+    80.0,
+    120.0,
+    40.0
+   ],
+   "rgba8Sha256": "1ffca4f8e79186abc6f2eb942a19acba3d572962c18e6cb811c9128c69ff782c",
+   "frameSha256": [
+    "1ffca4f8e79186abc6f2eb942a19acba3d572962c18e6cb811c9128c69ff782c",
+    "c3cbbea562ad09ba73e2d0a150ebbbf403b8aa54c0530c52993dda7ace0bc30b",
+    "943f3740694ca88befc766304ebfd4af01fcaa03af5d451ed0760a575307d552"
+   ]
+  },
+  "anim-orient6.jxl": {
+   "width": 24,
+   "height": 16,
+   "bits": 8,
+   "float": false,
+   "alpha": false,
+   "animated": true,
+   "extraChannels": 0,
+   "orientation": 6,
+   "colorSpace": "RGB",
+   "whitePoint": "D65",
+   "primaries": "sRGB",
+   "transferFunction": "sRGB",
+   "renderingIntent": "Relative",
+   "icc": false,
+   "intensityTarget": 255.0,
+   "boxes": [],
+   "ticks": [
+    1000,
+    1
+   ],
+   "loops": 0,
+   "durationsMs": [
+    30.0,
+    30.0
+   ],
+   "rgba8Sha256": "71c4c1ce3365d49384fbd1abdbbf1a8a8127714173d6510cb7480a672441a3f6",
+   "frameSha256": [
+    "71c4c1ce3365d49384fbd1abdbbf1a8a8127714173d6510cb7480a672441a3f6",
+    "a9839e5ee08ed3c5f5f3bc27149f170fad0caf18f16a01257f019d3ea8640170"
+   ]
+  },
+  "anim-single.jxl": {
+   "width": 20,
+   "height": 12,
+   "bits": 8,
+   "float": false,
+   "alpha": false,
+   "animated": true,
+   "extraChannels": 0,
+   "orientation": 1,
+   "colorSpace": "RGB",
+   "whitePoint": "D65",
+   "primaries": "sRGB",
+   "transferFunction": "sRGB",
+   "renderingIntent": "Relative",
+   "icc": false,
+   "intensityTarget": 255.0,
+   "boxes": [],
+   "ticks": [
+    1000,
+    1
+   ],
+   "loops": 5,
+   "durationsMs": [
+    0.0
+   ],
+   "rgba8Sha256": "d189f23347fde6afa6c95d526dc202124ee1e105e969b5f77d801777c6bb167f",
+   "frameSha256": [
+    "d189f23347fde6afa6c95d526dc202124ee1e105e969b5f77d801777c6bb167f"
+   ]
+  },
+  "anim-ticks-loops.jxl": {
+   "width": 40,
+   "height": 24,
+   "bits": 8,
+   "float": false,
+   "alpha": true,
+   "animated": true,
+   "extraChannels": 1,
+   "orientation": 1,
+   "colorSpace": "RGB",
+   "whitePoint": "D65",
+   "primaries": "sRGB",
+   "transferFunction": "sRGB",
+   "renderingIntent": "Relative",
+   "icc": false,
+   "intensityTarget": 255.0,
+   "boxes": [],
+   "ticks": [
+    30000,
+    1001
+   ],
+   "loops": 3,
+   "durationsMs": [
+    166.8,
+    33400.0,
+    0.0
+   ],
+   "rgba8Sha256": "ae8572cbd1cf9ede348318e8f41c836624c55a1603034dad14c99899cec061d1",
+   "frameSha256": [
+    "ae8572cbd1cf9ede348318e8f41c836624c55a1603034dad14c99899cec061d1",
+    "1a28734a5cb6c7c01a713338660e28b3e0e5365aa987819ca0456bbbb6b74fff",
+    "a8eac8b0d3b1fde368813438dd5ba415a796fd6dd0a2a42fb6a5a2dfb2429576"
+   ]
+  },
+  "anim-unsaved.jxl": {
+   "width": 24,
+   "height": 16,
+   "bits": 8,
+   "float": false,
+   "alpha": true,
+   "animated": true,
+   "extraChannels": 1,
+   "orientation": 1,
+   "colorSpace": "RGB",
+   "whitePoint": "D65",
+   "primaries": "sRGB",
+   "transferFunction": "sRGB",
+   "renderingIntent": "Relative",
+   "icc": false,
+   "intensityTarget": 255.0,
+   "boxes": [],
+   "ticks": [
+    1000,
+    1
+   ],
+   "loops": 0,
+   "durationsMs": [
+    100.0,
+    100.0
+   ],
+   "rgba8Sha256": "f2faa0ad33799eca1ff29f238e5b90d98af0af2b253082f4dc9ac19a2b7f7777",
+   "frameSha256": [
+    "f2faa0ad33799eca1ff29f238e5b90d98af0af2b253082f4dc9ac19a2b7f7777",
+    "bdefab520d773e0a4db195b0ed767c4ee20b198e1b103f03e6ebbc1616b2dbb9"
+   ]
+  },
+  "anim-vardct-alpha.jxl": {
+   "width": 48,
+   "height": 32,
+   "bits": 8,
+   "float": false,
+   "alpha": true,
+   "animated": true,
+   "extraChannels": 1,
+   "orientation": 1,
+   "colorSpace": "RGB",
+   "whitePoint": "D65",
+   "primaries": "sRGB",
+   "transferFunction": "sRGB",
+   "renderingIntent": "Relative",
+   "icc": false,
+   "intensityTarget": 255.0,
+   "boxes": [],
+   "ticks": [
+    1000,
+    1
+   ],
+   "loops": 0,
+   "durationsMs": [
+    40.0,
+    40.0,
+    40.0,
+    40.0
+   ],
+   "rgba8Sha256": "52cea89c4dbafba76f973d731465fb88e97529b446c98048955937f22616f343",
+   "frameSha256": [
+    "52cea89c4dbafba76f973d731465fb88e97529b446c98048955937f22616f343",
+    "f03bcbc2281a1ad8769d571cd9f2a017113ebe5d13f1ef74c127410058427c02",
+    "629902a420cc7b7642d23ac4c95c283118bcd511f2f4cf5ade345522964e6edb",
+    "1fa07f50a68f1a2f1762311dc4d68b8d3ace673c1674efd826c888c91d51acf6"
+   ]
+  },
   "animation.jxl": {
    "width": 16,
    "height": 16,
@@ -18,7 +363,22 @@
    "icc": false,
    "intensityTarget": 255.0,
    "boxes": [],
-   "rgba8Sha256": "0c06de835d65464eeec27dd831e18c5886e74cc3d195a5bfc531ef2fc4540f7e"
+   "ticks": [
+    1000,
+    1
+   ],
+   "loops": 0,
+   "durationsMs": [
+    100.0,
+    100.0,
+    100.0
+   ],
+   "rgba8Sha256": "0c06de835d65464eeec27dd831e18c5886e74cc3d195a5bfc531ef2fc4540f7e",
+   "frameSha256": [
+    "0c06de835d65464eeec27dd831e18c5886e74cc3d195a5bfc531ef2fc4540f7e",
+    "1a5f2c2f9565d973f92444e2e188cc0f8d2434b46205691637b46d51160fbde0",
+    "602bdab18e7e98b94e9cd1010b26eb01fd6667864f9d72f742dc193f6dc4bfbc"
+   ]
   },
   "container-exif.jxl": {
    "width": 40,

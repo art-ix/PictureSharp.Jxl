@@ -33,8 +33,10 @@ public sealed class JxlCorpusTests
         await Assert.That(info.Height).IsEqualTo(expected.GetProperty("height").GetInt32());
         await Assert.That(info.Color.BitsPerSample).IsEqualTo(expected.GetProperty("bits").GetInt32());
         await Assert.That(info.Color.HasAlpha).IsEqualTo(expected.GetProperty("alpha").GetBoolean());
-        await Assert.That(info.IsAnimated).IsEqualTo(expected.GetProperty("animated").GetBoolean());
-        await Assert.That(info.FrameCount).IsEqualTo(info.IsAnimated ? null : 1);
+        // Displayed frames (one for stills, djxl's coalesced frames for animations).
+        int frames = expected.TryGetProperty("frameSha256", out JsonElement hashes) ? hashes.GetArrayLength() : 1;
+        await Assert.That(info.FrameCount).IsEqualTo(frames);
+        await Assert.That(info.IsAnimated).IsEqualTo(frames > 1);
         await Assert.That(info.Orientation).IsEqualTo((ExifOrientation)expected.GetProperty("orientation").GetInt32());
         await Assert.That(Image.Identify(CorpusPath(name), Options()).Width).IsEqualTo(info.Width);
         using var stream = new MemoryStream(data);

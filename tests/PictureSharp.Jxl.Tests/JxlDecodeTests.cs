@@ -16,8 +16,8 @@ namespace PictureSharp.Formats.Jxl.Tests;
 /// </summary>
 public sealed class JxlDecodeTests
 {
-    // Valid files outside this version's subset: animation, float samples and photon noise.
-    private static readonly string[] Unsupported = ["animation.jxl", "float32.jxl", "lossy-noise.jxl"];
+    // Valid files outside this version's subset: float samples and photon noise.
+    private static readonly string[] Unsupported = ["float32.jxl", "lossy-noise.jxl"];
 
     public static IEnumerable<string> CorpusFiles()
     {
@@ -31,6 +31,12 @@ public sealed class JxlDecodeTests
         return corpus.RootElement.GetProperty("files").GetProperty(name).GetProperty("rgba8Sha256").GetString();
     }
 
+    private static bool IsAnimated(string name)
+    {
+        using JsonDocument corpus = JsonDocument.Parse(File.ReadAllText(CorpusPath("corpus.json")));
+        return corpus.RootElement.GetProperty("files").GetProperty(name).GetProperty("animated").GetBoolean();
+    }
+
     [Test]
     [MethodDataSource(nameof(CorpusFiles))]
     public async Task Corpus_MatchesTheDjxlRendering(string name)
@@ -40,6 +46,12 @@ public sealed class JxlDecodeTests
         if (Unsupported.Contains(name))
         {
             await Assert.That(() => Image.Load(CorpusPath(name), options)).Throws<NotSupportedException>();
+            return;
+        }
+
+        if (IsAnimated(name))
+        {
+            // Every frame: JxlAnimationTests.Corpus_FramesMatchDjxl.
             return;
         }
 
@@ -248,10 +260,8 @@ public sealed class JxlDecodeTests
     }
 
     [Test]
-    public async Task Decode_RejectsAnimationAndNoiseAsUnsupported()
+    public async Task Decode_RejectsNoiseAsUnsupported()
     {
-        await Assert.That(() => Image.Load(CorpusPath("animation.jxl"), Options())).Throws<NotSupportedException>()
-            .WithMessageContaining("animation");
         await Assert.That(() => Image.Load(CorpusPath("lossy-noise.jxl"), Options())).Throws<NotSupportedException>()
             .WithMessageContaining("noise");
     }

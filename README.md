@@ -50,8 +50,8 @@ when reading the result too.
 
 - **Read:** still images as `cjxl` produces them: lossy (VarDCT) and lossless (Modular), recompressed JPEGs,
   progressive files, patches; layers (cropped and blended frames, flattened into one image as `djxl` does, or read
-  one by one with `JxlLayers.Load`); RGB and grayscale with alpha, up to 16 bits per sample (`Rgba64` with
-  `PreserveBitDepth`, otherwise reduced to 8).
+  one by one with `JxlLayers.Load`); animations (every frame djxl shows, with durations and loop count); RGB and
+  grayscale with alpha, up to 16 bits per sample (`Rgba64` with `PreserveBitDepth`, otherwise reduced to 8).
 - **Write:** lossy VarDCT with `Quality`/`Distance` and `Effort` 1–9, about as small as `cjxl` at the same settings
   (patches included); lossless 8-bit or 16-bit gray or RGB with alpha, with libjxl's effort tiers and about as small
   as `cjxl -d 0` at the same effort.
@@ -59,13 +59,13 @@ when reading the result too.
   edited in place (editing files with JPEG reconstruction data is unsupported).
 - **JPEG transcoding:** `JxlTranscoder.FromJpeg` stores sequential or progressive 8-bit Huffman JPEG (gray or
   YCbCr 4:4:4/4:2:2/4:2:0); `ToJpeg` reconstructs the original JPEG byte for byte, including metadata.
-- **Not supported yet:** animations, photon noise and splines, float samples, CMYK
-  (`NotSupportedException`); writing animations; transcoding RGB, CMYK/YCCK, arithmetic or 12-bit JPEG.
+- **Not supported yet:** photon noise and splines, float samples, CMYK (`NotSupportedException`); writing
+  animations; reading them frame by frame with `Image.OpenFrameReaderAsync`; transcoding RGB, CMYK/YCCK, arithmetic or 12-bit JPEG.
 
 Pixels match djxl (libjxl 0.12.0): lossless images exactly, lossy ones within 1 of 255 in a few samples. Files this
 package writes decode with djxl the same way.
 
-**Status:** early development (0.8.11). Not for production use yet; the API may change. CI runs on Linux, including a Native AOT build.
+**Status:** early development (0.8.12). Not for production use yet; the API may change. CI runs on Linux, including a Native AOT build.
 
 Guides: [decoding](docs/decoding.md) · [encoding](docs/encoding.md) · [JPEG transcoding](docs/transcoding.md) · [metadata](docs/metadata.md) ·
 [architecture](docs/architecture.md) · [release notes](docs/releases)

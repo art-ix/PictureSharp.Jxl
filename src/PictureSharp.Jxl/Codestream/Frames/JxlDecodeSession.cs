@@ -45,7 +45,25 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
         return frames;
     }
 
-    public JxlDecodedImage Decode()
+    /// <summary>The image: the last frame, blended onto the frames before it (a still image).</summary>
+    public JxlDecodedImage Decode() => Run(displayed: null)!;
+
+    /// <summary>
+    /// Decodes an animation: every displayed frame (libjxl's coalescing: the last frame and every frame with a duration)
+    /// goes to <paramref name="displayed"/> as a full canvas, which must consume it before returning. When it returns
+    /// false no further frame is decoded, but the remaining frame headers are still read (MaxFrames, corrupt headers).
+    /// </summary>
+    public void DecodeAnimation(Func<JxlFrameHeader, JxlDecodedImage, bool> displayed) => Run(displayed);
+
+    /// <summary>A frame libjxl returns when coalescing: the last one, and in animations every frame with a duration.</summary>
+    public static bool IsDisplayed(JxlFrameHeader frame) =>
+        frame.Type is JxlFrameType.Regular or JxlFrameType.SkipProgressive && (frame.IsLast || frame.Duration > 0);
+
+    // CanBeReferenced (frame_header.h): only such frames are saved to their slot.
+    private static bool CanBeReferenced(JxlFrameHeader frame) =>
+        !frame.IsLast && frame.Type != JxlFrameType.Dc && (frame.Duration == 0 || frame.SaveAsReference != 0);
+
+    private JxlDecodedImage? Run(Func<JxlFrameHeader, JxlDecodedImage, bool>? displayed)
     {
         if (started) throw new InvalidOperationException("A decode session can only be consumed once.");
         started = true;
@@ -59,7 +77,8 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
         JxlColorTarget original = JxlColorTarget.Profile(icc, gray);
         JxlColorTarget target = renderSrgb ? JxlColorTarget.Srgb : original;
         // Reference, DC and layer frames come first; the last frame is the image. Like libjxl, frames are blended in
-        // the image's colour encoding; with renderSrgb the blended canvas is converted to sRGB afterwards.
+        // the image's colour encoding; with renderSrgb the blended canvas is converted to sRGB afterwards. In an
+        // animation every frame with a duration is displayed as well (frames without one are layers of the next).
         long retained = 0;
         for (int count = 1; ; count++)
         {
@@ -69,7 +88,10 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
             JxlDecodeSupportPolicy.EnsureFrameSupported(frame, references);
             long start = JxlFrameSectionReader.ReadToc(ref reader, codestream, frame, out JxlToc toc);
             bool blend = JxlBlending.NeedsBlending(frame);
-            if (frame.IsLast && !blend)
+            bool shown = displayed is null ? frame.IsLast : IsDisplayed(frame);
+            bool referenced = CanBeReferenced(frame);
+            bool more = true;
+            if (displayed is null && frame.IsLast && !blend)
             {
                 // A full frame that replaces everything: the still-image path, unchanged since 0.8.9.
                 var decoder = new JxlFrameDecoder(frame, headers, references, cancellationToken, target, buffers: buffers, parallelism: parallelism);
@@ -77,14 +99,25 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
                 return decoder.Finish(alpha);
             }
 
-            if (frame.Type == JxlFrameType.Dc || frame.SaveBeforeColorTransform)
+            if (frame.Type == JxlFrameType.Dc || (frame.SaveBeforeColorTransform && !shown))
             {
                 // Saved before the colour transform (patch sources, DC frames); a layer saved this way is not shown.
-                var decoder = new JxlFrameDecoder(frame, headers, references, cancellationToken, target, buffers: buffers, parallelism: parallelism);
-                JxlFrameSectionReader.DecodeSections(codestream, frame, start, toc, decoder);
-                JxlReferenceFrame saved = decoder.Store();
-                if (frame.Type == JxlFrameType.Dc) references.StoreDc(frame.DcLevel, saved);
-                else references.StoreReference(frame.SaveAsReference, saved, beforeColorTransform: true);
+                Store(frame, start, toc, target);
+            }
+            else if (shown && !blend && (!referenced || frame.SaveBeforeColorTransform))
+            {
+                // An animation frame that replaces everything and is not saved as rendered: the still-image path with
+                // the frame's own buffers, consumed before they are returned.
+                long mark = JxlWorkBudget.Used - retained;
+                using (var frameBuffers = new JxlBufferScope())
+                {
+                    var decoder = new JxlFrameDecoder(frame, headers, references, cancellationToken, target, buffers: frameBuffers,
+                        parallelism: parallelism);
+                    JxlFrameSectionReader.DecodeSections(codestream, frame, start, toc, decoder);
+                    more = displayed!(frame, decoder.Finish(alpha));
+                }
+
+                JxlWorkBudget.Rewind(mark + retained);
             }
             else
             {
@@ -105,18 +138,57 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
                     canvas = blend ? Blend(frame, color, extra) : Copy(color, extra);
                 }
 
-                if (frame.IsLast)
+                bool store = referenced && !frame.SaveBeforeColorTransform;
+                if (displayed is null && frame.IsLast)
                 {
                     JxlWorkBudget.Rewind(mark + references.RetainedBytes(canvas));
-                    return Output(canvas, frame, alpha, original, gray);
+                    return Output(canvas, frame, alpha, original, gray, copy: false);
                 }
 
-                references.StoreReference(frame.SaveAsReference, canvas, beforeColorTransform: false);
+                if (shown) more = displayed!(frame, Output(canvas, frame, alpha, original, gray, copy: store));
+                if (store) references.StoreReference(frame.SaveAsReference, canvas, beforeColorTransform: false);
                 retained = references.RetainedBytes();
                 JxlWorkBudget.Rewind(mark + retained);
             }
 
+            if (shown && referenced && frame.SaveBeforeColorTransform && more)
+            {
+                // Displayed and saved before the colour transform: decoded once more for the slot.
+                Store(frame, start, toc, target);
+            }
+
             reader = JxlFrameSectionReader.After(codestream, start, toc);
+            if (frame.IsLast) return null;
+            if (!more)
+            {
+                // FirstFrameOnly: the rest is not decoded, but MaxFrames still applies to every stored frame.
+                SkipFrames(reader, count);
+                return null;
+            }
+        }
+    }
+
+    // Saved before the colour transform: decoded with the decode-wide buffers into its slot (or the DC levels).
+    private void Store(JxlFrameHeader frame, long start, JxlToc toc, JxlColorTarget target)
+    {
+        var decoder = new JxlFrameDecoder(frame, headers, references, cancellationToken, target, buffers: buffers, parallelism: parallelism);
+        JxlFrameSectionReader.DecodeSections(codestream, frame, start, toc, decoder);
+        JxlReferenceFrame saved = decoder.Store();
+        if (frame.Type == JxlFrameType.Dc) references.StoreDc(frame.DcLevel, saved);
+        else references.StoreReference(frame.SaveAsReference, saved, beforeColorTransform: true);
+    }
+
+    // Reads the headers and TOCs of the frames after the first count ones without decoding them.
+    private void SkipFrames(JxlBitReader reader, int count)
+    {
+        for (bool last = false; !last; )
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (++count > maxFrames) throw JxlDescriptor.Corrupt("JPEG XL exceeds MaxFrames.");
+            JxlFrameHeader frame = JxlFrameHeaderReader.Read(ref reader, headers, preview: false);
+            long start = JxlFrameSectionReader.ReadToc(ref reader, codestream, frame, out JxlToc toc);
+            reader = JxlFrameSectionReader.After(codestream, start, toc);
+            last = frame.IsLast;
         }
     }
 
@@ -160,13 +232,21 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
         return new JxlDecodedImage((int)frame.Width, (int)frame.Height, color, alpha < 0 ? null : extra[alpha], gray, encoding);
     }
 
-    // The blended canvas as the decoded image, in the image's encoding or, with renderSrgb, converted to sRGB.
-    private JxlDecodedImage Output(JxlReferenceFrame canvas, JxlFrameHeader frame, int alpha, JxlColorTarget original, bool gray)
+    // The blended canvas as the decoded image, in the image's encoding or, with renderSrgb, converted to sRGB (on copies
+    // when the canvas is kept in a slot).
+    private JxlDecodedImage Output(JxlReferenceFrame canvas, JxlFrameHeader frame, int alpha, JxlColorTarget original, bool gray, bool copy)
     {
         JxlPlane[] color = [.. canvas.Color];
         JxlColorEncoding encoding = JxlColorOutput.DescribeOutput(headers.Metadata, frame.ColorTransform, original);
         if (renderSrgb && headers.Metadata.XybEncoded)
         {
+            if (copy)
+            {
+                // A gray canvas holds one plane three times; so do its copies.
+                JxlPlane[] copies = [.. color.Distinct().Select(plane => plane.Clone(cancellationToken))];
+                color = copies.Length == 3 ? copies : [copies[0], copies[0], copies[0]];
+            }
+
             encoding = JxlCanvasToSrgb.Convert(color, encoding, original.Icc, cancellationToken, parallelism);
         }
 

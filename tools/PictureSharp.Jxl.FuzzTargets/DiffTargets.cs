@@ -158,13 +158,22 @@ public static class DiffTargets
                 if (code != 0) throw new FuzzAcceptanceException($"djxl decodes 8 bits but not 16: {Last(log)}");
             }
 
+            // Every frame of an animation (0.8.12): djxl writes the frames it shows as full APNG frames.
             using Image expected = reduced ? Rounded(png) : Image.Load(png);
-            string? difference = comparison switch
+            string? difference = ours.FrameCount != expected.FrameCount ? $"{ours.FrameCount} frames instead of {expected.FrameCount}" : null;
+            for (int i = 0; difference is null && i < ours.FrameCount; i++)
             {
-                Comparison.Exact => Exact(ours, expected),
-                Comparison.Jpeg => Tolerance(ours, expected, everySample: true),
-                _ => Tolerance(ours, expected),
-            };
+                using Image actualFrame = ours.FrameCount == 1 ? ours.Clone() : ours.Frames.CloneFrame(i);
+                using Image expectedFrame = expected.FrameCount == 1 ? expected.Clone() : expected.Frames.CloneFrame(i);
+                difference = comparison switch
+                {
+                    Comparison.Exact => Exact(actualFrame, expectedFrame),
+                    Comparison.Jpeg => Tolerance(actualFrame, expectedFrame, everySample: true),
+                    _ => Tolerance(actualFrame, expectedFrame),
+                };
+                if (difference is not null && ours.FrameCount > 1) difference = $"frame {i}: {difference}";
+            }
+
             if (difference is not null)
             {
                 throw new FuzzMismatchException($"pixels ({comparison}{(colorSpace is null ? "" : reduced ? ", ToSrgb rounded" : ", ToSrgb")}): {difference}");
@@ -483,11 +492,18 @@ public static class DiffTargets
     private static Image Rounded(string png)
     {
         using Image wide = Image.Load(png, new DecoderOptions { PreserveBitDepth = true });
-        var image = new Image(wide.Width, wide.Height);
-        ReadOnlySpan<Rgba64> source = wide.PixelType == PixelType.Rgba64 ? wide.GetPixelMemory<Rgba64>().Span : throw new FuzzToolException("djxl wrote no 16-bit PNG");
-        Span<Rgba32> target = image.GetPixelMemory<Rgba32>().Span;
+        if (wide.PixelType != PixelType.Rgba64) throw new FuzzToolException("djxl wrote no 16-bit PNG");
         static byte Round(ushort value) => (byte)((value * 255 + 32767) / 65535);
-        for (int i = 0; i < source.Length; i++) target[i] = new(Round(source[i].R), Round(source[i].G), Round(source[i].B), Round(source[i].A));
+        var image = new Image(wide.Width, wide.Height);
+        for (int f = 0; f < wide.FrameCount; f++)
+        {
+            ImageFrame frame = f == 0 ? image.Frames[0] : new ImageFrame(wide.Width, wide.Height);
+            ReadOnlySpan<Rgba64> source = wide.Frames[f].GetPixelSpan<Rgba64>();
+            Span<Rgba32> target = frame.GetPixelSpan<Rgba32>();
+            for (int i = 0; i < source.Length; i++) target[i] = new(Round(source[i].R), Round(source[i].G), Round(source[i].B), Round(source[i].A));
+            if (f > 0) image.Frames.Add(frame);
+        }
+
         return image;
     }
 

@@ -135,4 +135,12 @@ using (Image loaded = Image.Load(layersPath))
         || JxlLayers.Identify(layersPath).Layers.Count != 3)
         throw new InvalidOperationException("Layers were not read as expected.");
 }
-Console.WriteLine("Package consumer: registration, detection, Identify, decoding, encoding, metadata, JPEG transcoding and layers passed.");
+// An animation at 30000/1001 ticks per second, looping 3 times: three shown frames of five (0.8.12).
+string animationPath = Path.Combine(AppContext.BaseDirectory, "anim-ticks-loops.jxl");
+using (Image animation = Image.Load(animationPath))
+{
+    if (animation.FrameCount != 3 || animation.LoopCount != 3 || animation.Frames[0].Duration.Ticks != 1_668_333
+        || animation.Frames[1].Duration.Ticks != 334_000_333 || Image.Identify(animationPath).FrameCount != 3)
+        throw new InvalidOperationException("The animation was not read as expected.");
+}
+Console.WriteLine("Package consumer: registration, detection, Identify, decoding, encoding, metadata, JPEG transcoding, layers and animation passed.");

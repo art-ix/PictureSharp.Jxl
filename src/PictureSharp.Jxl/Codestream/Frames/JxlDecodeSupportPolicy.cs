@@ -3,7 +3,7 @@ using PictureSharp.Formats.Jxl.Codestream.Model;
 
 namespace PictureSharp.Formats.Jxl.Codestream.Frames;
 
-/// <summary>Current support (still images, layers blended since 0.8.10) and frame consistency rules.</summary>
+/// <summary>Current support (still images, layers blended since 0.8.10, animations since 0.8.12) and frame consistency rules.</summary>
 internal static class JxlDecodeSupportPolicy
 {
     /// <summary>Checks the image-level features and returns the index of the alpha extra channel, or -1.</summary>
@@ -11,11 +11,6 @@ internal static class JxlDecodeSupportPolicy
     {
         metadata.BitDepth.Validate();
         foreach (JxlExtraChannelInfo channel in metadata.ExtraChannels) channel.BitDepth.Validate();
-        if (metadata.Animation is not null)
-        {
-            throw JxlDescriptor.Unsupported("animations are not decoded yet.");
-        }
-
         if (metadata.BitDepth.FloatingPoint && !metadata.XybEncoded)
         {
             throw JxlDescriptor.Unsupported("floating-point samples are not decoded yet.");

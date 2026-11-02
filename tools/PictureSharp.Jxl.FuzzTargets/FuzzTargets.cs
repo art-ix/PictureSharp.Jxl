@@ -108,6 +108,8 @@ public static class FuzzTargets
             PreserveBitDepth = (h & 1) != 0,
             ColorConversion = toSrgb ? ColorConversionMode.ToSrgb : ColorConversionMode.None,
             IgnoreMetadata = !toSrgb && (h & 4) != 0,
+            // 0.8.12: animations stop after the first frame but still read every frame header.
+            FirstFrameOnly = (h & 16) != 0,
             MaxDegreeOfParallelism = threads,
         };
     }
@@ -234,7 +236,14 @@ public static class FuzzTargets
             ? MemoryMarshal.AsBytes(image.GetPixelMemory<Rgba64>().Span)
             : MemoryMarshal.AsBytes(image.GetPixelMemory<Rgba32>().Span);
         ImageMetadata m = image.Metadata;
-        return $"{image.Width}x{image.Height} {image.PixelType} {Sha(pixels)} icc={Sha(m.IccProfile)} exif={Sha(m.Exif)} xmp={Sha(m.Xmp)}";
+        string frames = "";
+        for (int i = 1; i < image.FrameCount; i++)
+        {
+            frames += $" {image.Frames[i].Duration.Ticks}:{Sha(image.Frames[i].GetPixelByteSpan())}";
+        }
+
+        return $"{image.Width}x{image.Height} {image.PixelType} {image.Frames[0].Duration.Ticks}:{Sha(pixels)}{frames} loops={image.LoopCount} "
+            + $"icc={Sha(m.IccProfile)} exif={Sha(m.Exif)} xmp={Sha(m.Xmp)}";
     }
 
     private static string Sha(ReadOnlyMemory<byte>? bytes) => bytes is { } b ? Sha(b.Span) : "-";

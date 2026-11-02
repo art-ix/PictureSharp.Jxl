@@ -18,7 +18,6 @@ internal static class JxlImageInfoMapper
         }
 
         JxlImageMetadata metadata = headers.Metadata;
-        bool animated = metadata.Animation is not null;
         return new ImageInfo
         {
             Format = JxlDescriptor.Format,
@@ -29,9 +28,8 @@ internal static class JxlImageInfoMapper
             // XYB is always lossy; without it the codestream can be lossless Modular or lossy, which the header does not say.
             Compression = metadata.XybEncoded ? ImageCompression.Lossy : ImageCompression.Unknown,
             Orientation = (ExifOrientation)metadata.Orientation,
-            IsAnimated = animated,
-            // Counting animation frames requires the entropy-coded table of contents of every frame.
-            FrameCount = animated ? null : 1
+            // Animations: JxlDecoder.Identify counts the displayed frames from the frame headers.
+            FrameCount = 1,
         };
     }
 

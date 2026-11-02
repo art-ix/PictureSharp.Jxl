@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Generate public, synthetic JPEG XL fixtures and their jxlinfo and djxl oracle (no external images).
 
-Requires Pillow, NumPy and the libjxl v0.12.0 tools (cjxl, djxl, jxlinfo, jxl_from_tree) on PATH or in JXL_TOOLS;
-jxl_from_tree is a libjxl dev tool, built from the pinned sources (-DJPEGXL_ENABLE_DEVTOOLS=ON). The outputs are
+Requires Pillow, NumPy and the libjxl v0.12.0 tools (cjxl, djxl, jxlinfo, jxl_from_tree, jxl_anim_gen) on PATH or in
+JXL_TOOLS; jxl_from_tree is a libjxl dev tool, built from the pinned sources (-DJPEGXL_ENABLE_DEVTOOLS=ON), and
+jxl_anim_gen is built from tests/assets/tools (see its README). Animations also get the SHA-256 of every frame djxl
+shows (and, when lossy, its 8-bit rendering in djxl/<name>-<frame>.png). The outputs are
 committed, so tests and CI do not need the tools. Lossy fixtures also get djxl's 8-bit rendering in djxl/, which
 tests compare within a tolerance. XYB images with an ICC profile get cms/: djxl's linear sRGB floats converted to
 the profile in double precision (djxl itself would need a colour management system). XYB images outside sRGB get
@@ -178,6 +180,46 @@ def animation(path):
     frames[0].save(path, save_all=True, append_images=frames[1:], duration=100, loop=0)
 
 
+def photo_animation(path, mode='RGB'):
+    """Three photo-like frames of a moving gradient (lossy cases)."""
+    frames = []
+    for i in range(3):
+        image = Image.new('RGB', (48, 32))
+        image.putdata([tuple((c + 37 * i + (x * y) % 23) % 256 for c in pixel(x, y, 48, 32)) for y in range(32) for x in range(48)])
+        frames.append(image.convert(mode))
+    frames[0].save(path, save_all=True, append_images=frames[1:], duration=[80, 120, 40], loop=0)
+
+
+def sprite_frames(width=32, height=24):
+    """A square moving over a transparent canvas with a fixed bar: partial changes for cropped, blended frames."""
+    frames = []
+    for i in range(4):
+        image = Image.new('RGBA', (width, height), (0, 0, 0, 0))
+        image.paste((30, 160, 90, 255), (0, height - 4, width, height))
+        image.paste((200, 40 + 40 * i, 60, 160 + 30 * i), (3 + 6 * i, 2 + 3 * i, 13 + 6 * i, 12 + 3 * i))
+        frames.append(image)
+    return frames
+
+
+def sprite_apng(path):
+    frames = sprite_frames()
+    frames[0].save(path, save_all=True, append_images=frames[1:], duration=[60, 70, 80, 90], loop=0,
+                   disposal=[0, 1, 2, 0], blend=[0, 1, 1, 0])
+
+
+def sprite_gif(path):
+    frames = []
+    for source in sprite_frames():
+        # 15 colours and a full 16-entry palette whose last index is transparent.
+        frame = source.convert('RGB').quantize(15)
+        palette = frame.getpalette()[:45]
+        frame.putpalette(palette + [0] * (48 - len(palette)))
+        frame.putdata([15 if a == 0 else i for i, (_, _, _, a) in zip(frame.getdata(), source.getdata())])
+        frames.append(frame)
+    frames[0].save(path, save_all=True, append_images=frames[1:], duration=[50, 100, 70, 30], loop=2, disposal=2,
+                   transparency=15, optimize=False)
+
+
 def boxes(data):
     offset = 12
     while offset < len(data):
@@ -226,6 +268,32 @@ def pixels(path, temp, reference=None):
     return hashlib.sha256(rendered.tobytes()).hexdigest()
 
 
+def frames(path, temp, reference=None):
+    """SHA-256 of the RGBA pixels of every frame djxl shows (coalesced, 8 bits); lossy files also keep the frames.
+    djxl writes them as full APNG frames (its PAM output ignores --bits_per_sample)."""
+    png = Path(temp) / 'frames.png'
+    run(tool('djxl'), str(path), str(png), '--bits_per_sample=8', '--quiet')
+    hashes = []
+    with Image.open(png) as animation:
+        for index in range(getattr(animation, 'n_frames', 1)):
+            animation.seek(index)
+            rendered = animation.convert('RGBA')
+            if reference is not None:
+                reference.mkdir(exist_ok=True)
+                rendered.save(reference / f'{path.stem}-{index}.png', optimize=True)
+            hashes.append(hashlib.sha256(rendered.tobytes()).hexdigest())
+    return hashes
+
+
+def animation_info(text):
+    """Ticks, loops and the durations of the frames libjxl shows: every frame with a duration, and the last one."""
+    ticks = re.search(r'^Ticks per second \(numerator / denominator\): (\d+) / (\d+)$', text, re.M)
+    durations = [float(ms) for ms in re.findall(r'^(?:Frame|Layer): .*?duration: ([0-9.]+) ms', text, re.M)]
+    shown = [ms for i, ms in enumerate(durations) if ms > 0 or i == len(durations) - 1]
+    return {'ticks': [int(ticks[1]), int(ticks[2])], 'loops': int(re.search(r'^Num loops: (\d+)$', text, re.M)[1]),
+            'durationsMs': shown}
+
+
 def info(path):
     text = run(tool('jxlinfo'), '-v', str(path))
     head = re.search(r'JPEG XL (image|animation), (\d+)x(\d+), .*?(\d+)-bit (float \()?.*?(RGB|Grayscale)(\+Alpha)?', text)
@@ -240,7 +308,7 @@ def info(path):
         'icc': re.search(r'^\d+-byte ICC profile', text, re.M) is not None,
         'intensityTarget': float((field('Intensity target') or '255').split()[0]),
         'boxes': re.findall(r'^Box:\n  type: "(....)"', text, re.M),
-    }
+    } | (animation_info(text) if head[1] == 'animation' else {})
 
 
 # Layered stills from jxl_from_tree (0.8.10): every frame but the last is saved to slot 1 and the next one blends onto
@@ -271,6 +339,62 @@ LAYERS = {
 }
 LOSSY_LAYERS = {'layers-xyb'}
 
+# Animations cjxl cannot write, from jxl_anim_gen (0.8.12; spec format in tests/assets/tools/jxl_anim_gen.cc). The
+# encoder keeps slot 3 for patches, so the specs use slots 0-2.
+ANIMATIONS = {
+    # NTSC ticks, loops, timecodes, names, internal frames of duration 0, every blend mode, crops beyond the canvas.
+    'anim-ticks-loops': """size 40 24
+alpha
+tps 30000 1001
+loops 3
+timecodes
+frame duration=0 save=1 name=base
+frame duration=5 x0=-3 y0=4 w=16 h=10 blend=blend source=1 save=1 opacity=100 name=over timecode=7
+frame duration=0 x0=10 y0=-2 w=12 h=12 blend=add source=1 save=2
+frame duration=1001 x0=20 y0=10 w=30 h=20 blend=muladd source=2 save=0 opacity=200 timecode=9
+frame duration=0 x0=1 y0=1 w=6 h=6 blend=mul source=0
+""",
+    # A shown frame with save_as_reference 0 is not saved: the last frame blends onto the first one (CanBeReferenced).
+    'anim-unsaved': """size 24 16
+alpha
+frame duration=0 save=0 seed=1
+frame duration=100 save=0 seed=2
+frame duration=100 x0=4 y0=2 w=8 h=8 blend=blend source=0 seed=3 opacity=128
+""",
+    # One shown frame: an animation header, but a still result (LoopCount 0, not animated).
+    'anim-single': """size 20 12
+loops 5
+frame duration=0 save=1
+frame duration=0 x0=5 y0=3 w=8 h=6 blend=add source=1
+""",
+    # Ticks of 1/100 s, the largest duration, 16-bit samples with alpha.
+    'anim-16bit': """size 32 20
+bits 16
+alpha
+tps 100 1
+frame duration=4294967295 save=1
+frame duration=7 x0=6 y0=4 w=12 h=10 blend=blend source=1 save=1 opacity=90
+frame duration=3 x0=-4 y0=8 w=16 h=16 blend=add source=1
+""",
+    # Lossy (VarDCT) frames blended with alpha; the first is shown without being saved (the still-image path per frame),
+    # the others are blended canvases.
+    'anim-vardct-alpha': """size 48 32
+alpha
+distance 1
+frame duration=40 save=0
+frame duration=40 save=1 seed=1
+frame duration=40 x0=8 y0=8 w=24 h=16 blend=blend source=1 save=1 opacity=140
+frame duration=40 x0=20 y0=4 w=24 h=24 blend=blend source=1 opacity=60
+""",
+    # Orientation 6: every frame is oriented like a still.
+    'anim-orient6': """size 24 16
+orientation 6
+frame duration=30 save=1
+frame duration=30 x0=14 y0=2 w=8 h=12 blend=add source=1
+""",
+}
+LOSSY_ANIMATIONS = {'anim-lossy', 'anim-gray', 'anim-vardct-alpha'}
+
 
 def main():
     OUTPUT.mkdir(parents=True, exist_ok=True)
@@ -300,6 +424,10 @@ def main():
         Image.open(tmp / 'photo.png').save(tmp / 'q90-444.jpg', quality=90, subsampling=0)
         pfm(tmp / 'float.pfm', 20, 12)
         animation(tmp / 'anim.png')
+        photo_animation(tmp / 'anim-photo.png')
+        photo_animation(tmp / 'anim-gray.png', mode='L')
+        sprite_apng(tmp / 'anim-sprite.png')
+        sprite_gif(tmp / 'anim-sprite.gif')
         # Lossless encoding keeps an embedded profile as ICC instead of an enumerated colour encoding. The creation
         # date (bytes 24-35) is fixed so that regenerating the corpus reproduces the file.
         srgb = bytearray(ImageCms.ImageCmsProfile(ImageCms.createProfile('sRGB')).tobytes())
@@ -331,6 +459,11 @@ def main():
             'p3-perceptual': ('rgb.png', '-d', '0', '-x', 'color_space=RGB_D65_DCI_Per_SRG'),
             'gamma-custom': ('rgb.png', '-d', '0', '-x', 'color_space=RGB_D65_SRG_Rel_g0.45455'),
             'animation': ('anim.png', '-d', '0'),
+            # 0.8.12: APNG (ticks 1000/1) and GIF (100/1) through cjxl, cropped frames blending onto slot 1.
+            'anim-lossy': ('anim-photo.png', '-d', '1'),
+            'anim-gray': ('anim-gray.png', '-d', '1'),
+            'anim-crop': ('anim-sprite.png', '-d', '0'),
+            'anim-gif': ('anim-sprite.gif', '-d', '0'),
             'container-jxlc': ('rgb.png', '-d', '0', '--container=1'),
             'container-exif': ('orient1.jpg', '-j', '0', '-d', '0', '--compress_boxes=0'),
             'icc-profile': ('icc.png', '-d', '0'),
@@ -382,6 +515,10 @@ def main():
             (tmp / f'{name}.txt').write_text(tree)
             run(tool('jxl_from_tree'), str(tmp / f'{name}.txt'), str(OUTPUT / f'{name}.jxl'))
 
+        for name, spec in ANIMATIONS.items():
+            (tmp / f'{name}.txt').write_text(spec)
+            run(tool('jxl_anim_gen'), str(tmp / f'{name}.txt'), str(OUTPUT / f'{name}.jxl'))
+
         swapped = OUTPUT / 'jxlp-v1-out-of-order.jxl'
         swapped.write_bytes(swap_partial_codestreams((OUTPUT / 'jxlp-v1.jxl').read_bytes()))
         # The reordered file must decode to the same pixels as the original with libjxl.
@@ -396,6 +533,10 @@ def main():
             srgb_reference(OUTPUT / f'{name}.jxl', OUTPUT / 'srgb' / f'{name}.png', gray='gray' in name)
         oracle = {path.name: info(path) | {'rgba8Sha256': pixels(path, temp, OUTPUT / 'djxl' / f'{path.stem}.png' if path.stem in lossy or path.stem in LOSSY_LAYERS else None)}
                   for path in sorted(OUTPUT.glob('*.jxl'))}
+        for name, entry in oracle.items():
+            if entry['animated']:
+                stem = Path(name).stem
+                entry['frameSha256'] = frames(OUTPUT / name, temp, OUTPUT / 'djxl' if stem in LOSSY_ANIMATIONS else None)
     (OUTPUT / 'corpus.json').write_text(json.dumps({'generator': run(tool('cjxl'), '--version').splitlines()[0], 'files': oracle}, indent=1) + '\n')
     print(f'{len(oracle)} files, {sum(p.stat().st_size for p in OUTPUT.glob("*.jxl"))} bytes')
     import runpy

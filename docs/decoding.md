@@ -12,7 +12,7 @@ Raw codestreams (`FF 0A`) and box containers (`JXL `) are both recognized. See a
 
 ## What is decoded
 
-Still images, lossy and lossless, as `cjxl` produces them:
+Still images and animations, lossy and lossless, as `cjxl` produces them:
 
 | | Supported |
 | --- | --- |
@@ -21,6 +21,7 @@ Still images, lossy and lossless, as `cjxl` produces them:
 | Recompressed JPEGs | YCbCr incl. 4:2:0, 4:2:2, 4:4:0, rendered as libjxl renders them (not as the reconstructed JPEG) |
 | Frames of one image | reference frames with patches, DC frames (`cjxl -p`); a preview frame is skipped |
 | Layers (0.8.10) | several frames blended into one image as `djxl` does by default (coalescing): cropped frames at any offset, Replace, Add, Blend, AlphaWeightedAdd and Mul for colour and each extra channel; read one by one with `JxlLayers` (0.8.11, [below](#layers)) |
+| Animations (0.8.12) | every frame `djxl` shows, as a full canvas with its duration, and the loop count ([below](#animations)) |
 | Rendering | Gaborish, edge-preserving filter, 2×/4×/8× upsampling, XYB and YCbCr to RGB |
 | Colour | RGB and grayscale with alpha; sRGB, linear, gamma, BT.709, DCI and PQ transfer functions |
 | Samples | integers up to 16 bits; lossy images of any declared depth |
@@ -29,7 +30,7 @@ Layers are blended in the image's colour encoding, as libjxl does. With `ColorCo
 image is then converted to sRGB in floating point (djxl cannot render blended XYB frames in another colour space);
 through an ICC profile a few more samples differ by 1 than for a single frame.
 
-`NotSupportedException`: animations; photon noise and splines; float samples
+`NotSupportedException`: photon noise and splines; float samples
 (except XYB); HLG with XYB; CMYK and spot colours; premultiplied or float alpha.
 
 ### Conversion to 8 bits
@@ -98,9 +99,36 @@ JxlLayeredImageInfo info = JxlLayers.Identify("drawing.jxl");                // 
   layers are in the stored orientation (`layered.Metadata.Orientation`). `TargetSize` is not supported.
 - `Dispose` releases every layer image; `Flatten()` returns a new image the caller owns.
 
+## Animations
+
+`Image.Load` decodes an animation into an `Image` with one `ImageFrame` per frame that `djxl` shows with its default
+coalescing (0.8.12), as PictureSharp does for animated PNG, GIF and WebP:
+
+```csharp
+using Image animation = Image.Load("clip.jxl");
+Console.WriteLine($"{animation.FrameCount} frames, loops: {animation.LoopCount}");   // 0 = forever
+foreach (ImageFrame frame in animation.Frames)
+    Console.WriteLine($"{frame.Duration.TotalMilliseconds} ms");
+```
+
+- **Frames:** a frame is shown when it has a duration or is the last one; frames of duration 0 before it are
+  blended into it, as libjxl does. Every frame is the full canvas after blending, in the same pixel type and colour
+  description; `ApplyExifOrientation`, `ToSrgb` and `TargetSize` apply to every frame.
+- **Timing:** `Duration` is the frame's ticks × `tps_denominator` / `tps_numerator` seconds, rounded to 100 ns
+  (exact for cjxl's milliseconds from APNG and hundredths from GIF); a last frame of duration 0 keeps 0.
+  `LoopCount` is the header's `num_loops` (0 = forever); a result with one frame has `LoopCount` 0, as for PNG and GIF.
+  Timecodes and frame names are not kept.
+- **Limits:** every shown frame is reserved before it is allocated, so `MaxPixels` sums all of them (16-bit frames
+  twice); `MaxFrames` counts every frame stored in the file. `FirstFrameOnly` decodes only the first frame, but still
+  reads the remaining frame headers, so `MaxFrames` and `Identify` reject the same files. Working memory is that of
+  one layered image (the frame being decoded and the canvases kept in reference slots), not of the whole animation.
+- `Image.OpenFrameReaderAsync` does not read JPEG XL (the core has no plugin interface for frame readers);
+  `JxlLayers` rejects animations.
+
 ## Identify
 
-Reads and validates the container and codestream headers, without frames:
+Reads and validates the container and codestream headers; for animations also every frame header and table of
+contents, without decoding the frames:
 
 | `ImageInfo` | Value |
 | --- | --- |
@@ -113,7 +141,7 @@ Reads and validates the container and codestream headers, without frames:
 | `Color.Cicp` | H.273 code points when they map exactly; null with ICC, custom primaries, gamma or XYB |
 | `Compression` | `Lossy` for XYB, else `Unknown` (headers don't say if Modular is lossless) |
 | `Orientation` | codestream orientation 1–8 |
-| `IsAnimated`, `FrameCount` | `FrameCount` is 1 for still images, null for animations |
+| `IsAnimated`, `FrameCount` | `FrameCount` is 1 for still images and the number of shown frames for animations (0.8.12; before, null); `IsAnimated` when it is above 1 |
 | `Resolution` | null |
 
 Identify also reports features `Load` rejects. Widths above `int.MaxValue` throw `NotSupportedException`.
@@ -127,7 +155,8 @@ Identify also reports features `Load` rejects. Widths above `int.MaxValue` throw
   need far more memory than its image. The largest decode measured needs 36 bytes per pixel. At the default
   `MaxPixels` (2^28) this allows 16 GiB; lower `MaxPixels` to bound it further. Exceeding it throws
   `ImageFormatException` ("Decoding needs more working memory than MaxPixels allows").
-- `MaxFrames` counts every frame read, including reference and DC frames that are not displayed.
+- `MaxFrames` counts every frame stored in the codestream, including reference and DC frames that are not
+  displayed, also with `FirstFrameOnly` and in `Identify`.
 - Other `DecoderOptions` work as for built-in formats; `TargetSize` resizes after full decoding.
 - Memory: ~12 bytes per pixel per frame buffer, two buffers while filtering.
 - `MaxDegreeOfParallelism` (default -1, all cores; 1 = single-threaded) limits the threads that decode LF and pass

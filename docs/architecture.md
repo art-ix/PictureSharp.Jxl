@@ -35,7 +35,11 @@ images, contexts, options or pixels. A compiled boundary test checks signatures,
    covers the image and replaces, takes the still-image path. Other frames saved after the colour transform (layers,
    0.8.10) are rendered in the image's encoding with their own buffer scope, blended onto their background slots by
    `JxlBlending` (shared with patches) into GC-owned canvases, and stored; the frame's temporary memory is returned
-   and `JxlWorkBudget.Rewind` keeps only the retained canvases charged.
+   and `JxlWorkBudget.Rewind` keeps only the retained canvases charged. In an animation (0.8.12) every frame with a
+   duration, and the last, is displayed: passed to `JxlDecoder` as a canvas, or through the still-image path with its
+   own buffer scope when it covers the image, replaces and is not saved; a frame is saved only when libjxl's
+   `CanBeReferenced` allows it. `JxlDecoder` reserves, writes (`JxlPixelWriter.WriteFrame`) and appends each frame
+   before the next one is decoded.
 3. `JxlDecodeSupportPolicy` rejects unsupported valid features and checks cross-frame consistency; readers still
    validate syntax.
 4. `JxlFrameSectionReader` drives one `JxlFrameDecoder`: LF global, LF groups, LF completion, HF global, then each
@@ -116,8 +120,8 @@ its ICC profile via `JxlIccTarget`) or sRGB for `ToSrgb`.
   The jbrd bit header precedes its Brotli stream; canonical ICC/EXIF/XMP markers refer to external metadata.
   The per-call integration budget accounts for reconstruction header fields and expanded auxiliary data before
   corresponding payload allocations. Streams are buffered; the limits are not a bound on all temporary memory.
-- **Animation:** map the displayed canvases of the session (blending exists since 0.8.10), durations and looping;
-  until then it throws.
+- **Animation (0.8.12):** displayed frames become `ImageFrame`s with durations and the loop count
+  (docs/design/0.8.12-animation.md); writing animations follows in 0.8.13.
 - **Performance:** benchmark before pooling, SIMD or parallel groups; keep scalar results unchanged.
 - **Parallelism (0.8.1):** `JxlParallel.For`/`ForWorkers`/`ForBands` is the only primitive: degree 1 is a plain loop
   on the calling thread; otherwise the exception of the lowest failed item is rethrown unchanged after the join.

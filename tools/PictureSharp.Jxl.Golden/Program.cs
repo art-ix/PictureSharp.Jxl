@@ -166,9 +166,23 @@ return 0;
 
 static string Hash(ReadOnlySpan<byte> bytes) => $"{bytes.Length}:{Convert.ToHexString(SHA256.HashData(bytes))[..16]}";
 
-static string Pixels(Image image) => image.PixelType == PixelType.Rgba64
+// The first frame; animations (0.8.12) add every frame's pixels and duration and the loop count, stills are unchanged.
+static string Pixels(Image image) => (image.PixelType == PixelType.Rgba64
     ? $"{image.Width}x{image.Height} rgba64 {Hash(MemoryMarshal.AsBytes(image.GetPixelMemory<Rgba64>().Span))}"
-    : $"{image.Width}x{image.Height} {Hash(MemoryMarshal.AsBytes(image.GetPixelMemory<Rgba32>().Span))}";
+    : $"{image.Width}x{image.Height} {Hash(MemoryMarshal.AsBytes(image.GetPixelMemory<Rgba32>().Span))}")
+    + (image.FrameCount > 1 ? $" frames={image.FrameCount} loops={image.LoopCount} all={Hash(Frames(image))}" : "");
+
+static byte[] Frames(Image image)
+{
+    using var all = new MemoryStream();
+    foreach (ImageFrame frame in image.Frames)
+    {
+        all.Write(BitConverter.GetBytes(frame.Duration.Ticks));
+        all.Write(frame.GetPixelByteSpan());
+    }
+
+    return all.ToArray();
+}
 
 static bool Deep(byte[] data)
 {
