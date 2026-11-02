@@ -21,6 +21,8 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
     int parallelism = 1, int maxFrames = int.MaxValue, Action<JxlFrameHeader, JxlDecodedImage>? layerSink = null)
 {
     private readonly JxlReferenceFrames references = new();
+    // The image has spot colour channels, rendered into the displayed colour (0.8.16).
+    private readonly bool spots = JxlSpotColors.For(headers.Metadata) is not null;
     private bool started;
     private bool finished;
     private int alpha;
@@ -191,28 +193,35 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
                 // temporary memory is returned and no longer charged.
                 long mark = JxlWorkBudget.Used - retained;
                 JxlReferenceFrame canvas;
+                // Spot colours (0.8.16) come after blending and after the frame is saved, where libjxl has already left
+                // linear light (it adds FromLinear before both): the displayed canvas gets them, the slot keeps it
+                // without. A layer is rendered alone (no coalescing): for XYB in linear light, as SpotColor.
+                bool layer = layerSink is not null && frame.Type is JxlFrameType.Regular or JxlFrameType.SkipProgressive;
+                JxlPlane[]? spotColor;
                 using (var frameBuffers = new JxlBufferScope())
                 {
                     var decoder = new JxlFrameDecoder(frame, headers, references, cancellationToken, original, buffers: frameBuffers,
                         parallelism: parallelism, frameIndex: frameIndex);
                     JxlFrameSectionReader.DecodeSections(codestream, frame, start, toc, decoder);
-                    (JxlPlane[] color, JxlPlane[] extra) = decoder.RenderColor();
-                    if (layerSink is not null && frame.Type is JxlFrameType.Regular or JxlFrameType.SkipProgressive)
+                    (JxlPlane[] color, JxlPlane[] extra, spotColor) = decoder.RenderColor(spot: spots && layer);
+                    if (layer)
                     {
-                        layerSink(frame, Layer(frame, color, extra, alpha, original, gray));
+                        layerSink!(frame, Layer(frame, spotColor ?? color, extra, alpha, original, gray));
                     }
                     canvas = blend ? Blend(frame, color, extra) : Copy(color, extra);
                 }
 
                 bool store = referenced && !frame.SaveBeforeColorTransform;
+                JxlReferenceFrame shownCanvas = spots && shown ? WithSpotColors(canvas, copy: store) : canvas;
                 if (!animation && frame.IsLast)
                 {
-                    JxlWorkBudget.Rewind(mark + references.RetainedBytes(canvas));
-                    yield return (frame, Output(canvas, frame, alpha, original, gray, copy: false));
+                    long spotBytes = shownCanvas.Color.Distinct().Where(plane => !canvas.Color.Contains(plane)).Sum(plane => plane.Bytes);
+                    JxlWorkBudget.Rewind(mark + references.RetainedBytes(canvas) + spotBytes);
+                    yield return (frame, Output(shownCanvas, frame, alpha, original, gray, copy: false));
                     yield break;
                 }
 
-                if (shown) yield return (frame, Output(canvas, frame, alpha, original, gray, copy: store));
+                if (shown) yield return (frame, Output(shownCanvas, frame, alpha, original, gray, copy: store && !spots));
                 if (store) references.StoreReference(frame.SaveAsReference, canvas, beforeColorTransform: false);
                 retained = references.RetainedBytes();
                 JxlWorkBudget.Rewind(mark + retained);
@@ -292,6 +301,21 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
         return new JxlReferenceFrame(colorPlanes, [.. extra.Select(plane => plane.Clone(cancellationToken))]);
     }
 
+    // The canvas colour with the spot colours rendered (libjxl's SpotColorStage after blending), on copies when the
+    // canvas is kept for later frames; the extra channels are shared.
+    private JxlReferenceFrame WithSpotColors(JxlReferenceFrame canvas, bool copy)
+    {
+        JxlPlane[] color = [.. canvas.Color];
+        if (copy)
+        {
+            JxlPlane[] copies = [.. color.Distinct().Select(plane => plane.Clone(cancellationToken))];
+            color = copies.Length == 3 ? copies : [copies[0], copies[0], copies[0]];
+        }
+
+        JxlSpotColors.For(headers.Metadata)!.Apply(color, canvas.Extra, cancellationToken, parallelism);
+        return new JxlReferenceFrame(color, [.. canvas.Extra]);
+    }
+
     // A layer as it is before blending, in the image's encoding or, with renderSrgb, converted to sRGB (on copies, as
     // the planes are blended afterwards).
     private JxlDecodedImage Layer(JxlFrameHeader frame, JxlPlane[] color, JxlPlane[] extra, int alpha, JxlColorTarget original, bool gray)
@@ -304,8 +328,13 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
             encoding = JxlCanvasToSrgb.Convert(color, encoding, original.Icc, cancellationToken, parallelism);
         }
 
-        return new JxlDecodedImage((int)frame.Width, (int)frame.Height, color, alpha < 0 ? null : extra[alpha], gray, encoding);
+        return new JxlDecodedImage((int)frame.Width, (int)frame.Height, color, alpha < 0 ? null : extra[alpha], gray, encoding)
+        {
+            Premultiplied = Premultiplied(alpha),
+        };
     }
+
+    private bool Premultiplied(int alpha) => alpha >= 0 && headers.Metadata.ExtraChannels[alpha].AlphaAssociated;
 
     // The blended canvas as the decoded image, in the image's encoding or, with renderSrgb, converted to sRGB (on copies
     // when the canvas is kept in a slot).
@@ -326,6 +355,9 @@ internal sealed class JxlDecodeSession(JxlCodestream codestream, JxlHeaders head
         }
 
         return new JxlDecodedImage((int)headers.Size.Width, (int)headers.Size.Height, color, alpha < 0 ? null : canvas.Extra[alpha],
-            gray, encoding);
+            gray, encoding)
+        {
+            Premultiplied = Premultiplied(alpha),
+        };
     }
 }

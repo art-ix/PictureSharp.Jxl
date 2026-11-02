@@ -105,9 +105,10 @@ public static class DiffTargets
         string? rejected = null, colorSpace = null;
         Comparison comparison = Comparison.Tolerance;
         int bitDepth = 8;
+        bool premultiplied = false;
         try
         {
-            (colorSpace, comparison, bitDepth) = Rendering(data);
+            (colorSpace, comparison, bitDepth, premultiplied) = Rendering(data);
             ours = Image.Load(data, Options(colorSpace is not null));
         }
         catch (ImageFormatException exception) when (IsLimit(exception))
@@ -158,8 +159,23 @@ public static class DiffTargets
                 if (code != 0) throw new FuzzAcceptanceException($"djxl decodes 8 bits but not 16: {Last(log)}");
             }
 
+            // Premultiplied alpha (0.8.16): djxl writes premultiplied colour; jxl_dec_straight (tests/assets/tools) is
+            // libjxl with unpremultiplying on. It has no colour space option, so ToSrgb renderings are not compared.
+            if (premultiplied && colorSpace is not null)
+            {
+                throw new FuzzLenientException("premultiplied alpha outside sRGB: no straight-alpha oracle for ToSrgb");
+            }
+
+            Image? straight = null;
+            if (premultiplied)
+            {
+                (code, log) = Exec("jxl_dec_straight", jxl, stem);
+                if (code != 0) throw new FuzzAcceptanceException($"djxl decodes, jxl_dec_straight fails: {Last(log)}");
+                straight = ReadPamFrames(stem);
+            }
+
             // Every frame of an animation (0.8.12): djxl writes the frames it shows as full APNG frames.
-            using Image expected = reduced ? Rounded(png) : Image.Load(png);
+            using Image expected = straight ?? (reduced ? Rounded(png) : Image.Load(png));
             string? difference = ours.FrameCount != expected.FrameCount ? $"{ours.FrameCount} frames instead of {expected.FrameCount}" : null;
             for (int i = 0; difference is null && i < ours.FrameCount; i++)
             {
@@ -217,7 +233,7 @@ public static class DiffTargets
     /// The djxl colour space for an XYB image outside sRGB, which only ToSrgb renders like djxl without a colour
     /// management system (as in JxlDecodeOracleTests), and how the pixels are compared.
     /// </summary>
-    private static (string? ColorSpace, Comparison Comparison, int BitDepth) Rendering(byte[] data)
+    private static (string? ColorSpace, Comparison Comparison, int BitDepth, bool Premultiplied) Rendering(byte[] data)
     {
         JxlCodestream codestream = JxlContainer.Parse(data).Codestream;
         JxlHeaders headers = JxlHeadersReader.Read(codestream);
@@ -231,7 +247,48 @@ public static class DiffTargets
             && frames.All(frame => frame.Encoding == JxlFrameEncoding.Modular && frame.ColorTransform != JxlColorTransform.Xyb) ? Comparison.Exact
             : frames.Any(frame => frame.ColorTransform == JxlColorTransform.YCbCr) ? Comparison.Jpeg
             : Comparison.Tolerance;
-        return (colorSpace, comparison, (int)headers.Metadata.BitDepth.BitsPerSample);
+        bool premultiplied = headers.Metadata.ExtraChannels.FirstOrDefault(channel => channel.Type == JxlExtraChannelType.Alpha)?.AlphaAssociated == true;
+        return (colorSpace, comparison, (int)headers.Metadata.BitDepth.BitsPerSample, premultiplied);
+    }
+
+    // The 8-bit frames jxl_dec_straight wrote (<stem>-<n>.pam, 1-4 channels) as one Rgba32 image; the files are removed.
+    private static Image ReadPamFrames(string stem)
+    {
+        Image? image = null;
+        for (int index = 0; File.Exists($"{stem}-{index}.pam"); index++)
+        {
+            byte[] pam = File.ReadAllBytes($"{stem}-{index}.pam");
+            File.Delete($"{stem}-{index}.pam");
+            int end = pam.AsSpan().IndexOf("ENDHDR\n"u8) + 7;
+            Dictionary<string, string> header = System.Text.Encoding.ASCII.GetString(pam, 0, end).Split('\n')
+                .Where(line => line.Contains(' ')).ToDictionary(line => line[..line.IndexOf(' ')], line => line[(line.IndexOf(' ') + 1)..]);
+            int width = int.Parse(header["WIDTH"]), height = int.Parse(header["HEIGHT"]), depth = int.Parse(header["DEPTH"]);
+            var frame = new ImageFrame(width, height);
+            Span<Rgba32> pixels = frame.GetPixelMemory<Rgba32>().Span;
+            for (int p = 0; p < pixels.Length; p++)
+            {
+                ReadOnlySpan<byte> s = pam.AsSpan(end + (p * depth), depth);
+                pixels[p] = depth switch
+                {
+                    1 => new Rgba32(s[0], s[0], s[0], 255),
+                    2 => new Rgba32(s[0], s[0], s[0], s[1]),
+                    3 => new Rgba32(s[0], s[1], s[2], 255),
+                    _ => new Rgba32(s[0], s[1], s[2], s[3]),
+                };
+            }
+
+            if (image is null)
+            {
+                image = new Image(width, height);
+                frame.GetPixelMemory<Rgba32>().CopyTo(image.GetPixelMemory<Rgba32>());
+            }
+            else
+            {
+                image.Frames.Add(frame);
+            }
+        }
+
+        return image ?? throw new FuzzAcceptanceException("jxl_dec_straight wrote no frame");
     }
 
     // Input layout: byte 0 flags (bit 0 lossless, 1 16-bit, 2 alpha, 3 gray, 4 ICC, 5-7 pattern), byte 1 effort, byte 2

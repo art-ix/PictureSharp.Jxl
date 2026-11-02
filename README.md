@@ -50,14 +50,17 @@ when reading the result too.
 
 | | Supported |
 |---|---|
-| **Read** | Lossy (VarDCT) and lossless (Modular) images, including recompressed JPEGs, progressive files, patches, photon noise and splines. Layers are flattened like `djxl` or read one by one with `JxlLayers.Load`. Animations load whole or frame by frame with `Image.OpenFrameReaderAsync`. |
+| **Read** | Lossy (VarDCT) and lossless (Modular) images, including recompressed JPEGs, progressive files, patches, photon noise and splines. Premultiplied alpha comes back straight, spot colours are rendered like `djxl`, and other extra channels (depth, selection masks, thermal, …) are decoded and left out. Layers are flattened like `djxl` or read one by one with `JxlLayers.Load`. Animations load whole or frame by frame with `Image.OpenFrameReaderAsync`. |
 | **Write** | Lossy (`Quality`/`Distance`, `Effort` 1–9) and lossless, 8 or 16 bits; files about as small as `cjxl` at the same settings. Animations are saved whole or frame by frame with `Image.CreateFrameWriter`. Film grain with `PhotonNoiseIso` (lossy). |
 | **Pixels** | Gray or RGB, with or without alpha, up to 16 bits per sample (`Rgba64` with `PreserveBitDepth`, otherwise 8-bit). |
 | **Metadata** | ICC, EXIF, XMP, colour description and orientation: read, written and edited in place. |
 | **JPEG** | `JxlTranscoder` stores 8-bit Huffman JPEGs (gray or YCbCr) and restores them byte for byte. |
 
-**Not supported yet:** images with float samples or CMYK (decoding throws
-`NotSupportedException`); transcoding RGB, CMYK, arithmetic-coded or 12-bit JPEGs.
+**Not supported yet:** images with float samples or CMYK need a float pixel type and colour management for CMYK
+profiles in PictureSharp itself, so decoding them throws `NotSupportedException`; transcoding RGB JPEGs.
+
+**Format limits:** CMYK, arithmetic-coded and 12-bit JPEGs cannot be stored as JPEG XL reconstruction data (libjxl
+rejects them too).
 
 Output matches djxl (libjxl 0.12.0): lossless exactly, lossy within 1 of 255, and files written here decode the same
 way with djxl.

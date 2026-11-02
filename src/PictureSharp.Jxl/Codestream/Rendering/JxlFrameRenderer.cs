@@ -26,14 +26,26 @@ internal sealed class JxlFrameRenderer(JxlFrameHeader frame, JxlHeaders headers,
     /// </summary>
     public JxlYCbCrRows? Rows { get; private set; }
 
-    /// <summary>The render pipeline stages of PreparePipeline that this decoder supports, in libjxl's order.</summary>
-    public JxlPlane[] Render(JxlPlane[] color, JxlPlane[] extra, bool colorTransform, bool deferChroma = false)
+    /// <summary>
+    /// With <see cref="JxlSpotRendering.Copy"/> in <see cref="Render"/>: the colour planes with the spot colours rendered
+    /// (new planes, not owned by the frame's buffers), next to the returned planes without them; null without spot
+    /// colours.
+    /// </summary>
+    public JxlPlane[]? SpotColor { get; private set; }
+
+    /// <summary>
+    /// The render pipeline stages of PreparePipeline that this decoder supports, in libjxl's order. <paramref name="spot"/>
+    /// renders the spot colours after the colour transform (0.8.16), for frames that are not blended.
+    /// </summary>
+    public JxlPlane[] Render(JxlPlane[] color, JxlPlane[] extra, bool colorTransform, bool deferChroma = false,
+        JxlSpotRendering spot = JxlSpotRendering.None)
     {
+        JxlSpotColors? spots = colorTransform && spot != JxlSpotRendering.None ? JxlSpotColors.For(Metadata) : null;
         cancellationToken.ThrowIfCancellationRequested();
         color = ExpandGray(color, colorTransform);
         if (frame.ColorTransform == JxlColorTransform.YCbCr)
         {
-            if (deferChroma && colorTransform && CanDeferChroma(color))
+            if (deferChroma && colorTransform && spots is null && CanDeferChroma(color))
             {
                 // Chroma upsampling and YCbCr to RGB are the last stages: the consumer renders rows (0.8.6).
                 Rows = new JxlYCbCrRows(color, [frame.HShift(0), frame.HShift(1), frame.HShift(2)],
@@ -69,11 +81,39 @@ internal sealed class JxlFrameRenderer(JxlFrameHeader frame, JxlHeaders headers,
                 cancellationToken, buffers);
         }
 
-        if (colorTransform && color.Length == 3)
+        if (spots is null)
         {
-            new JxlColorOutput(Metadata, headers.TransformData, frame.ColorTransform, colorTarget).Apply(color, cancellationToken, parallelism);
+            if (colorTransform && color.Length == 3)
+            {
+                new JxlColorOutput(Metadata, headers.TransformData, frame.ColorTransform, colorTarget).Apply(color, cancellationToken, parallelism);
+            }
+
+            return color;
         }
 
+        // SpotColorStage after the colour transform: for XYB in linear light (inside the colour output), otherwise in
+        // the coded colour space; with Copy on clones, keeping the planes without ink for blending or a reference slot.
+        JxlPlane[] spotted = spot == JxlSpotRendering.Copy ? [.. color.Select(plane => plane.Clone(cancellationToken))] : color;
+        if (color.Length == 3)
+        {
+            if (spot == JxlSpotRendering.Copy)
+            {
+                new JxlColorOutput(Metadata, headers.TransformData, frame.ColorTransform, colorTarget).Apply(color, cancellationToken, parallelism);
+            }
+
+            (JxlPlane, float[])[]? linear = frame.ColorTransform == JxlColorTransform.Xyb
+                ? [.. spots.Channels.Select((channel, i) => (extra[channel], spots.Colors[i]))]
+                : null;
+            new JxlColorOutput(Metadata, headers.TransformData, frame.ColorTransform, colorTarget, linear).Apply(spotted, cancellationToken, parallelism);
+            if (linear is not null)
+            {
+                SpotColor = spot == JxlSpotRendering.Copy ? spotted : null;
+                return color;
+            }
+        }
+
+        spots.Apply(spotted, extra, cancellationToken, parallelism);
+        SpotColor = spot == JxlSpotRendering.Copy ? spotted : null;
         return color;
     }
 
@@ -183,4 +223,17 @@ internal sealed class JxlFrameRenderer(JxlFrameHeader frame, JxlHeaders headers,
             parallelism);
     }
 
+}
+
+/// <summary>Whether <see cref="JxlFrameRenderer.Render"/> renders the spot colours, and where.</summary>
+internal enum JxlSpotRendering
+{
+    /// <summary>Not rendered: the frame is blended first, or saved before the colour transform.</summary>
+    None,
+
+    /// <summary>Rendered into the returned planes.</summary>
+    InPlace,
+
+    /// <summary>Rendered into <see cref="JxlFrameRenderer.SpotColor"/>; the returned planes stay without ink.</summary>
+    Copy,
 }

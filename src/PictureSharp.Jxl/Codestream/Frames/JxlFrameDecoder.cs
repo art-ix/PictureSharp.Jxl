@@ -341,10 +341,16 @@ internal sealed class JxlFrameDecoder
         }
     }
 
+    /// <summary>
+    /// The displayed frame of the image's size, not blended: rendered with its spot colours, with premultiplied colour
+    /// when the alpha channel <paramref name="alpha"/> is associated (unpremultiplied by the pixel writer).
+    /// </summary>
     public JxlDecodedImage Finish(int alpha)
     {
         FinalizeSamples();
+        bool premultiplied = alpha >= 0 && metadata.ExtraChannels[alpha].AlphaAssociated;
         if (varDct is null && !metadata.XybEncoded && frame.ColorTransform == JxlColorTransform.None && features is null
+            && JxlSpotColors.For(metadata) is null
             && !frame.LoopFilter.Gaborish && frame.LoopFilter.EpfIterations == 0 && patches.Length == 0
             && frame.Upsampling == 1 && frame.ExtraChannelUpsampling.All(f => f == 1)
             && metadata.BitDepth.BitsPerSample <= 16 && metadata.ExtraChannels.All(c => c.BitDepth.BitsPerSample <= 16))
@@ -352,31 +358,35 @@ internal sealed class JxlFrameDecoder
             return new JxlDecodedImage((int)frame.Width, (int)frame.Height, [], null,
                 metadata.Color.ColorSpace == JxlColorSpace.Gray, metadata.Color)
             {
+                Premultiplied = premultiplied,
                 IntegerSamples = new JxlIntegerImage([.. image.Channels.Take(colorChannels)],
                     alpha < 0 ? null : image.Channels[colorChannels + alpha], (int)metadata.BitDepth.BitsPerSample,
                     alpha < 0 ? 8 : (int)metadata.ExtraChannels[alpha].BitDepth.BitsPerSample),
             };
         }
         bool gray = metadata.Color.ColorSpace == JxlColorSpace.Gray;
-        (JxlPlane[] color, JxlPlane[] extra, JxlColorRows? rows) = Render(colorTransform: true, finalized: true, deferChroma: !gray);
+        (JxlPlane[] color, JxlPlane[] extra, JxlColorRows? rows, _) = Render(colorTransform: true, finalized: true, deferChroma: !gray,
+            spot: JxlSpotRendering.InPlace);
         return new JxlDecodedImage((int)frame.Width, (int)frame.Height, color, alpha < 0 ? null : extra[alpha], gray,
-            JxlColorOutput.DescribeOutput(metadata, frame.ColorTransform, colorTarget)) { Rows = rows };
+            JxlColorOutput.DescribeOutput(metadata, frame.ColorTransform, colorTarget)) { Rows = rows, Premultiplied = premultiplied };
     }
 
     /// <summary>
     /// The frame at its own size after the colour transform, to be blended or saved after it: the colour planes (one
-    /// for gray) and the extra channels.
+    /// for gray) and the extra channels, without spot colours. With <paramref name="spot"/> also the colour planes with
+    /// the spot colours rendered as for a frame that is not blended (new planes; null when the image has none).
     /// </summary>
-    public (JxlPlane[] Color, JxlPlane[] Extra) RenderColor()
+    public (JxlPlane[] Color, JxlPlane[] Extra, JxlPlane[]? SpotColor) RenderColor(bool spot = false)
     {
-        (JxlPlane[] color, JxlPlane[] extra, _) = Render(colorTransform: true);
-        return (color, extra);
+        (JxlPlane[] color, JxlPlane[] extra, _, JxlPlane[]? spotColor) = Render(colorTransform: true,
+            spot: spot ? JxlSpotRendering.Copy : JxlSpotRendering.None);
+        return (color, extra, spotColor);
     }
 
     /// <summary>The frame as saved for later frames: before the colour transform (save_before_color_transform).</summary>
     public JxlReferenceFrame Store()
     {
-        (JxlPlane[] color, JxlPlane[] extra, _) = Render(colorTransform: false);
+        (JxlPlane[] color, JxlPlane[] extra, _, _) = Render(colorTransform: false);
         return new JxlReferenceFrame(color, extra);
     }
 
@@ -406,7 +416,8 @@ internal sealed class JxlFrameDecoder
 
     }
 
-    private (JxlPlane[] Color, JxlPlane[] Extra, JxlColorRows? Rows) Render(bool colorTransform, bool finalized = false, bool deferChroma = false)
+    private (JxlPlane[] Color, JxlPlane[] Extra, JxlColorRows? Rows, JxlPlane[]? SpotColor) Render(bool colorTransform, bool finalized = false,
+        bool deferChroma = false, JxlSpotRendering spot = JxlSpotRendering.None)
     {
         if (!finalized) FinalizeSamples();
         IReadOnlyList<JxlChannel> channels = image.Channels;
@@ -424,8 +435,8 @@ internal sealed class JxlFrameDecoder
             : null;
         var renderer = new JxlFrameRenderer(frame, headers, patches, references, sigma, cancellationToken, colorTarget, Parallelism, buffers,
             features);
-        color = renderer.Render(color, extraPlanes, colorTransform, deferChroma);
-        return (color, extraPlanes, renderer.Rows);
+        color = renderer.Render(color, extraPlanes, colorTransform, deferChroma, spot);
+        return (color, extraPlanes, renderer.Rows, renderer.SpotColor);
     }
 
     // Colour channels of a Modular frame as floats (ModularImageToDecodedRect): XYB is coded as Y, X, B - Y.

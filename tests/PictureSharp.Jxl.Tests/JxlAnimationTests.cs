@@ -211,7 +211,10 @@ public sealed class JxlAnimationTests
         await Assert.That(() => JxlLayers.Load(CorpusPath("anim-crop.jxl"), Options())).Throws<NotSupportedException>();
     }
 
-    /// <summary>Every frame matches djxl's APNG output (oriented, 8 bits): lossless exactly, lossy within the tolerance.</summary>
+    /// <summary>
+    /// Every frame matches djxl's APNG output (oriented, 8 bits; premultiplied alpha: jxl_dec_straight): lossless exactly, lossy
+    /// within the tolerance.
+    /// </summary>
     [Test]
     [Category("Oracle")]
     public async Task Frames_MatchDjxl()
@@ -222,7 +225,7 @@ public sealed class JxlAnimationTests
         foreach (string path in files)
         {
             using Image image = Image.Load(path, Oriented());
-            using Image expected = JxlDecodeOracleTests.DjxlImage(djxl!, path);
+            using Image expected = JxlDecodeOracleTests.ReferenceImage(djxl!, path);
             string label = Path.GetFileName(Path.GetDirectoryName(path)) + "/" + Path.GetFileName(path);
             await Assert.That(image.FrameCount).IsEqualTo(expected.FrameCount);
             if (image.FrameCount > 1) await Assert.That(image.LoopCount).IsEqualTo(expected.LoopCount);

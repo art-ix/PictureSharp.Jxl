@@ -13,6 +13,9 @@ internal static partial class JxlPixelWriter
 {
     private const int MinBandRows = 16;
 
+    // libjxl's kSmallAlpha (alpha.h): the smallest alpha that divides premultiplied colour.
+    private const float SmallAlpha = 1.0f / (1u << 26);
+
     /// <summary>
     /// How the dither pattern is mirrored: libjxl undoes the orientation while it writes 8-bit output and flips a row
     /// (X) or the row order (Y) before dithering (stage_write.cc, FlipX and ProcessRow); a transpose comes after it.
@@ -97,20 +100,24 @@ internal static partial class JxlPixelWriter
         JxlPlane blue = decoded.Color[^1];
         // Grayscale is written as one channel (dithered as channel 0, alpha as channel 1) and replicated.
         bool gray = decoded.IsGrayscale;
+        bool premultiplied = decoded.Premultiplied && alpha is not null;
         JxlParallel.ForBands(decoded.Height, MinBandRows, parallelism, cancellationToken, (start, end) =>
         {
+            using var rows = new StraightRows(premultiplied, gray, decoded.Width);
             for (int y = start; y < end; y++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 ReadOnlySpan<float> a = alpha is null ? default : alpha.Row(y);
+                ReadOnlySpan<float> r = red.Row(y), g = green.Row(y), b = blue.Row(y);
+                rows.Straighten(ref r, ref g, ref b, a);
                 Span<Rgba32> row = pixels.Span.Slice(y * decoded.Width, decoded.Width);
                 if (gray)
                 {
-                    WriteGrayRow(red.Row(y), a, row, DitherRow(y, decoded.Height, flip), flip.X);
+                    WriteGrayRow(r, a, row, DitherRow(y, decoded.Height, flip), flip.X);
                 }
                 else
                 {
-                    WriteColorRow(red.Row(y), green.Row(y), blue.Row(y), a, row, DitherRow(y, decoded.Height, flip), flip.X);
+                    WriteColorRow(r, g, b, a, row, DitherRow(y, decoded.Height, flip), flip.X);
                 }
             }
         });
@@ -153,17 +160,20 @@ internal static partial class JxlPixelWriter
             return;
         }
 
+        bool gray = decoded.IsGrayscale;
+        bool premultiplied = decoded.Premultiplied && decoded.Alpha is not null;
         JxlParallel.ForBands(decoded.Height, MinBandRows, parallelism, cancellationToken, (start, end) =>
         {
+            using var rows = new StraightRows(premultiplied, gray, decoded.Width);
             for (int y = start; y < end; y++)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 Span<Rgba64> row = pixels.Span.Slice(y * decoded.Width, decoded.Width);
-                ReadOnlySpan<float> r = decoded.Color[0].Row(y);
-                ReadOnlySpan<float> g = decoded.IsGrayscale ? r : decoded.Color[1].Row(y);
-                ReadOnlySpan<float> b = decoded.IsGrayscale ? r : decoded.Color[2].Row(y);
                 ReadOnlySpan<float> a = decoded.Alpha is null ? default : decoded.Alpha.Row(y);
-                WriteWideRow(r, g, b, a, row, decoded.IsGrayscale);
+                ReadOnlySpan<float> r = decoded.Color[0].Row(y);
+                ReadOnlySpan<float> g = gray ? default : decoded.Color[1].Row(y), b = gray ? default : decoded.Color[2].Row(y);
+                rows.Straighten(ref r, ref g, ref b, a);
+                WriteWideRow(r, gray ? r : g, gray ? r : b, a, row, gray);
             }
         });
     }
@@ -223,6 +233,7 @@ internal static partial class JxlPixelWriter
                 if (source.Alpha is not null)
                 {
                     ScaleRow(source.Alpha.Row(y), alphaScale, fa);
+                    if (decoded.Premultiplied) Unpremultiply(fr, fg, fb, fa, gray);
                 }
 
                 if (wide) WriteWideRow(fr, fg, fb, fa, widePixels.Span.Slice(y * width, width), gray);
@@ -253,10 +264,73 @@ internal static partial class JxlPixelWriter
                 cancellationToken.ThrowIfCancellationRequested();
                 band.Render(y, r, g, b);
                 ReadOnlySpan<float> a = alpha is null ? default : alpha.Row(y);
+                if (decoded.Premultiplied && alpha is not null) Unpremultiply(r, g, b, a, gray: false);
                 if (wide) WriteWideRow(r, g, b, a, widePixels.Span.Slice(y * width, width), gray: false);
                 else WriteColorRow(r, g, b, a, narrowPixels.Span.Slice(y * width, width), DitherRow(y, decoded.Height, flip), flip.X);
             }
         });
+    }
+
+    /// <summary>
+    /// Associated alpha made straight right before the conversion (libjxl WriteToOutputStage::UnpremulAlpha and
+    /// alpha.cc UnpremultiplyAlpha, v0.12.0, BSD-3-Clause): every colour sample × (1 / max(2^-26, alpha)), unclamped. A
+    /// gray row (<paramref name="gray"/>, the same span three times) is multiplied once.
+    /// </summary>
+    internal static void Unpremultiply(Span<float> r, Span<float> g, Span<float> b, ReadOnlySpan<float> a, bool gray)
+    {
+        a = a[..r.Length];
+        if (gray)
+        {
+            for (int x = 0; x < r.Length; x++) r[x] *= 1.0f / MathF.Max(SmallAlpha, a[x]);
+            return;
+        }
+
+        g = g[..r.Length];
+        b = b[..r.Length];
+        for (int x = 0; x < r.Length; x++)
+        {
+            float multiplier = 1.0f / MathF.Max(SmallAlpha, a[x]);
+            r[x] *= multiplier;
+            g[x] *= multiplier;
+            b[x] *= multiplier;
+        }
+    }
+
+    // A band's rows of straight colour: the plane rows themselves, or copies unpremultiplied by the alpha row.
+    private readonly ref struct StraightRows
+    {
+        private readonly JxlBufferScope? buffers;
+        private readonly Span<float> r, g, b;
+        private readonly bool gray;
+
+        public StraightRows(bool premultiplied, bool gray, int width)
+        {
+            this.gray = gray;
+            if (!premultiplied) return;
+            buffers = new JxlBufferScope();
+            r = buffers.Rent<float>(width, clear: false).AsSpan(0, width);
+            g = gray ? r : buffers.Rent<float>(width, clear: false).AsSpan(0, width);
+            b = gray ? r : buffers.Rent<float>(width, clear: false).AsSpan(0, width);
+        }
+
+        // Replaces the rows by their straight copies when the colour is premultiplied.
+        public void Straighten(ref ReadOnlySpan<float> red, ref ReadOnlySpan<float> green, ref ReadOnlySpan<float> blue, ReadOnlySpan<float> alpha)
+        {
+            if (buffers is null) return;
+            red[..r.Length].CopyTo(r);
+            if (!gray)
+            {
+                green[..g.Length].CopyTo(g);
+                blue[..b.Length].CopyTo(b);
+            }
+
+            Unpremultiply(r, g, b, alpha, gray);
+            red = r;
+            green = g;
+            blue = b;
+        }
+
+        public void Dispose() => buffers?.Dispose();
     }
 
     // value × scale in single precision, as the integer rows were converted before 0.8.4.

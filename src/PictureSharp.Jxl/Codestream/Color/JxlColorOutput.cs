@@ -15,6 +15,8 @@ namespace PictureSharp.Formats.Jxl.Codestream.Color;
 /// With an ICC profile libjxl converts linear sRGB to the profile with a colour management system; this decoder does
 /// that for matrix/TRC and gray profiles (<see cref="JxlIccTarget"/>) and otherwise renders sRGB. On request
 /// (<see cref="JxlColorTarget.Srgb"/>) every XYB image is rendered as sRGB, as libjxl does for an sRGB output encoding.
+/// Spot colours of XYB frames that are not blended are mixed in linear light between the two (0.8.16), where libjxl's
+/// SpotColorStage runs (render_pipeline/stage_spot.cc).
 /// </remarks>
 internal sealed partial class JxlColorOutput
 {
@@ -33,9 +35,14 @@ internal sealed partial class JxlColorOutput
     private readonly float inverseGamma;
     private readonly float pqScale;
     private readonly JxlToneCurve[]? curves;
+    private readonly (JxlPlane Samples, float[] Color)[]? spots;
 
+    /// <summary>
+    /// <paramref name="spots"/> (XYB only): the spot channels to mix in linear light, each with its red, green, blue and
+    /// opacity values.
+    /// </summary>
     public JxlColorOutput(JxlImageMetadata metadata, JxlCustomTransformData transformData, JxlColorTransform transform,
-        JxlColorTarget? target = null)
+        JxlColorTarget? target = null, IReadOnlyList<(JxlPlane Samples, float[] Color)>? spots = null)
     {
         this.transform = transform;
         if (transform != JxlColorTransform.Xyb)
@@ -65,6 +72,15 @@ internal sealed partial class JxlColorOutput
         else if (!gray && (color.Primaries != JxlPrimaries.Srgb || color.WhitePoint != JxlWhitePoint.D65))
         {
             inverse = Multiply(SrgbToOriginal(color), inverse);
+        }
+
+        if (spots is { Count: > 0 })
+        {
+            // libjxl mixes in linear sRGB and converts to the profile afterwards; the conversion is linear and folded
+            // into the matrix here, so the spot colour takes the same linear map.
+            float[]? toProfile = !gray && icc is not null ? Multiply(icc.FromXyzD50, SrgbToXyzD50()) : null;
+            this.spots = [.. spots.Select(spot => (spot.Samples,
+                toProfile is null ? spot.Color : [.. Multiply3(toProfile, spot.Color[..3]), spot.Color[3]]))];
         }
 
         if (gray)
@@ -137,6 +153,10 @@ internal sealed partial class JxlColorOutput
             {
                 YCbCrToRgbRow(r0, r1, r2);
             }
+            else if (spots is not null)
+            {
+                ApplyXybWithSpots(r0, r1, r2, y);
+            }
             else if (curves is null && transfer == JxlTransferFunction.Srgb)
             {
                 for (int x = ApplyXybAvx2(r0, r1, r2, true); x < r0.Length; x++)
@@ -159,6 +179,42 @@ internal sealed partial class JxlColorOutput
     }
 
     /// <summary>Converts one row of Cb, Y and Cr in place to R, G and B (also used per row band by <see cref="Rendering.JxlYCbCrRows"/>).</summary>
+    // XYB to linear, the spot colours (SpotColorStage) and the transfer function or profile curves, one row at a time.
+    private void ApplyXybWithSpots(Span<float> r0, Span<float> r1, Span<float> r2, int y)
+    {
+        for (int x = 0; x < r0.Length; x++)
+        {
+            XybToLinear(ref r0[x], ref r1[x], ref r2[x]);
+        }
+
+        foreach ((JxlPlane samples, float[] color) in spots!)
+        {
+            ReadOnlySpan<float> row = samples.Row(y);
+            MixSpotRow(r0, row, color[0], color[3]);
+            MixSpotRow(r1, row, color[1], color[3]);
+            MixSpotRow(r2, row, color[2], color[3]);
+        }
+
+        for (int x = 0; x < r0.Length; x++)
+        {
+            EncodeLinear(ref r0[x], ref r1[x], ref r2[x]);
+        }
+    }
+
+    /// <summary>
+    /// One spot channel mixed into one colour row (libjxl SpotColorStage::ProcessRow, v0.12.0, BSD-3-Clause):
+    /// <c>p = mix × value + (1 − mix) × p</c> with <c>mix = opacity × sample</c>, without clamping or FMA.
+    /// </summary>
+    public static void MixSpotRow(Span<float> row, ReadOnlySpan<float> samples, float value, float opacity)
+    {
+        samples = samples[..row.Length];
+        for (int x = 0; x < row.Length; x++)
+        {
+            float mix = opacity * samples[x];
+            row[x] = (mix * value) + ((1.0f - mix) * row[x]);
+        }
+    }
+
     public static void YCbCrToRgbRow(Span<float> cb, Span<float> luma, Span<float> cr)
     {
         for (int x = YCbCrToRgbAvx2(cb, luma, cr); x < cb.Length; x++)
@@ -202,6 +258,12 @@ internal sealed partial class JxlColorOutput
     private void XybToRgb(ref float x, ref float y, ref float b)
     {
         XybToLinear(ref x, ref y, ref b);
+        EncodeLinear(ref x, ref y, ref b);
+    }
+
+    // Linear samples to the output: the profile's curves or the transfer function.
+    private void EncodeLinear(ref float x, ref float y, ref float b)
+    {
         float red = x, green = y, blue = b;
         if (curves is not null)
         {

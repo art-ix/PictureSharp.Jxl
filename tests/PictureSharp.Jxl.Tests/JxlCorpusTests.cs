@@ -31,7 +31,10 @@ public sealed class JxlCorpusTests
         await Assert.That(info.Format).IsSameReferenceAs(ImageFormat.Jxl);
         await Assert.That(info.Width).IsEqualTo(expected.GetProperty("width").GetInt32());
         await Assert.That(info.Height).IsEqualTo(expected.GetProperty("height").GetInt32());
-        await Assert.That(info.Color.BitsPerSample).IsEqualTo(expected.GetProperty("bits").GetInt32());
+        // jxlinfo prints the colour depth; ImageColorInfo reports the widest channel, extra channels included.
+        JxlImageMetadata metadata = JxlHeadersReader.Read(JxlContainer.Parse(data).Codestream).Metadata;
+        int bits = Math.Max(expected.GetProperty("bits").GetInt32(), metadata.ExtraChannels.Select(channel => (int)channel.BitDepth.BitsPerSample).DefaultIfEmpty().Max());
+        await Assert.That(info.Color.BitsPerSample).IsEqualTo(bits);
         await Assert.That(info.Color.HasAlpha).IsEqualTo(expected.GetProperty("alpha").GetBoolean());
         // Displayed frames (one for stills, djxl's coalesced frames for animations).
         int frames = expected.TryGetProperty("frameSha256", out JsonElement hashes) ? hashes.GetArrayLength() : 1;

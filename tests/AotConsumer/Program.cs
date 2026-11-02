@@ -184,4 +184,13 @@ using (var flat = new Image(80, 48))
         || !single.GetPixelByteSpan().SequenceEqual(all.GetPixelByteSpan()))
         throw new InvalidOperationException("Photon noise was not rendered as expected.");
 }
-Console.WriteLine("Package consumer: registration, detection, Identify, decoding, encoding, metadata, JPEG transcoding, layers, animation, frame reader, frame writer and photon noise passed.");
+// Extra channels (0.8.16): premultiplied alpha returned straight and a spot colour rendered, as libjxl renders them.
+string extraPath = Path.Combine(AppContext.BaseDirectory, "spot-premul.jxl");
+using (Image extra = Image.Load(extraPath))
+{
+    string hash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(extra.GetPixelByteSpan()));
+    if (hash != "732351065597ee36b39c35ad28f564b6ea94b064480d96d1f47858f530ae99ee"
+        || Image.Identify(extraPath).Color.AlphaMode != ImageAlphaMode.Premultiplied || Image.Identify(extraPath).Color.ChannelCount != 5)
+        throw new InvalidOperationException("Extra channels were not decoded as expected.");
+}
+Console.WriteLine("Package consumer: registration, detection, Identify, decoding, encoding, metadata, JPEG transcoding, layers, animation, frame reader, frame writer, photon noise and extra channels passed.");

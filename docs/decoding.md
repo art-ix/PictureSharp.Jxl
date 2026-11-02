@@ -24,6 +24,7 @@ Still images and animations, lossy and lossless, as `cjxl` produces them:
 | Animations (0.8.12) | every frame `djxl` shows, as a full canvas with its duration, and the loop count ([below](#animations)) |
 | Rendering | Gaborish, edge-preserving filter, 2×/4×/8× upsampling, XYB and YCbCr to RGB |
 | Image features (0.8.15) | splines (drawn before upsampling) and photon noise (after upsampling), as libjxl draws them; the grain is seeded from the frame's position in the file, so every API and every thread count returns the same pixels |
+| Extra channels (0.8.16) | premultiplied (associated) alpha, returned as straight alpha; spot colours, rendered into the colour as `djxl` does; depth, selection mask, thermal, optional and other channels, decoded and left out ([below](#extra-channels)) |
 | Colour | RGB and grayscale with alpha; sRGB, linear, gamma, BT.709, DCI and PQ transfer functions |
 | Samples | integers up to 16 bits; lossy images of any declared depth |
 
@@ -31,8 +32,27 @@ Layers are blended in the image's colour encoding, as libjxl does. With `ColorCo
 image is then converted to sRGB in floating point (djxl cannot render blended XYB frames in another colour space);
 through an ICC profile a few more samples differ by 1 than for a single frame.
 
-`NotSupportedException`: float samples
-(except XYB); HLG with XYB; CMYK and spot colours; premultiplied or float alpha.
+`NotSupportedException`: float samples (except XYB), also in alpha and other extra channels, and CMYK (a Black extra
+channel): both need support in PictureSharp itself (a float pixel type, colour management for CMYK profiles), and the
+message says so. HLG with XYB.
+
+### Extra channels
+
+Since 0.8.16 every extra channel type decodes, with the same rules in `Image.Load`, the frame reader and `JxlLayers`:
+
+- **Premultiplied alpha:** the colour stays premultiplied while layers are blended (as libjxl blends it) and is divided
+  by alpha only when the pixels are written, exactly as libjxl does with unpremultiplying on: colour × 1 / max(2⁻²⁶,
+  alpha), before the 8-bit dither or 16-bit rounding. Fully transparent pixels with colour 0 stay 0; colour that a
+  lossy file left under transparent pixels is amplified and clamps (invisible, as alpha is 0). `djxl` itself writes
+  premultiplied colour, so the tests use libjxl's decoder with unpremultiplying on as the reference.
+- **Spot colours:** each spot channel is an ink with a colour and an opacity; it is mixed into the colour in channel
+  order (`mix = opacity × sample`, `colour = mix × ink + (1 − mix) × colour`), as `djxl` does by default. Where libjxl
+  mixes is kept: for a lossy frame shown on its own in linear light, otherwise (blended canvases, frames kept for later
+  frames) in the output's transfer function; the canvas kept for later frames has no ink. Each layer from `JxlLayers`
+  carries its own ink, like `djxl --no_coalescing`. Rendering cannot be switched off.
+- **Other channels** (depth, selection mask, thermal, colour filter array, optional, unknown, reserved) and further
+  alpha channels are decoded (they may be upsampled, patched and blended like any channel) and left out of the pixels.
+  `Identify` still counts them in `ChannelCount` and `BitsPerSample`.
 
 ### Conversion to 8 bits
 
@@ -43,7 +63,8 @@ By default `Image` holds `Rgba32`, and samples are reduced as libjxl does for 8-
   writes 8-bit output, so oriented images match `djxl` too.
 - `ToSrgb` of images above 8 bits: PictureSharp decodes them at 16 bits, converts and rounds to 8 bits without
   dither, so such images differ from `djxl` by 1 in many samples (the 16-bit result matches).
-- Grayscale is replicated to RGB. The first alpha channel becomes alpha; other extra channels are decoded and dropped.
+- Grayscale is replicated to RGB. The first alpha channel becomes alpha (premultiplied alpha made straight); spot
+  colours are rendered and other extra channels are decoded and dropped ([extra channels](#extra-channels)).
 
 ### Preserving sample precision
 
@@ -162,7 +183,7 @@ contents, without decoding the frames:
 | `Color.Model` | `Rgb` (also XYB), `Gray`, `Cmyk` with a Black channel, `Other` for the XYB colour space |
 | `Color.ChannelCount` | colour channels (1 or 3) plus extra channels |
 | `Color.BitsPerSample`, `SampleFormat` | widest channel: integers 1–31 bits, floats 5–32 bits; `Float` if any channel is float |
-| `Color.AlphaMode` | `Straight`, `Premultiplied` or `None` |
+| `Color.AlphaMode` | `Straight`, `Premultiplied` or `None`, as stored (decoded pixels are always straight) |
 | `Color.HasIccProfile` | an ICC profile is declared |
 | `Color.Cicp` | H.273 code points when they map exactly; null with ICC, custom primaries, gamma or XYB |
 | `Compression` | `Lossy` for XYB, else `Unknown` (headers don't say if Modular is lossless) |
@@ -219,7 +240,9 @@ the file, as ISO BMFF allows) after out-of-order `jxlp` parts, which `djxl` reje
 `tests/assets/corpus` holds small synthetic files (`generate-corpus.py`, cjxl v0.12.0) with recorded `jxlinfo`
 output, pixel hashes and reference renderings, so tests don't need the tools.
 
-Oracle tests compare against `jxlinfo` and `djxl` and are skipped without the tools on `PATH` (or `JXL_TOOLS`);
+Oracle tests compare against `jxlinfo` and `djxl` and are skipped without the tools on `PATH` (or `JXL_TOOLS`).
+Images with premultiplied alpha are compared with `jxl_dec_straight` (`tests/assets/tools`, libjxl's decoder with
+unpremultiplying on), since `djxl` writes premultiplied colour;
 `JXL_ORACLE_DIR` adds local `.jxl` files:
 
 ```sh

@@ -10,6 +10,8 @@ internal sealed class JxlDecodedImage(int width, int height, JxlPlane[] color, J
     public JxlIntegerImage? IntegerSamples { get; init; }
     /// <summary>When set, the colour rows are rendered on demand (0.8.6) and <see cref="Color"/> holds the planes they come from.</summary>
     public JxlColorRows? Rows { get; init; }
+    /// <summary>The colour is premultiplied by <see cref="Alpha"/> (associated alpha); the pixel writer makes it straight (0.8.16).</summary>
+    public bool Premultiplied { get; init; }
     public int Width { get; } = width;
     public int Height { get; } = height;
     public ReadOnlySpan<JxlPlane> Color => color;

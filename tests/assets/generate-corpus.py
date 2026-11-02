@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Generate public, synthetic JPEG XL fixtures and their jxlinfo and djxl oracle (no external images).
 
-Requires Pillow, NumPy and the libjxl v0.12.0 tools (cjxl, djxl, jxlinfo, jxl_from_tree, jxl_anim_gen) on PATH or in
-JXL_TOOLS; jxl_from_tree is a libjxl dev tool, built from the pinned sources (-DJPEGXL_ENABLE_DEVTOOLS=ON), and
-jxl_anim_gen is built from tests/assets/tools (see its README). Animations also get the SHA-256 of every frame djxl
+Requires Pillow, NumPy and the libjxl v0.12.0 tools (cjxl, djxl, jxlinfo, jxl_from_tree, jxl_anim_gen,
+jxl_dec_straight) on PATH or in JXL_TOOLS; jxl_from_tree is a libjxl dev tool, built from the pinned sources
+(-DJPEGXL_ENABLE_DEVTOOLS=ON), and jxl_anim_gen and jxl_dec_straight are built from tests/assets/tools (see its README).
+Images with premultiplied alpha take their oracle from jxl_dec_straight (djxl cannot unpremultiply). Animations also get the SHA-256 of every frame djxl
 shows (and, when lossy, its 8-bit rendering in djxl/<name>-<frame>.png). The outputs are
 committed, so tests and CI do not need the tools. Lossy fixtures also get djxl's 8-bit rendering in djxl/, which
 tests compare within a tolerance. XYB images with an ICC profile get cms/: djxl's linear sRGB floats converted to
@@ -255,13 +256,44 @@ def text(path, width, height):
     image.save(path)
 
 
+def premultiplied(path):
+    """Whether the first alpha channel is premultiplied (associated): djxl would write premultiplied colour."""
+    match = re.search(r'type: Alpha\n(?:  .*\n)*?  alpha premultiplied: (\d)', run(tool('jxlinfo'), '-v', str(path)))
+    return match is not None and match[1] == '1'
+
+
+def pam_read(path):
+    data = path.read_bytes()
+    end = data.index(b'ENDHDR\n') + 7
+    header = dict(line.split(b' ', 1) for line in data[:end].split(b'\n')[1:-2])
+    width, height, depth = int(header[b'WIDTH']), int(header[b'HEIGHT']), int(header[b'DEPTH'])
+    samples = np.frombuffer(data[end:], np.uint8).reshape(height, width, depth)
+    return Image.fromarray(samples[:, :, 0] if depth == 1 else samples, {1: 'L', 2: 'LA', 3: 'RGB', 4: 'RGBA'}[depth])
+
+
+def straight(path, temp):
+    """The 8-bit frames jxl_dec_straight renders like djxl, with premultiplied alpha made straight, or None."""
+    prefix = Path(temp) / 'straight'
+    for old in Path(temp).glob('straight-*.pam'):
+        old.unlink()
+    if subprocess.run([tool('jxl_dec_straight'), str(path), str(prefix)], capture_output=True).returncode != 0:
+        return None
+    return [pam_read(Path(f'{prefix}-{index}.pam')) for index in range(len(list(Path(temp).glob('straight-*.pam'))))]
+
+
 def pixels(path, temp, reference=None):
     """SHA-256 of the RGBA pixels djxl renders at 8 bits (orientation applied), or None if djxl fails."""
     png = Path(temp) / 'pixels.png'
-    result = subprocess.run([tool('djxl'), str(path), str(png), '--bits_per_sample=8', '--quiet'], capture_output=True)
-    if result.returncode != 0:
-        return None
-    rendered = Image.open(png).convert('RGBA')
+    if premultiplied(path):
+        frames = straight(path, temp)
+        if frames is None:
+            return None
+        rendered = frames[-1].convert('RGBA')
+    else:
+        result = subprocess.run([tool('djxl'), str(path), str(png), '--bits_per_sample=8', '--quiet'], capture_output=True)
+        if result.returncode != 0:
+            return None
+        rendered = Image.open(png).convert('RGBA')
     if reference is not None:
         reference.parent.mkdir(exist_ok=True)
         rendered.save(reference, optimize=True)
@@ -272,16 +304,23 @@ def frames(path, temp, reference=None):
     """SHA-256 of the RGBA pixels of every frame djxl shows (coalesced, 8 bits); lossy files also keep the frames.
     djxl writes them as full APNG frames (its PAM output ignores --bits_per_sample)."""
     png = Path(temp) / 'frames.png'
-    run(tool('djxl'), str(path), str(png), '--bits_per_sample=8', '--quiet')
     hashes = []
+
+    def add(index, rendered):
+        if reference is not None:
+            reference.mkdir(exist_ok=True)
+            rendered.save(reference / f'{path.stem}-{index}.png', optimize=True)
+        hashes.append(hashlib.sha256(rendered.tobytes()).hexdigest())
+
+    if premultiplied(path):
+        for index, rendered in enumerate(straight(path, temp)):
+            add(index, rendered.convert('RGBA'))
+        return hashes
+    run(tool('djxl'), str(path), str(png), '--bits_per_sample=8', '--quiet')
     with Image.open(png) as animation:
         for index in range(getattr(animation, 'n_frames', 1)):
             animation.seek(index)
-            rendered = animation.convert('RGBA')
-            if reference is not None:
-                reference.mkdir(exist_ok=True)
-                rendered.save(reference / f'{path.stem}-{index}.png', optimize=True)
-            hashes.append(hashlib.sha256(rendered.tobytes()).hexdigest())
+            add(index, animation.convert('RGBA'))
     return hashes
 
 
@@ -296,7 +335,7 @@ def animation_info(text):
 
 def info(path):
     text = run(tool('jxlinfo'), '-v', str(path))
-    head = re.search(r'JPEG XL (image|animation), (\d+)x(\d+), .*?(\d+)-bit (float \()?.*?(RGB|Grayscale)(\+Alpha)?', text)
+    head = re.search(r'JPEG XL (image|animation), (\d+)x(\d+), .*?(\d+)-bit (float \()?.*?(RGB|Grayscale|CMY)(\+Alpha)?', text)
     field = lambda name: (re.search(rf'^{name}: (.+)$', text, re.M) or [None, None])[1]
     return {
         'width': int(head[2]), 'height': int(head[3]), 'bits': int(head[4]), 'float': head[5] is not None,
@@ -421,7 +460,60 @@ frame duration=30 save=1
 frame duration=30 x0=14 y0=2 w=8 h=12 blend=add source=1
 """,
 }
-LOSSY_ANIMATIONS = {'anim-lossy', 'anim-gray', 'anim-vardct-alpha', 'anim-noise'}
+
+# 0.8.16: extra channels from jxl_anim_gen (`extra`, `alpha premultiplied`, `still` for layered stills). Premultiplied
+# alpha is compared with jxl_dec_straight, spot colours (rendered) and the other types (dropped) with djxl.
+SPOT = 'extra spot color=0.9,0.2,0.1,0.75\n'
+# libjxl's encoder rejects the Unknown type ("output" fails), so it has no corpus file.
+EXTRA_TYPES = ''.join(f'extra {kind}\n' for kind in ['depth', 'selection', 'thermal', 'optional'])
+EXTRAS = {
+    'premul-lossless': 'size 40 24\nstill\nalpha premultiplied\nframe ramp=1\n',
+    'premul-16bit': 'size 33 17\nstill\nbits 16\nalpha premultiplied\nframe ramp=1\n',
+    'premul-gray': 'size 40 24\nstill\ngray\nalpha premultiplied\nframe ramp=1\n',
+    'premul-lossy': 'size 64 48\nstill\ndistance 1\nalpha premultiplied\nframe ramp=1\n',
+    # Layers blended with Blend and AlphaWeightedAdd (muladd) onto premultiplied colour.
+    'premul-layers': """size 48 32
+still
+alpha premultiplied
+frame save=1 ramp=1
+frame x0=8 y0=6 w=24 h=16 blend=blend source=1 save=1 opacity=140 seed=3
+frame x0=20 y0=10 w=24 h=20 blend=muladd source=1 opacity=90 seed=5
+""",
+    'premul-anim': """size 32 24
+alpha premultiplied
+frame duration=50 save=1 ramp=1
+frame duration=50 x0=6 y0=4 w=16 h=12 blend=blend source=1 save=1 opacity=120 seed=2
+frame duration=50 x0=-4 y0=10 w=20 h=12 blend=muladd source=1 opacity=200 seed=4
+""",
+    'spot-rgb': 'size 40 24\nstill\n' + SPOT + 'frame\n',
+    'spot-xyb': 'size 64 48\nstill\ndistance 1\n' + SPOT + 'frame\n',
+    'spot-gray': 'size 40 24\nstill\ngray\n' + SPOT + 'frame\n',
+    'spot-two': 'size 40 24\nstill\nalpha\nextra spot color=0.1,0.3,1,0.5 name=blue\nextra spot color=1,0.9,0,1\nframe ramp=1\n',
+    'spot-upsampled': 'size 41 23\nstill\nec_resampling 2\n' + SPOT + 'frame\n',
+    'spot-16bit': 'size 33 17\nstill\nbits 16\nalpha premultiplied\n' + SPOT + 'frame ramp=1\n',
+    'spot-premul': 'size 40 24\nstill\nalpha premultiplied\n' + SPOT + 'frame ramp=1\n',
+    # Blended layers: the ink is rendered on the blended canvas, the slot keeps the colour without it.
+    'spot-layers': 'size 48 32\nstill\n' + SPOT + 'frame save=1\nframe x0=8 y0=6 w=24 h=16 blend=add source=1 seed=3\n',
+    'spot-layers-xyb': 'size 48 32\nstill\ndistance 1\n' + SPOT + 'frame save=1\nframe x0=8 y0=6 w=24 h=16 blend=add source=1 seed=3\n',
+    'spot-anim': """size 32 24
+distance 1
+extra spot color=0.9,0.2,0.1,0.75
+frame duration=40 save=1
+frame duration=40 x0=6 y0=4 w=16 h=12 blend=add source=1 save=1 seed=2
+frame duration=40 seed=3
+""",
+    'extra-types': 'size 40 24\nstill\nalpha\n' + EXTRA_TYPES + 'frame ramp=1\n',
+    'extra-types-lossy': 'size 64 48\nstill\ndistance 1\n' + EXTRA_TYPES + 'frame\n',
+    'extra-alpha2': 'size 40 24\nstill\nalpha\nextra alpha premultiplied\nframe ramp=1\n',
+    'extra-16bit': 'size 40 24\nstill\nextra depth bits=16\nframe\n',
+    'extra-layers': 'size 48 32\nstill\n' + EXTRA_TYPES + 'frame save=1\nframe x0=8 y0=6 w=24 h=16 blend=add source=1 seed=3\n',
+    # Still NotSupported: CMYK and float samples need PictureSharp core support.
+    'extra-black': 'size 40 24\nstill\nextra black\nframe\n',
+    'extra-float': 'size 40 24\nstill\nextra depth float\nframe\n',
+}
+ANIMATIONS.update(EXTRAS)
+LOSSY_EXTRAS = {'premul-lossy', 'spot-xyb', 'spot-layers-xyb', 'extra-types-lossy'}
+LOSSY_ANIMATIONS = {'anim-lossy', 'anim-gray', 'anim-vardct-alpha', 'anim-noise', 'spot-anim'}
 
 
 def main():
@@ -508,6 +600,8 @@ def main():
             'weighted': ('rgb.png', '-d', '0', '-P', '6'),
             'groups-300x200': ('groups.png', '-d', '0', '-g', '0'),
             'lf-groups': ('lf-groups.png', '-d', '0', '-g', '0', '-R', '1'),
+            'premul-cjxl-lossless': ('rgba.png', '-d', '0', '--premultiply=1'),
+            'premul-cjxl-gray16': ('gray16a.png', '-d', '0', '--premultiply=1'),
         }
         cases.update({f'orient{o}': (f'orient{o}.jpg', '-j', '0', '-d', '0') for o in range(1, 9)})
         # Lossy (VarDCT, XYB) coding tools: rendered by djxl into djxl/*.png and compared within a tolerance.
@@ -539,6 +633,8 @@ def main():
             'noise-16bit': ('rgb16.png', '-d', '1', '--photon_noise_iso=6400'),
             'noise-resampling': ('photo.png', '-d', '2', '--resampling=2', '--photon_noise_iso=6400'),
             'noise-modular': ('photo.png', '-d', '1', '-m', '1', '--photon_noise_iso=6400'),
+            # 0.8.16: straight samples marked premultiplied (colour above alpha, colour where alpha is 0).
+            'premul-cjxl-lossy': ('photo-alpha.png', '-d', '1', '--premultiply=1'),
         }
         cases.update(lossy)
         # XYB with an ICC profile: rendered in the profile's colour space and compared with cms/*.png.
@@ -567,7 +663,7 @@ def main():
             cms_reference(OUTPUT / f'{name}.jxl', temp, OUTPUT / 'cms' / f'{name}.png', gray='gray' in name)
         for name in [*managed, 'lossy-p3']:
             srgb_reference(OUTPUT / f'{name}.jxl', OUTPUT / 'srgb' / f'{name}.png', gray='gray' in name)
-        oracle = {path.name: info(path) | {'rgba8Sha256': pixels(path, temp, OUTPUT / 'djxl' / f'{path.stem}.png' if path.stem in lossy or path.stem in LOSSY_LAYERS else None)}
+        oracle = {path.name: info(path) | {'rgba8Sha256': pixels(path, temp, OUTPUT / 'djxl' / f'{path.stem}.png' if path.stem in lossy or path.stem in LOSSY_LAYERS or path.stem in LOSSY_EXTRAS else None)}
                   for path in sorted(OUTPUT.glob('*.jxl'))}
         for name, entry in oracle.items():
             if entry['animated']:

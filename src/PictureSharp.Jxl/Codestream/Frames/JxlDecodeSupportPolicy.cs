@@ -3,44 +3,38 @@ using PictureSharp.Formats.Jxl.Codestream.Model;
 
 namespace PictureSharp.Formats.Jxl.Codestream.Frames;
 
-/// <summary>Current support (still images, layers blended since 0.8.10, animations since 0.8.12, noise and splines since 0.8.15) and frame consistency rules.</summary>
+/// <summary>
+/// Current support (still images, layers blended since 0.8.10, animations since 0.8.12, noise and splines since 0.8.15,
+/// extra channels since 0.8.16) and frame consistency rules.
+/// </summary>
 internal static class JxlDecodeSupportPolicy
 {
-    /// <summary>Checks the image-level features and returns the index of the alpha extra channel, or -1.</summary>
+    /// <summary>
+    /// Checks the image-level features and returns the index of the alpha extra channel (the first one), or -1.
+    /// Premultiplied alpha and spot colours are rendered; every other extra channel type is decoded and dropped. CMYK and
+    /// float samples need PictureSharp core support (a CMS for CMYK profiles, a float pixel type).
+    /// </summary>
     public static int EnsureImageSupported(JxlImageMetadata metadata)
     {
         metadata.BitDepth.Validate();
         foreach (JxlExtraChannelInfo channel in metadata.ExtraChannels) channel.BitDepth.Validate();
-        if (metadata.BitDepth.FloatingPoint && !metadata.XybEncoded)
+        if (metadata.ExtraChannels.Any(channel => channel.Type == JxlExtraChannelType.Black))
         {
-            throw JxlDescriptor.Unsupported("floating-point samples are not decoded yet.");
+            throw JxlDescriptor.Unsupported(
+                "CMYK images (a Black extra channel) need colour management for CMYK profiles, which PictureSharp does not provide yet.");
         }
 
-        int alpha = -1;
+        if ((metadata.BitDepth.FloatingPoint && !metadata.XybEncoded) || metadata.ExtraChannels.Any(channel => channel.BitDepth.FloatingPoint))
+        {
+            throw JxlDescriptor.Unsupported("floating-point samples need a float pixel type, which PictureSharp does not provide yet.");
+        }
+
         for (int i = 0; i < metadata.ExtraChannels.Count; i++)
         {
-            JxlExtraChannelInfo channel = metadata.ExtraChannels[i];
-            switch (channel.Type)
-            {
-                case JxlExtraChannelType.Black or JxlExtraChannelType.SpotColor:
-                    throw JxlDescriptor.Unsupported($"{channel.Type} extra channels are not decoded yet.");
-                case JxlExtraChannelType.Alpha when alpha < 0:
-                    if (channel.BitDepth.FloatingPoint || channel.AlphaAssociated)
-                    {
-                        throw JxlDescriptor.Unsupported("float or premultiplied alpha is not decoded yet.");
-                    }
-
-                    alpha = i;
-                    break;
-            }
-
-            if (channel.BitDepth.FloatingPoint)
-            {
-                throw JxlDescriptor.Unsupported("floating-point extra channels are not decoded yet.");
-            }
+            if (metadata.ExtraChannels[i].Type == JxlExtraChannelType.Alpha) return i;
         }
 
-        return alpha;
+        return -1;
     }
 
     public static void EnsureFrameSupported(JxlFrameHeader frame, JxlReferenceFrames references)

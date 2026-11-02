@@ -50,6 +50,100 @@ public sealed class JxlDecodeOracleTests
         }
     }
 
+    /// <summary>
+    /// The oracle rendering: djxl's, or for an image with premultiplied alpha jxl_dec_straight's (tests/assets/tools,
+    /// djxl's rendering with the alpha made straight, which djxl cannot do; 0.8.16), every frame in one image.
+    /// </summary>
+    internal static Image ReferenceImage(string djxl, string file)
+    {
+        if (!IsPremultiplied(file)) return DjxlImage(djxl, file);
+        List<Image> frames = StraightFrames(file) ?? throw new InvalidOperationException("jxl_dec_straight is not available (PATH or JXL_TOOLS).");
+        Image image = frames[0];
+        foreach (Image frame in frames.Skip(1))
+        {
+            using (frame)
+            {
+                var copy = new ImageFrame(frame.Width, frame.Height);
+                frame.GetPixelMemory<Rgba32>().CopyTo(copy.GetPixelMemory<Rgba32>());
+                image.Frames.Add(copy);
+            }
+        }
+
+        return image;
+    }
+
+    /// <summary>Whether the image's first alpha channel is premultiplied (djxl then writes premultiplied colour).</summary>
+    internal static bool IsPremultiplied(string file)
+    {
+        JxlImageMetadata metadata = JxlHeadersReader.Read(JxlContainer.Parse(File.ReadAllBytes(file)).Codestream).Metadata;
+        return metadata.ExtraChannels.FirstOrDefault(channel => channel.Type == JxlExtraChannelType.Alpha)?.AlphaAssociated == true;
+    }
+
+    /// <summary>
+    /// The frames jxl_dec_straight renders (oriented, spot colours rendered, alpha straight) as Rgba32, or Rgba64 when
+    /// <paramref name="wide"/>; every layer at its own size when <paramref name="layers"/>. Null without the tool.
+    /// </summary>
+    internal static List<Image>? StraightFrames(string file, bool wide = false, bool layers = false)
+    {
+        string? tool = Tool("jxl_dec_straight");
+        if (tool is null) return null;
+        string directory = Path.Combine(Path.GetTempPath(), $"jxl-straight-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            string prefix = Path.Combine(directory, "frame");
+            using var process = Process.Start(new ProcessStartInfo(tool,
+                [wide ? "--bits=16" : "--bits=8", .. layers ? ["--no_coalescing"] : Array.Empty<string>(), file, prefix])
+            {
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+            })!;
+            process.StandardOutput.ReadToEnd();
+            string error = process.StandardError.ReadToEnd();
+            process.WaitForExit();
+            if (process.ExitCode != 0) throw new InvalidOperationException($"jxl_dec_straight failed: {error}");
+            int count = Directory.GetFiles(directory, "frame-*.pam").Length;
+            return [.. Enumerable.Range(0, count).Select(i => ReadPam(File.ReadAllBytes($"{prefix}-{i}.pam")))];
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    // A P7 file of 1-4 channels (gray, gray+alpha, RGB, RGBA) with maxval 255 or 65535 (big endian) as Rgba32/Rgba64.
+    private static Image ReadPam(byte[] pam)
+    {
+        int end = pam.AsSpan().IndexOf("ENDHDR\n"u8) + 7;
+        Dictionary<string, string> header = System.Text.Encoding.ASCII.GetString(pam, 0, end).Split('\n')
+            .Where(line => line.Contains(' ')).ToDictionary(line => line[..line.IndexOf(' ')], line => line[(line.IndexOf(' ') + 1)..]);
+        int width = int.Parse(header["WIDTH"]), height = int.Parse(header["HEIGHT"]), depth = int.Parse(header["DEPTH"]);
+        bool wide = header["MAXVAL"] == "65535";
+        var image = new Image(width, height, wide ? PixelType.Rgba64 : PixelType.Rgba32);
+        Span<ushort> s = stackalloc ushort[4];
+        for (int p = 0; p < width * height; p++)
+        {
+            for (int c = 0; c < depth; c++)
+            {
+                int offset = end + ((p * depth) + c) * (wide ? 2 : 1);
+                s[c] = wide ? (ushort)((pam[offset] << 8) | pam[offset + 1]) : pam[offset];
+            }
+
+            ushort max = wide ? ushort.MaxValue : byte.MaxValue;
+            (ushort r, ushort g, ushort b, ushort a) = depth switch
+            {
+                1 => (s[0], s[0], s[0], max),
+                2 => (s[0], s[0], s[0], s[1]),
+                3 => (s[0], s[1], s[2], max),
+                _ => (s[0], s[1], s[2], s[3]),
+            };
+            if (wide) image.GetPixelMemory<Rgba64>().Span[p] = new Rgba64(r, g, b, a);
+            else image.GetPixelMemory<Rgba32>().Span[p] = new Rgba32((byte)r, (byte)g, (byte)b, (byte)a);
+        }
+
+        return image;
+    }
+
     internal static byte[] Rgba(Image image)
     {
         byte[] rgba = new byte[image.Width * image.Height * 4];
@@ -139,7 +233,7 @@ public sealed class JxlDecodeOracleTests
                     continue;
                 }
 
-                using Image expected = DjxlImage(djxl!, path);
+                using Image expected = ReferenceImage(djxl!, path);
                 if (JxlDecodeTests.Tolerance(image, expected) is { } difference)
                 {
                     mismatches.Add($"{name}: {difference}");

@@ -16,8 +16,8 @@ namespace PictureSharp.Formats.Jxl.Tests;
 /// </summary>
 public sealed class JxlDecodeTests
 {
-    // Valid files outside this version's subset: float samples.
-    private static readonly string[] Unsupported = ["float32.jxl"];
+    // Valid files outside this version's subset: float samples and CMYK (they need PictureSharp core support).
+    private static readonly string[] Unsupported = ["float32.jxl", "extra-black.jxl", "extra-float.jxl"];
 
     public static IEnumerable<string> CorpusFiles()
     {

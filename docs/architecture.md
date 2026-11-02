@@ -56,7 +56,11 @@ images, contexts, options or pixels. A compiled boundary test checks signatures,
    working budget) and `JxlNoise` (a Xorshift128+ field per group seeded with the session's visible and non-visible
    frame counters, 5×5 convolution, LUT strength; AVX2/FMA kernels in `JxlNoise.Simd.cs` and
    `JxlXorshift128Plus.Simd.cs`). Frames with either feature skip the integer and deferred-YCbCr
-   shortcuts.
+   shortcuts. Since 0.8.16 spot colours (`JxlSpotColors`, SpotColorStage) are mixed after the colour transform: for
+   unblended XYB frames inside `JxlColorOutput` between linear light and the transfer function, otherwise on the planes
+   (`JxlSpotRendering`); `JxlDecodeSession` renders them on the displayed canvas after blending and saving, and on a
+   copy for each `JxlLayers` layer. Premultiplied colour stays premultiplied (`JxlDecodedImage.Premultiplied`) until
+   `JxlPixelWriter` divides each row by alpha, as libjxl's output stage does.
 7. After common transform and shape validation, eligible Modular frames expose integer samples directly; other
    frames expose rendered planes through `JxlDecodedImage`; subsampled YCbCr frames without later stages expose the
    decoded planes with `JxlColorRows` (since 0.8.6), which the pixel writer renders per row band (chroma upsampling

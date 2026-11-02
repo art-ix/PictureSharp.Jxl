@@ -17,6 +17,8 @@ public sealed class JxlLayersTests
     private static readonly string[] LayeredFiles =
     [
         .. Directory.GetFiles(Path.Combine(AppContext.BaseDirectory, "corpus"), "layers-*.jxl").Select(Path.GetFileName).Order()!,
+        // 0.8.16: premultiplied alpha, spot colours (rendered per layer and on the canvas) and dropped extra channels.
+        "premul-layers.jxl", "spot-layers.jxl", "spot-layers-xyb.jxl", "extra-layers.jxl",
     ];
 
     // Single frames, patches and DC frames (reference frames that are not layers), alpha, gray, 16 bits, ICC, XYB.
@@ -56,7 +58,7 @@ public sealed class JxlLayersTests
             await AssertSame(flattened, expected, $"{name} {variant}");
             await Assert.That((layered.Width, layered.Height)).IsEqualTo((expected.Width, expected.Height));
             await Assert.That(layered.Metadata.Orientation).IsEqualTo(expected.Metadata.Orientation);
-            int layers = name.StartsWith("layers-", StringComparison.Ordinal) ? Frames(data).Count(f => f.Type == JxlFrameType.Regular) : 1;
+            int layers = LayeredFiles.Contains(name) ? Frames(data).Count(f => f.Type == JxlFrameType.Regular) : 1;
             await Assert.That(layered.Layers.Count).IsEqualTo(layers);
             foreach (JxlLayer layer in layered.Layers)
             {
@@ -151,7 +153,10 @@ public sealed class JxlLayersTests
         {
             DecoderOptions options = Options(new DecoderOptions { ApplyExifOrientation = true });
             using JxlLayeredImage layered = JxlLayers.Load(path, options);
-            List<Image> expected = DjxlLayers(djxl!, path);
+            // djxl writes premultiplied colour; jxl_dec_straight renders the same layers with straight alpha (0.8.16).
+            List<Image> expected = JxlDecodeOracleTests.IsPremultiplied(path)
+                ? JxlDecodeOracleTests.StraightFrames(path, layers: true) ?? throw new InvalidOperationException("jxl_dec_straight is not available.")
+                : DjxlLayers(djxl!, path);
             try
             {
                 await Assert.That(layered.Layers.Count).IsEqualTo(expected.Count);

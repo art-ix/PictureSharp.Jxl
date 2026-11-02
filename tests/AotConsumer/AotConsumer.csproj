@@ -9,6 +9,7 @@
           Link="transcoding/%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Include="../assets/corpus/layers-three.jxl" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
     <None Include="../assets/corpus/anim-ticks-loops.jxl" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+    <None Include="../assets/corpus/spot-premul.jxl" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup><PackageReference Include="PictureSharp.Jxl" Version="$(Version)" /></ItemGroup>
 </Project>

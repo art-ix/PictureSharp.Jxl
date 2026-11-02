@@ -11,7 +11,7 @@
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageProjectUrl>https://github.com/art-ix/picturesharp.jxl</PackageProjectUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageReleaseNotes>0.8.15: photon noise and splines are decoded like djxl (Image.Load, Identify, the frame reader and JxlLayers; the same pixels at every thread count), and JxlEncoderOptions.PhotonNoiseIso adds film grain like cjxl --photon_noise_iso to lossy output. Requires PictureSharp 0.9.1. See docs/releases/release-0.8.15.md and docs/design/0.8.15-noise-splines.md.</PackageReleaseNotes>
+    <PackageReleaseNotes>0.8.16: every JPEG XL extra channel decodes: premultiplied alpha is returned as straight alpha exactly as libjxl unpremultiplies it, spot colours are rendered like djxl, and depth, selection-mask, thermal and other channels are decoded and left out (Image.Load, the frame reader and JxlLayers). CMYK and float samples still throw NotSupportedException, naming the PictureSharp core support they need. Requires PictureSharp 0.9.1. See docs/releases/release-0.8.16.md and docs/design/0.8.16-extra-channels.md.</PackageReleaseNotes>
   </PropertyGroup>
   <ItemGroup><PackageReference Include="PictureSharp" Version="$(PictureSharpVersion)" /></ItemGroup>
   <ItemGroup>
