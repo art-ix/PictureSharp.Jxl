@@ -495,7 +495,8 @@ public static class DiffTargets
 
     // MaxPixels and MaxMetadataBytes are this library's budgets; libjxl has none, so such inputs are not compared.
     private static bool IsLimit(ImageFormatException exception) => exception.Message.Contains("exceeds Max", StringComparison.Ordinal)
-        || exception.Message.Contains("exceeds DecoderOptions.Max", StringComparison.Ordinal);
+        || exception.Message.Contains("exceeds DecoderOptions.Max", StringComparison.Ordinal)
+        || exception.Message.Contains("working memory than MaxPixels allows", StringComparison.Ordinal);
 
     internal static string? Exact(Image actual, Image expected)
     {

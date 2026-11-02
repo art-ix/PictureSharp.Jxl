@@ -343,6 +343,16 @@ internal sealed class JxlFrameDecoder
             JxlColorOutput.DescribeOutput(metadata, frame.ColorTransform, colorTarget)) { Rows = rows };
     }
 
+    /// <summary>
+    /// The frame at its own size after the colour transform, to be blended or saved after it: the colour planes (one
+    /// for gray) and the extra channels.
+    /// </summary>
+    public (JxlPlane[] Color, JxlPlane[] Extra) RenderColor()
+    {
+        (JxlPlane[] color, JxlPlane[] extra, _) = Render(colorTransform: true);
+        return (color, extra);
+    }
+
     /// <summary>The frame as saved for later frames: before the colour transform (save_before_color_transform).</summary>
     public JxlReferenceFrame Store()
     {

@@ -20,11 +20,16 @@ Still images, lossy and lossless, as `cjxl` produces them:
 | Modular | ANS and prefix codes, LZ77, meta-adaptive trees with every predictor, RCT, palette, squeeze; lossless, and lossy with XYB |
 | Recompressed JPEGs | YCbCr incl. 4:2:0, 4:2:2, 4:4:0, rendered as libjxl renders them (not as the reconstructed JPEG) |
 | Frames of one image | reference frames with patches, DC frames (`cjxl -p`); a preview frame is skipped |
+| Layers (0.8.10) | several frames blended into one image as `djxl` does by default (coalescing): cropped frames at any offset, Replace, Add, Blend, AlphaWeightedAdd and Mul for colour and each extra channel |
 | Rendering | Gaborish, edge-preserving filter, 2×/4×/8× upsampling, XYB and YCbCr to RGB |
 | Colour | RGB and grayscale with alpha; sRGB, linear, gamma, BT.709, DCI and PQ transfer functions |
 | Samples | integers up to 16 bits; lossy images of any declared depth |
 
-`NotSupportedException`: animations; layers, cropped or blended frames; photon noise and splines; float samples
+Layers are blended in the image's colour encoding, as libjxl does. With `ColorConversion = ToSrgb` the blended XYB
+image is then converted to sRGB in floating point (djxl cannot render blended XYB frames in another colour space);
+through an ICC profile a few more samples differ by 1 than for a single frame.
+
+`NotSupportedException`: animations; photon noise and splines; float samples
 (except XYB); HLG with XYB; CMYK and spot colours; premultiplied or float alpha.
 
 ### Conversion to 8 bits

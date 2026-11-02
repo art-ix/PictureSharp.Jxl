@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Generate public, synthetic JPEG XL fixtures and their jxlinfo and djxl oracle (no external images).
 
-Requires Pillow, NumPy and the libjxl v0.12.0 tools (cjxl, djxl, jxlinfo) on PATH or in JXL_TOOLS. The outputs are
+Requires Pillow, NumPy and the libjxl v0.12.0 tools (cjxl, djxl, jxlinfo, jxl_from_tree) on PATH or in JXL_TOOLS;
+jxl_from_tree is a libjxl dev tool, built from the pinned sources (-DJPEGXL_ENABLE_DEVTOOLS=ON). The outputs are
 committed, so tests and CI do not need the tools. Lossy fixtures also get djxl's 8-bit rendering in djxl/, which
 tests compare within a tolerance. XYB images with an ICC profile get cms/: djxl's linear sRGB floats converted to
 the profile in double precision (djxl itself would need a colour management system). XYB images outside sRGB get
@@ -242,6 +243,31 @@ def info(path):
     }
 
 
+# Layered stills from jxl_from_tree (0.8.10): every frame but the last is saved to slot 1 and the next one blends onto
+# it; the image has the first frame's size. The tool cannot give several frames an alpha channel.
+BASE = 'Width 64\nHeight 48\nBitdepth {bits}\n{xyb}NotLast\nif c > 0\n  - Set 100\n  - Gradient +3\n'
+
+
+def layer(width, height, x, y, mode, last=True, xyb=False):
+    return (f'{"XYB" + chr(10) if xyb else ""}Width {width}\nHeight {height}\nFramePos {x} {y}\nBlendMode {mode}\n'
+            f'{"" if last else "NotLast" + chr(10)}if c > 1\n  - Set 60\n  - W +7\n')
+
+
+LAYERS = {
+    'layers-replace-crop': BASE.format(bits=8, xyb='') + layer(40, 70, 30, -10, 'kReplace'),
+    'layers-add-negative': BASE.format(bits=8, xyb='') + layer(24, 20, -6, 30, 'kAdd'),
+    'layers-mul': BASE.format(bits=8, xyb='') + layer(40, 30, 10, 10, 'kMul'),
+    'layers-blend-no-alpha': BASE.format(bits=8, xyb='') + layer(40, 30, 10, 10, 'kBlend'),
+    'layers-alpha-weighted-add': BASE.format(bits=8, xyb='') + layer(40, 30, 10, 10, 'kAlphaWeightedAdd'),
+    'layers-outside': BASE.format(bits=8, xyb='') + layer(8, 8, 100, 100, 'kAdd'),
+    'layers-larger': BASE.format(bits=8, xyb='') + layer(100, 80, -10, -12, 'kAdd'),
+    'layers-three': BASE.format(bits=8, xyb='') + layer(30, 20, 5, 5, 'kAdd', last=False) + layer(20, 40, 30, 4, 'kMul'),
+    'layers-16bit': BASE.format(bits=16, xyb='') + layer(40, 30, 10, 10, 'kAdd'),
+    'layers-xyb': BASE.format(bits=8, xyb='XYB\n') + layer(24, 20, 6, 10, 'kAdd', xyb=True),
+}
+LOSSY_LAYERS = {'layers-xyb'}
+
+
 def main():
     OUTPUT.mkdir(parents=True, exist_ok=True)
     for old in [*OUTPUT.glob('*.jxl'), *OUTPUT.glob('djxl/*.png'), *OUTPUT.glob('cms/*.png'), *OUTPUT.glob('srgb/*.png')]:
@@ -348,6 +374,10 @@ def main():
         for name, (source, *options) in cases.items():
             run(cjxl, str(tmp / source), str(OUTPUT / f'{name}.jxl'), *options)
 
+        for name, tree in LAYERS.items():
+            (tmp / f'{name}.txt').write_text(tree)
+            run(tool('jxl_from_tree'), str(tmp / f'{name}.txt'), str(OUTPUT / f'{name}.jxl'))
+
         swapped = OUTPUT / 'jxlp-v1-out-of-order.jxl'
         swapped.write_bytes(swap_partial_codestreams((OUTPUT / 'jxlp-v1.jxl').read_bytes()))
         # The reordered file must decode to the same pixels as the original with libjxl.
@@ -360,7 +390,7 @@ def main():
             cms_reference(OUTPUT / f'{name}.jxl', temp, OUTPUT / 'cms' / f'{name}.png', gray='gray' in name)
         for name in [*managed, 'lossy-p3']:
             srgb_reference(OUTPUT / f'{name}.jxl', OUTPUT / 'srgb' / f'{name}.png', gray='gray' in name)
-        oracle = {path.name: info(path) | {'rgba8Sha256': pixels(path, temp, OUTPUT / 'djxl' / f'{path.stem}.png' if path.stem in lossy else None)}
+        oracle = {path.name: info(path) | {'rgba8Sha256': pixels(path, temp, OUTPUT / 'djxl' / f'{path.stem}.png' if path.stem in lossy or path.stem in LOSSY_LAYERS else None)}
                   for path in sorted(OUTPUT.glob('*.jxl'))}
     (OUTPUT / 'corpus.json').write_text(json.dumps({'generator': run(tool('cjxl'), '--version').splitlines()[0], 'files': oracle}, indent=1) + '\n')
     print(f'{len(oracle)} files, {sum(p.stat().st_size for p in OUTPUT.glob("*.jxl"))} bytes')

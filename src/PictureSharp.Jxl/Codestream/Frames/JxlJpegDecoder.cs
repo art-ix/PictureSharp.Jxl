@@ -19,7 +19,7 @@ internal static class JxlJpegDecoder
         var reader = JxlFrameSectionReader.FirstFrame(codestream, headers, cancellationToken, out byte[]? icc, maxMetadataBytes, reserve);
         JxlFrameHeader frame = JxlFrameHeaderReader.Read(ref reader, headers, preview: false);
         var references = new JxlReferenceFrames();
-        JxlDecodeSupportPolicy.EnsureFrameSupported(frame, headers, references);
+        JxlDecodeSupportPolicy.EnsureFrameSupported(frame, references);
         if (frame.ColorTransform == JxlColorTransform.None && !jpeg.Gray)
             throw JxlDescriptor.Unsupported("RGB JPEG reconstruction is unsupported.");
         if (!frame.IsLast || frame.Type != JxlFrameType.Regular || frame.Encoding != JxlFrameEncoding.VarDct

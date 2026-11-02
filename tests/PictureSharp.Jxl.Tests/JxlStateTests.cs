@@ -61,8 +61,16 @@ public sealed class JxlStateTests
         await Assert.That(() => references.GetPatch(0)).Throws<ImageFormatException>();
         await Assert.That(() => references.GetDc(0)).Throws<ImageFormatException>();
         await Assert.That(() => references.StoreReference(4, first, true)).Throws<ImageFormatException>();
-        await Assert.That(() => references.StoreReference(0, first, false)).Throws<NotSupportedException>();
         await Assert.That(() => references.StoreDc(0, first)).Throws<ImageFormatException>();
+        await Assert.That(() => references.GetBackground(4, 1, 1)).Throws<ImageFormatException>();
+        await Assert.That(references.GetBackground(2, 1, 1)).IsNull();
+        // Blending reads only slots saved after the colour transform, at the image size (libjxl BlendingStage).
+        references.StoreReference(2, first, false);
+        await Assert.That(references.GetBackground(2, 1, 1)).IsSameReferenceAs(first);
+        await Assert.That(() => references.GetBackground(2, 2, 2)).Throws<ImageFormatException>();
+        references.StoreReference(3, first, true);
+        await Assert.That(() => references.GetBackground(3, 1, 1)).Throws<ImageFormatException>();
+        await Assert.That(references.RetainedBytes()).IsEqualTo(first.Color[0].Bytes);
         references.StoreReference(0, first, true);
         references.StoreReference(1, first, true);
         references.StoreReference(0, second, true);

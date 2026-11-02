@@ -31,6 +31,9 @@ internal sealed class JxlPlane
 
     public float[] Data { get; }
 
+    /// <summary>The bytes charged for the plane (its storage with the margins).</summary>
+    public long Bytes => (long)Data.Length * sizeof(float);
+
     public int Offset(int x, int y) => (y + Margin) * Stride + x + Margin;
 
     public Span<float> Row(int y) => Data.AsSpan(Offset(0, y), Width);

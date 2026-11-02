@@ -58,6 +58,20 @@ internal sealed class JxlWorkBudget
         }
     }
 
+    /// <summary>The bytes charged so far by the current operation (0 outside one).</summary>
+    public static long Used => Current.Value is { } budget ? Volatile.Read(ref budget.used) : 0;
+
+    /// <summary>
+    /// Sets the charged bytes back to <paramref name="bytes"/> after a frame whose temporary memory was returned (0.8.10:
+    /// layered images keep only their canvases). Called on the operation's thread between parallel regions.
+    /// </summary>
+    public static void Rewind(long bytes)
+    {
+        if (Current.Value is not { } budget) return;
+        if (bytes > budget.limit) throw JxlDescriptor.Corrupt("Decoding needs more working memory than MaxPixels allows.");
+        Volatile.Write(ref budget.used, bytes);
+    }
+
     internal readonly struct Scope(JxlWorkBudget? previous) : IDisposable
     {
         public void Dispose()

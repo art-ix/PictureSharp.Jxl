@@ -223,7 +223,7 @@ internal sealed partial class JxlColorOutput
     };
 
     // TF_SRGB::EncodedFromDisplay, odd-symmetric.
-    private static float SrgbFromLinear(float value)
+    internal static float SrgbFromLinear(float value)
     {
         float x = Math.Abs(value);
         float magnitude = x > 0.0031308f ? JxlFastMath.EvalRationalPolynomial(MathF.Sqrt(x), SrgbP, SrgbQ) : x * 12.92f;

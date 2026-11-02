@@ -3,7 +3,7 @@ using PictureSharp.Formats.Jxl.Codestream.Model;
 
 namespace PictureSharp.Formats.Jxl.Codestream.Frames;
 
-/// <summary>Current still-image support and frame consistency rules.</summary>
+/// <summary>Current support (still images, layers blended since 0.8.10) and frame consistency rules.</summary>
 internal static class JxlDecodeSupportPolicy
 {
     /// <summary>Checks the image-level features and returns the index of the alpha extra channel, or -1.</summary>
@@ -48,16 +48,12 @@ internal static class JxlDecodeSupportPolicy
         return alpha;
     }
 
-    public static void EnsureFrameSupported(JxlFrameHeader frame, JxlHeaders headers, JxlReferenceFrames references)
+    public static void EnsureFrameSupported(JxlFrameHeader frame, JxlReferenceFrames references)
     {
-        if (frame.Type == JxlFrameType.SkipProgressive || (frame.Type == JxlFrameType.Regular && !frame.IsLast))
+        // Only regular and skip-progressive frames are displayed; libjxl reads is_last for no other type.
+        if (frame.Type is not (JxlFrameType.Regular or JxlFrameType.SkipProgressive) && frame.IsLast)
         {
-            throw JxlDescriptor.Unsupported("images of several displayed frames (layers) are not decoded yet.");
-        }
-
-        if (frame.Type != JxlFrameType.Regular && frame.IsLast)
-        {
-            throw JxlDescriptor.Corrupt("The last frame is not a regular frame.");
+            throw JxlDescriptor.Corrupt("The last frame is not a displayed frame.");
         }
 
         if (frame.HasNoise || frame.HasSplines)
@@ -74,13 +70,6 @@ internal static class JxlDecodeSupportPolicy
         if (frame.UsesDcFrame && !references.HasDc(frame.DcLevel))
         {
             throw JxlDescriptor.Corrupt("A frame uses a DC frame that was not decoded.");
-        }
-
-        if (frame.Type == JxlFrameType.Regular
-            && (frame.X0 != 0 || frame.Y0 != 0 || frame.Width != headers.Size.Width || frame.Height != headers.Size.Height
-                || frame.Blending.Mode != JxlBlendMode.Replace || frame.ExtraChannelBlending.Any(b => b.Mode != JxlBlendMode.Replace)))
-        {
-            throw JxlDescriptor.Unsupported("cropped or blended frames are not decoded yet.");
         }
 
         if (frame.Encoding == JxlFrameEncoding.VarDct && !frame.Is444 && !frame.SkipsAdaptiveDcSmoothing)

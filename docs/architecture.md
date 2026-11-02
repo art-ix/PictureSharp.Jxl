@@ -31,7 +31,11 @@ images, contexts, options or pixels. A compiled boundary test checks signatures,
 
 1. `JxlDecoder` parses container and headers and reserves the output pixels.
 2. A single-use `JxlDecodeSession` owns references and DC frames: decodes the ICC profile (charged before
-   allocation), derives the optional `JxlIccTarget`, skips the preview, consumes the frames.
+   allocation), derives the optional `JxlIccTarget`, skips the preview, consumes the frames. The last frame, when it
+   covers the image and replaces, takes the still-image path. Other frames saved after the colour transform (layers,
+   0.8.10) are rendered in the image's encoding with their own buffer scope, blended onto their background slots by
+   `JxlBlending` (shared with patches) into GC-owned canvases, and stored; the frame's temporary memory is returned
+   and `JxlWorkBudget.Rewind` keeps only the retained canvases charged.
 3. `JxlDecodeSupportPolicy` rejects unsupported valid features and checks cross-frame consistency; readers still
    validate syntax.
 4. `JxlFrameSectionReader` drives one `JxlFrameDecoder`: LF global, LF groups, LF completion, HF global, then each
@@ -112,7 +116,8 @@ its ICC profile via `JxlIccTarget`) or sRGB for `ToSrgb`.
   The jbrd bit header precedes its Brotli stream; canonical ICC/EXIF/XMP markers refer to external metadata.
   The per-call integration budget accounts for reconstruction header fields and expanded auxiliary data before
   corresponding payload allocations. Streams are buffered; the limits are not a bound on all temporary memory.
-- **Animation:** extend session composition and map frames, durations and looping; until then it throws.
+- **Animation:** map the displayed canvases of the session (blending exists since 0.8.10), durations and looping;
+  until then it throws.
 - **Performance:** benchmark before pooling, SIMD or parallel groups; keep scalar results unchanged.
 - **Parallelism (0.8.1):** `JxlParallel.For`/`ForWorkers`/`ForBands` is the only primitive: degree 1 is a plain loop
   on the calling thread; otherwise the exception of the lowest failed item is rethrown unchanged after the join.
